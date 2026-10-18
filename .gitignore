@@ -7,6 +7,7 @@ node_modules/
 /server/public/manifest.webmanifest
 /server/public/icon-*.png
 /server/public/apple-touch-icon.png
+/server/public/guide/
 /server/public/deploy.json
 /server/public/config-path.php
 /server/public/private/

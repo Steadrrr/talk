@@ -37,6 +37,7 @@ label input { margin-top: 4px; }
 .primary { background: var(--acc); color: var(--acc-fg); border-radius: 10px; padding: 11px 16px; font-weight: 600; width: 100%; margin-top: 8px; }
 .danger { width: 100%; padding: 12px; border-radius: 10px; color: var(--bad); background: var(--card); border: 1px solid var(--line); margin: 8px 0; }
 .text { color: var(--acc); font-weight: 600; padding: 8px; }
+a.text { text-decoration: none; }
 .icon { font-size: calc(26px * var(--fs)); line-height: 1; padding: 4px 10px; color: var(--fg); }
 
 /* 처음·로그인 */

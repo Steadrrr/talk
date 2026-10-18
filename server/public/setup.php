@@ -271,8 +271,8 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php if ($invite): ?>
 <div class="secret"><b>초대 코드를 만들었어요 — 복사해서 나눠 주세요</b><br>그룹 <?= h($invite[0]) ?> 초대 코드 <code><?= h($invite[1]) ?></code>
 <br>초대 링크 <code><?= h($base . '#invite=' . $invite[1]) ?></code>
-<div class="btns"><?= $copy($invite[1], '코드 복사') ?><?= $copy($base . '#invite=' . $invite[1], '링크 복사') ?></div>
-<span class="hint">링크를 열면 가입 화면에 코드가 채워져 있어요. 이미 가입한 사람은 앱의 설정 → 초대 코드 넣기. 아래 그룹 목록에서 언제든 다시 볼 수 있어요.</span></div>
+<div class="btns"><?= $copy($invite[1], '코드 복사') ?><?= $copy($base . '#invite=' . $invite[1], '링크 복사') ?><?= $copy($base . 'guide/#invite=' . $invite[1], '안내+초대 링크 복사') ?></div>
+<span class="hint">링크를 열면 가입 화면에 코드가 채워져 있어요. 안내+초대 링크는 가입·앱 설치 방법 페이지가 먼저 열려요. 이미 가입한 사람은 앱의 설정 → 초대 코드 넣기. 아래 그룹 목록에서 언제든 다시 볼 수 있어요.</span></div>
 <?php endif; ?>
 
 <fieldset><legend>그룹 (같은 그룹 사람끼리만 서로 보여요)</legend>
@@ -291,7 +291,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <form method="post" class="row"><?= $hidden('invite_revoke', ['id' => (int)$i['id']]) ?>
 <span class="hint">└ 초대 코드 <?= $i['code'] ? '<code>' . h($i['code']) . '</code> · 링크 <code>' . h($base . '#invite=' . $i['code']) . '</code>' : '#' . (int)$i['id'] . ' (예전에 만든 코드라 다시 볼 수 없어요)' ?>
 <br>└ 남은 횟수 <?= (int)$i['uses_left'] ?> · <?= h(kst($i['expires_at'])) ?> 까지</span>
-<span class="btns"><?php if ($i['code']): ?><?= $copy($i['code'], '코드 복사') ?><?= $copy($base . '#invite=' . $i['code'], '링크 복사') ?><?php endif; ?><button type="submit" class="sub">없애기</button></span></form>
+<span class="btns"><?php if ($i['code']): ?><?= $copy($i['code'], '코드 복사') ?><?= $copy($base . '#invite=' . $i['code'], '링크 복사') ?><?= $copy($base . 'guide/#invite=' . $i['code'], '안내+초대 링크 복사') ?><?php endif; ?><button type="submit" class="sub">없애기</button></span></form>
 <?php endforeach; ?>
 <?php if (!(int)$g['closed']): ?>
 <form method="post" class="row"><?= $hidden('invite', ['group' => $gid]) ?>

@@ -32,5 +32,6 @@ export function InstallCard() {
       ${done ? html`<p class="ok">설치했어요. 홈 화면 아이콘으로 열어 주세요.</p>`
         : deferred ? html`<button class="primary" onClick=${install}>앱 설치하기</button>`
         : html`<p class="hint">${how}</p>`}
+      <a class="text left" href="./guide/">자세한 설치 방법 보기</a>
     </div>`;
 }

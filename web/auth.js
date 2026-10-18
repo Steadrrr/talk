@@ -111,6 +111,7 @@ export function Auth({ onDone }) {
       </form>
       <p class="hint">자동 로그인을 켜 두면 로그아웃할 때까지 다시 묻지 않아요. 비밀번호는 휴대폰(아이폰 암호, 구글 비밀번호 관리자)이 저장하겠냐고 물어볼 때 저장하면 돼요.</p>
       ${mode === 'login' && html`<p class="hint">비밀번호를 잊었으면 관리자에게 새 비밀번호를 받아 주세요.</p>`}
+      <a class="text" href=${'./guide/' + (invite ? '#invite=' + invite : '')}>처음이세요? 가입·앱 설치 방법 보기</a>
     </main>
   `;
 }
