@@ -21,6 +21,7 @@ export function Room({ id, onBack }) {
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
   const [searching, setSearching] = useState(false);
   const input = useRef(null);
+  const sent = useRef(null);
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
   useEffect(() => {
@@ -57,14 +58,18 @@ export function Room({ id, onBack }) {
   }
 
   function submit() {
-    const body = text.trim().slice(0, 4000);
+    const el = input.current;
+    // 한글 조합 중이면 먼저 끝냄 (안 그러면 지운 뒤 마지막 글자가 다시 들어옴)
+    if (el && document.activeElement === el) { el.blur(); el.focus(); }
+    const body = (el ? el.innerText.replace(/\n$/, '') : text).trim().slice(0, 4000);
     if (!body) return;
+    if (el) el.textContent = '';
     setText('');
-    if (input.current) input.current.textContent = '';
+    sent.current = { at: Date.now(), last: body.slice(-1) };
     atBottom.current = true;
     send(id, body, null, replyTo);
     setReplyTo(null);
-    input.current?.focus();
+    el?.focus();
   }
 
   // 사진·영상 고르기: 여러 개면 차례로 보냄
@@ -94,7 +99,11 @@ export function Room({ id, onBack }) {
   // 입력칸은 textarea 대신 글만 받는 편집 칸: 아이폰 사파리가 textarea 를 주소 칸으로 보고
   // autocomplete=off 여도 키보드 위에 '자동 완성 연락처'(집 주소)를 띄웠음. 높이는 CSS 로 최대 5줄 정도
   function onEdit(e) {
-    const t = e.currentTarget.innerText.replace(/\n$/, '');
+    const el = e.currentTarget;
+    // 보낸 직후 키보드가 조합하던 글자를 늦게 넣으면 지움
+    const j = sent.current;
+    if (j && Date.now() - j.at < 400 && /omposition/.test(e.inputType || '') && el.innerText.trim() === j.last) { el.textContent = ''; setText(''); return; }
+    const t = el.innerText.replace(/\n$/, '');
     setText(t);
     setTyping(id, t.trim() !== '');
   }
