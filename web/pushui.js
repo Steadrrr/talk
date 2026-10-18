@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { html } from './html.js';
 import { api } from './api.js';
+import { state, setPushQuiet } from './store.js';
 import { pushState, enablePush, disablePush, deniedHelp, setPushAsked, refreshPush } from './push.js';
 
 const INSTALL_HELP = html`
@@ -59,6 +60,11 @@ export function PushCard() {
       else setTest(`알림 서버가 받지 않았어요 (${r.results.map((x) => `${x.host} ${x.code || x.error}`).join(', ')}). 스위치를 껐다가 다시 켜 주세요.`);
     } catch (e) { setTest(''); setErr(e.message); }
   }
+  const [quiet, setQuiet] = useState(!!state.me?.push_quiet);
+  async function toggleQuiet() {
+    setErr('');
+    try { await setPushQuiet(!quiet); setQuiet(!quiet); } catch (e) { setErr(e.message); }
+  }
   const canToggle = st === 'on' || st === 'off';
   return html`
     <div class="card">
@@ -67,7 +73,12 @@ export function PushCard() {
           st === 'on' ? '켜짐 · 이 기기로 알림이 와요' : st === 'off' ? '꺼짐' : st === 'install' ? '홈 화면에 추가한 앱에서 켤 수 있어요' : st === 'denied' ? '휴대폰 설정에서 막혀 있어요' : st === 'unsupported' ? '이 브라우저는 알림을 받을 수 없어요' : ''}</div></span>
         <input type="checkbox" class="switch" checked=${st === 'on'} disabled=${!canToggle || busy} onChange=${toggle} />
       </label>
-      ${st === 'on' && html`<button class="text left" onClick=${sendTest}>시험 알림 보내기</button>`}
+      ${st === 'on' && html`
+        <label class="switch-row">
+          <span class="grow"><b>정신병 방지(연속알림 차단)</b><div class="hint">한 방에 1분 안에 3개 넘게 올라오면 조용히 받아요. 5분 동안 대화가 없으면 다시 알림이 와요. 아이폰은 그동안 알림·뱃지가 멈추고, 안드로이드는 소리 없이 알림 한 칸만 바뀌어요.</div></span>
+          <input type="checkbox" class="switch" checked=${quiet} onChange=${toggleQuiet} />
+        </label>
+        <button class="text left" onClick=${sendTest}>시험 알림 보내기</button>`}
       ${test && html`<p class="hint">${test}</p>`}
       ${st === 'install' && INSTALL_HELP}
       ${st === 'denied' && html`<p class="hint">${deniedHelp()}</p>`}

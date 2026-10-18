@@ -188,6 +188,14 @@ export async function loadMe() {
   notify();
 }
 
+// 개인 설정: 정신병 방지(연속알림 차단)
+export async function setPushQuiet(on) {
+  await api('me/prefs', { push_quiet: on });
+  if (state.me) state.me.push_quiet = on ? 1 : 0;
+  saveSoon();
+  notify();
+}
+
 // 사람 찾기: 같은 그룹 친구 목록에서, 없으면 방 사람 목록에서 (그룹에서 빠진 사람도 방에는 남아 있을 수 있음)
 export function person(id) {
   if (state.me?.id === id) return state.me;

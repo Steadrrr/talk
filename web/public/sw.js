@@ -41,7 +41,9 @@ self.addEventListener('push', (e) => {
   e.waitUntil(Promise.all([badge, self.registration.showNotification(d.title || 'SAKi Talk', {
     body: d.body || '새 메시지',
     tag: d.tag || 'talk',
-    renotify: true,
+    // 정신병 방지(연속알림 차단): 같은 방 알림을 소리·진동 없이 바꿔 끼운다
+    renotify: !d.quiet,
+    silent: !!d.quiet,
     icon: './icon-192.png',
     data: { room: d.room || 0, notice: d.notice || 0 },
   })]));

@@ -127,11 +127,16 @@ $uid = $me['id'];
 
 switch ($route) {
     case 'me':
-        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'is_admin' => $me['is_admin']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
+        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'is_admin' => $me['is_admin'], 'push_quiet' => $me['push_quiet']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
 
     case 'me/nick':
         $need('POST');
         talk_set_nick($pdo, $uid, talk_clean_nick(talk_body()['nick'] ?? ''));
+        talk_json(['ok' => true]);
+
+    case 'me/prefs':
+        $need('POST');
+        $pdo->prepare('UPDATE talk_users SET push_quiet = ? WHERE id = ?')->execute([empty(talk_body()['push_quiet']) ? 0 : 1, $uid]);
         talk_json(['ok' => true]);
 
     case 'me/photo':

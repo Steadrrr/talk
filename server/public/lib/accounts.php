@@ -149,7 +149,7 @@ function talk_token_from_request(): string {
 function talk_auth(PDO $pdo): array {
     $t = talk_token_from_request();
     if (!preg_match('/^[a-f0-9]{64}$/', $t)) talk_fail('로그인이 필요해요.', 401);
-    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.photo_key, u.is_admin FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
+    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.photo_key, u.is_admin, u.push_quiet FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
         WHERE d.token_hash = ? AND d.revoked = 0 AND u.disabled = 0');
     $st->execute([hash('sha256', $t)]);
     $me = $st->fetch();
@@ -158,7 +158,7 @@ function talk_auth(PDO $pdo): array {
     if (strtotime($me['last_seen'] . ' UTC') < time() - 300) {
         $pdo->prepare('UPDATE talk_devices SET last_seen = ? WHERE id = ?')->execute([talk_now(), $me['device_id']]);
     }
-    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo_key'], 'is_admin' => (int)$me['is_admin'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
+    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo_key'], 'is_admin' => (int)$me['is_admin'], 'push_quiet' => (int)$me['push_quiet'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
 }
 
 // 앱에서 이 방을 보고 있음 (동기화할 때마다 부름, 방이 같으면 5초에 한 번만 적음, 0 = 목록). 앱을 숨기면 me/away 로 지움

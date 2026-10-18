@@ -167,7 +167,7 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
     $st->execute([$senderId, $roomId]);
     $room = $st->fetch();
     if (!$room) return $out;
-    $st = $pdo->prepare('SELECT s.*, d.user_id FROM talk_push_subs s JOIN talk_devices d ON d.id = s.device_id
+    $st = $pdo->prepare('SELECT s.*, d.user_id, u.push_quiet FROM talk_push_subs s JOIN talk_devices d ON d.id = s.device_id
         JOIN talk_room_members m ON m.user_id = d.user_id AND m.room_id = ? JOIN talk_users u ON u.id = d.user_id
         WHERE d.revoked = 0 AND u.disabled = 0 AND m.muted = 0 AND d.user_id <> ?
           AND (d.active_at IS NULL OR d.active_room <> ? OR d.active_at < ?)');
@@ -182,10 +182,18 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
         'tag' => "room-$roomId",
     ];
     // 받는 사람마다 내용이 다르다: 홈 화면 아이콘 뱃지에 달 그 사람의 안 읽은 메시지 합계
+    // 정신병 방지(연속알림 차단)를 켠 사람: 여럿이 몰아서 대화 중이면 조용히
+    //  아이폰은 알림 없이 뱃지만 바꿀 수 없어서(알림 안 띄우면 애플이 권한을 끊음) 안 보내고, 다른 기기는 소리 없이 바꿔 끼운다
+    $burst = talk_room_burst($pdo, $roomId);
+    $skipped = 0;
     $byUser = [];
-    foreach ($subs as $s) $byUser[(int)$s['user_id']][] = $s;
+    foreach ($subs as $s) {
+        if ($burst && $s['push_quiet'] && talk_push_is_apple($s['endpoint'])) { $skipped++; continue; }
+        $byUser[(int)$s['user_id']][] = $s;
+    }
     foreach ($byUser as $u => $list) {
-        $payload = json_encode($base + ['badge' => talk_unread_total($pdo, $u)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $quiet = $burst && $list[0]['push_quiet'] ? ['quiet' => 1] : [];
+        $payload = json_encode($base + ['badge' => talk_unread_total($pdo, $u)] + $quiet, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         // Topic 머리는 안 씀: 애플이 "room1" 같은 Topic 을 400 으로 거절함 (같은 방 알림 묶기는 기기의 tag 로)
         $r = talk_push_send_many($pdo, $list, $payload, '');
         foreach (['sent', 'failed', 'total'] as $k) $out[$k] += $r[$k];
@@ -193,8 +201,32 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
     }
     // 서버가 알림 서비스(애플·구글)에 넘기기까지 걸린 시간: 이게 짧은데 늦게 뜨면 알림 서비스 쪽에서 걸린 것
     $out['ms'] = (int)round((microtime(true) - $t0) * 1000);
-    talk_push_log($pdo, "방 $roomId 새 메시지", $out);
+    talk_push_log($pdo, "방 $roomId 새 메시지" . ($skipped ? " (연속알림 차단으로 아이폰 $skipped 대 건너뜀)" : ''), $out);
     return $out;
+}
+
+// 그 방이 지금 "몰아서 대화 중"인지: 마지막 메시지부터 거슬러 5분 넘게 빈 곳이 없는 이어진 대화 안에
+// 1분 안에 3개 이상 올라온 적이 있으면 그렇다 (5분 조용하면 저절로 풀림)
+const TALK_BURST_COUNT = 3, TALK_BURST_WINDOW = 60, TALK_BURST_QUIET = 300;
+function talk_room_burst(PDO $pdo, int $roomId): bool {
+    $st = $pdo->prepare("SELECT created_at FROM talk_messages WHERE room_id = ? AND kind <> 'system' ORDER BY id DESC LIMIT 300");
+    $st->execute([$roomId]);
+    $t = [];
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $at) {
+        $x = strtotime($at . ' UTC');
+        if ($t && end($t) - $x > TALK_BURST_QUIET) break;
+        $t[] = $x;
+    }
+    for ($i = 0; $i + TALK_BURST_COUNT - 1 < count($t); $i++) if ($t[$i] - $t[$i + TALK_BURST_COUNT - 1] <= TALK_BURST_WINDOW) return true;
+    return false;
+}
+
+function talk_push_is_apple(string $endpoint): bool {
+    $h = strtolower((string)parse_url($endpoint, PHP_URL_HOST));
+    // 자동 검증: 가짜 알림 서비스 주소의 apple- 로 시작하는 경로를 아이폰으로 본다
+    $test = talk_push_test_prefix();
+    if ($test !== '' && str_starts_with($endpoint, $test . 'apple-')) return true;
+    return $h === 'push.apple.com' || str_ends_with($h, '.push.apple.com');
 }
 
 // 내 안 읽은 메시지 합계 (닫힌 그룹의 방은 뺌, 앱의 채팅 탭 숫자와 같은 셈)

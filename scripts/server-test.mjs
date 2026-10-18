@@ -396,6 +396,8 @@ try {
     assert.equal(r.body.me.nick, null);
   });
 
+  const sql = (q) => execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '-N', '-D', dbName, '-e', q]).toString().trim();
+
   await t('알림: 받는 사람 기기로 암호화해 보냄, 그 방을 보고 있거나 끄면 안 보냄, 시험 알림', async () => {
     const ecdh = crypto.createECDH('prime256v1');
     ecdh.generateKeys();
@@ -459,6 +461,37 @@ try {
     await api('push/unsubscribe', { endpoint: sub.endpoint }, tok.dad);
     await api('messages/send', { room_id: room, body: '알림 끈 뒤' }, tok.mom);
     assert.equal((await waitPush(800)).length, 0, '알림을 끄면 안 보냄');
+
+    // 정신병 방지(연속알림 차단): 1분 안에 3개째부터 조용히 (안드로이드 등은 quiet 표시, 아이폰은 안 보냄)
+    assert.equal((await api('me/prefs', { push_quiet: true }, tok.dad)).status, 200);
+    assert.equal((await api('me', undefined, tok.dad)).body.me.push_quiet, 1);
+    const made = await api('rooms/create', { group_id: Number(family), member_ids: [dadId], name: '수다방' }, tok.mom);
+    const busy = made.body.room.id;
+    await api('push/subscribe', sub, tok.dad);
+    pushes.length = 0;
+    for (const [i, quiet] of [[1, undefined], [2, undefined], [3, 1], [4, 1]]) {
+      await api('messages/send', { room_id: busy, body: '수다 ' + i }, tok.mom);
+      got = await waitPush(3000);
+      assert.equal(got.length, 1);
+      assert.equal(open(got[0].body).quiet, quiet, `수다 ${i}: ${quiet ? '조용히' : '보통 알림'}`);
+    }
+    await api('push/unsubscribe', { endpoint: sub.endpoint }, tok.dad);
+    const apple = { ...sub, endpoint: PUSH_PREFIX + 'apple-dad' };
+    await api('push/subscribe', apple, tok.dad);
+    await api('messages/send', { room_id: busy, body: '아이폰은' }, tok.mom);
+    assert.equal((await waitPush(800)).length, 0, '아이폰은 몰아서 대화 중이면 안 보냄');
+    sql(`UPDATE talk_messages SET created_at = created_at - INTERVAL 6 MINUTE WHERE room_id = ${busy}`);
+    await api('messages/send', { room_id: busy, body: '5분 쉬고' }, tok.mom);
+    got = await waitPush(3000);
+    assert.equal(got.length, 1, '5분 넘게 조용했으면 저절로 풀림');
+    assert.equal(open(got[0].body).quiet, undefined);
+    await api('me/prefs', { push_quiet: true }, tok.dad);
+    await api('me/prefs', { push_quiet: false }, tok.dad);
+    await api('messages/send', { room_id: busy, body: '설정을 끄면' }, tok.mom);
+    got = await waitPush(3000);
+    assert.equal(got.length, 1, '설정을 끄면 다시 보냄');
+    assert.equal(open(got[0].body).quiet, undefined);
+    await api('push/unsubscribe', { endpoint: apple.endpoint }, tok.dad);
   });
 
   await t('방 설정: 알림 끄기·고정(나에게만), 이름 바꾸기·초대·나가기(안내 글)', async () => {
@@ -657,7 +690,6 @@ try {
   });
 
   // ───── 사키 (SAKi Lite 봇) ─────
-  const sql = (q) => execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '-N', '-D', dbName, '-e', q]).toString().trim();
   let sakiRoom, botId;
   const roomOf = async (token) => (await api('sync?since=0', undefined, token)).body.rooms.find((x) => x.id === sakiRoom);
   const msgsOf = async (token) => (await api('messages/history?room_id=' + sakiRoom + '&before=0', undefined, token)).body.messages;
