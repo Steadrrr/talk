@@ -64,7 +64,8 @@ async function restorePending() {
 export function clearAll() {
   stopSync();
   setToken('');
-  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('talk.token'); localStorage.removeItem('talk.pushAsked'); } catch { /* 무시 */ }
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('talk.token'); localStorage.removeItem('talk.pushAsked'); localStorage.removeItem(HIDDEN_KEY); } catch { /* 무시 */ }
+  hidden = new Set();
   clearPending();
   Object.assign(state, { me: null, groups: [], rooms: {}, messages: {}, cursor: 0, openRoom: null, profile: null });
   notify();
@@ -78,7 +79,9 @@ function mergeMessages(list) {
     // 내가 보낸 "보내는 중" 메시지가 서버에 도착한 것: 바꿔 끼운다
     const pi = m.client_id ? arr.findIndex((x) => x.pending && x.client_id === m.client_id) : -1;
     if (pi >= 0) arr.splice(pi, 1);
-    if (!arr.some((x) => x.id === m.id)) { arr.push(m); touched.add(m.room_id); }
+    const ei = arr.findIndex((x) => x.id === m.id);
+    if (ei >= 0) arr[ei] = m;                    // 이미 있는 것이 바뀜 (모두에게 삭제 등)
+    else { arr.push(m); touched.add(m.room_id); }
   }
   for (const rid of touched) {
     state.messages[rid].sort((a, b) => (a.pending - b.pending) || (a.id - b.id));
@@ -366,6 +369,25 @@ async function sendMediaNow(roomId, msg, isVideo) {
     msg.failed = true;
     msg.error = e.message;
   }
+  notify();
+}
+
+// ───── 길게 누르기: 나에게서 삭제(이 기기에서만 숨김)·모두에게 삭제 ─────
+const HIDDEN_KEY = 'talk.hidden';
+let hidden = new Set();
+try { hidden = new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')); } catch { /* 무시 */ }
+export const isHidden = (id) => hidden.has(id);
+export function hideMessage(id) {
+  hidden.add(id);
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hidden].slice(-2000))); } catch { /* 무시 */ }
+  notify();
+}
+export async function deleteForAll(m) {
+  await api('messages/delete', { id: m.id });
+  mergeMessages([{ ...m, kind: 'deleted', body: '' }]);
+  const room = state.rooms[m.room_id];
+  if (room?.last?.id === m.id) room.last = { ...room.last, kind: 'deleted', body: '' };
+  saveSoon();
   notify();
 }
 

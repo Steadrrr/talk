@@ -1,8 +1,8 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile } from './store.js';
-import { mediaUrl, mediaInfo } from './media.js';
+import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll } from './store.js';
+import { mediaUrl, mediaInfo, saveMedia } from './media.js';
 import { nickOf } from './names.js';
 import { RoomSettings } from './roomsettings.js';
 
@@ -18,6 +18,7 @@ export function Room({ id, onBack }) {
   const [settings, setSettings] = useState(false);
   const [viewing, setViewing] = useState(false);
   const [big, setBig] = useState(null);   // 크게 보는 사진·영상 메시지
+  const [menu, setMenu] = useState(null); // 길게 눌러 연 사진·영상 메뉴
   const input = useRef(null);
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
@@ -90,7 +91,8 @@ export function Room({ id, onBack }) {
 
   const rows = [];
   let prevDay = '', prevUser = 0, prevMin = '';
-  list.forEach((m, i) => {
+  const shown = list.filter((m) => !m.id || !isHidden(m.id));   // "나에게서 삭제" 한 것은 빼고
+  shown.forEach((m, i) => {
     const day = dayKey(m.at);
     if (day !== prevDay) { rows.push(html`<div class="day" key=${'d' + day}><span>${dateLine(m.at)}</span></div>`); prevUser = 0; }
     prevDay = day;
@@ -100,7 +102,7 @@ export function Room({ id, onBack }) {
       return;
     }
     const mine = m.user_id === state.me.id;
-    const next = list[i + 1];
+    const next = shown[i + 1];
     const minute = time(m.at);
     const first = m.user_id !== prevUser || minute !== prevMin;
     // 같은 사람이 같은 분에 이어 보낸 것은 마지막 것에만 시각을 붙인다
@@ -113,7 +115,9 @@ export function Room({ id, onBack }) {
         <div class="msg-col">
           ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">
-            ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig(m)} />` : html`<div class="bubble">${m.body}</div>`}
+            ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig(m)} onMenu=${() => setMenu(m)} />`
+              : m.kind === 'deleted' ? html`<div class="bubble gone">삭제된 메시지예요</div>`
+              : html`<div class="bubble">${m.body}</div>`}
             <div class="meta">
               ${m.failed ? html`<span class="small bad">못 보냄</span>`
                 : m.pending ? html`<span class="hint small">보내는 중</span>`
@@ -127,14 +131,15 @@ export function Room({ id, onBack }) {
 
   return html`
     <section class="page room-page">
-      <header class="bar">
+      <header class="bar room-bar">
         <button class="icon" onClick=${onBack} aria-label="뒤로">‹</button>
+        <div class="room-title">
         ${room.photo && html`<button class="tap" onClick=${() => setViewing(true)} aria-label="채팅방 사진"><${Avatar} photo=${room.photo} size=${34} /></button>`}
         <h2 class=${'ellipsis' + (room.kind === 'dm' && others[0] ? ' tap' : '')} onClick=${() => room.kind === 'dm' && others[0] && showProfile(others[0].id)}>${roomTitle(room)}</h2>
         ${room.kind === 'group' && html`<span class="hint">${room.members.length}</span>`}
         ${!state.online && html`<span class="offline">연결 끊김</span>`}
         ${room.muted > 0 && html`<span class="mark">🔕</span>`}
-        <span class="grow"></span>
+        </div>
         <button class="icon" onClick=${() => setSettings(true)} aria-label="방 설정">☰</button>
       </header>
       <div class="messages" ref=${scroller} onScroll=${onScroll}>
@@ -147,6 +152,7 @@ export function Room({ id, onBack }) {
         <textarea ref=${input} rows="1" value=${text} onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
         <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
       </form>
+      ${menu && html`<${MediaMenu} m=${menu} mine=${menu.user_id === state.me.id} onClose=${() => setMenu(null)} />`}
       ${big && html`<${MediaViewer} m=${big} who=${names.get(big.user_id) || ''} onClose=${() => setBig(null)} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} />`}
@@ -157,21 +163,64 @@ export function Room({ id, onBack }) {
 const durText = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 // 사진·영상 말풍선: 가로세로 비율대로, 보내는 중이면 진행률, 지워졌으면 안내
-function MediaBubble({ m, onOpen }) {
+function MediaBubble({ m, onOpen, onMenu }) {
   const info = mediaInfo(m);
   const [broken, setBroken] = useState(false);
+  const press = useLongPress(() => !m.pending && onMenu(), () => !m.pending && onOpen());
   if (!m.pending && (info.gone || broken)) return html`<div class="bubble gone">${m.kind === 'photo' ? '🖼️' : '🎬'} 보관 기간이 지나 지워졌어요</div>`;
   const ratio = info.w && info.h ? Math.max(0.5, Math.min(2, info.w / info.h)) : 1;
   const w = ratio >= 1 ? 240 : Math.round(240 * ratio);
   const style = { width: w + 'px', aspectRatio: String(ratio) };
   const src = m.pending ? m.local : m.kind === 'photo' ? mediaUrl(info.key) : info.thumb ? mediaUrl(info.key, true) : '';
   return html`
-    <button class=${'media ' + m.kind} style=${style} onClick=${() => !m.pending && onOpen()} aria-label=${m.kind === 'photo' ? '사진 크게 보기' : '동영상 재생'}>
+    <button class=${'media ' + m.kind} style=${style} ...${press} aria-label=${m.kind === 'photo' ? '사진 크게 보기' : '동영상 재생'}>
       ${src ? html`<img src=${src} alt="" loading="lazy" onError=${() => !m.pending && setBroken(true)} />` : html`<span class="media-blank"></span>`}
       ${m.kind === 'video' && !m.pending && html`<span class="play">▶</span><span class="dur">${durText(info.dur || 0)}</span>`}
       ${m.pending && !m.failed && html`<span class="media-progress"><span>${m.stage}${m.stage === '기다리는 중' ? '' : ` ${Math.round((m.progress || 0) * 100)}%`}</span><i style=${{ width: Math.round((m.progress || 0) * 100) + '%' }}></i></span>`}
       ${m.failed && html`<span class="media-progress err-box"><span>${m.error || '보내지 못했어요'}</span></span>`}
     </button>`;
+}
+
+// 길게 누르기(0.5초): 손가락을 떼기 전에 메뉴. 그냥 누르면 onTap. 움직이면(스크롤) 취소
+function useLongPress(onLong, onTap) {
+  const t = useRef(0), fired = useRef(false), start = useRef(null);
+  const cancel = () => { clearTimeout(t.current); t.current = 0; };
+  return {
+    onPointerDown: (e) => {
+      fired.current = false;
+      start.current = [e.clientX, e.clientY];
+      cancel();
+      t.current = setTimeout(() => { fired.current = true; t.current = 0; navigator.vibrate?.(15); onLong(); }, 500);
+    },
+    onPointerMove: (e) => { if (t.current && start.current && Math.hypot(e.clientX - start.current[0], e.clientY - start.current[1]) > 10) cancel(); },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    onPointerLeave: cancel,
+    onContextMenu: (e) => { e.preventDefault(); if (!fired.current) { cancel(); fired.current = true; onLong(); } },
+    onClick: () => { if (fired.current) { fired.current = false; return; } onTap(); },
+  };
+}
+
+// 사진·영상 메뉴: 저장, 나에게서 삭제, 모두에게 삭제(내가 보낸 것만)
+function MediaMenu({ m, mine, onClose }) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const what = m.kind === 'photo' ? '사진' : '영상';
+  async function run(label, fn) {
+    setErr(''); setBusy(label);
+    try { await fn(); onClose(); } catch (e) { setErr(e.message || '하지 못했어요.'); } finally { setBusy(''); }
+  }
+  const gone = mediaInfo(m).gone;
+  return html`
+    <div class="sheet-bg" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="sheet action-sheet" role="menu">
+        ${err && html`<p class="err">${err}</p>`}
+        ${!gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
+        <button class="danger" onClick=${() => confirm(`이 ${what}을 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
+        ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what}을 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}
+        <button class="cancel" onClick=${onClose}>취소</button>
+      </div>
+    </div>`;
 }
 
 // 크게 보기: 사진은 화면 가득, 영상은 바로 재생

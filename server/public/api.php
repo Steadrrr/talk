@@ -141,6 +141,11 @@ switch ($route) {
         $b = talk_body();
         talk_json(['ok' => true, 'message' => talk_media_finish($pdo, $cfg, $uid, (string)($b['key'] ?? ''), (string)($b['client_id'] ?? ''))]);
 
+    case 'messages/delete':
+        $need('POST');
+        talk_message_delete($pdo, $cfg, $uid, (int)(talk_body()['id'] ?? 0));
+        talk_json(['ok' => true]);
+
     case 'rooms/photo':
         $need('POST');
         $b = talk_body(500_000);

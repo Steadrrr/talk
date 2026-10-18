@@ -495,6 +495,21 @@ try {
     const dadView = (await api('sync?since=0', undefined, tok.dad)).body.rooms.find((x) => x.id === room);
     assert.equal(dadView.last.kind, 'photo');
 
+    // 모두에게 삭제: 보낸 사람만, 파일도 지워지고 다른 사람 동기화에 같은 번호로 "deleted"
+    const cur = (await api('sync?since=0', undefined, tok.dad)).body.cursor;
+    let d = await api('media/start', { room_id: room, kind: 'photo', mime: 'image/jpeg', size: 4 }, tok.mom);
+    const dkey = d.body.key;
+    await req(`/api.php/media/chunk?key=${dkey}&offset=0`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom }, body: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) });
+    d = await api('media/finish', { key: dkey }, tok.mom);
+    const mid = d.body.message.id;
+    assert.equal((await api('messages/delete', { id: mid }, tok.dad)).status, 403, '남의 것은 못 지움');
+    assert.equal((await api('messages/delete', { id: mid }, tok.f1)).status, 404, '방에 없는 사람');
+    assert.equal((await api('messages/delete', { id: mid }, tok.mom)).status, 200);
+    assert.equal((await req('/api.php/media/' + dkey)).status, 404, '파일도 지워짐');
+    const after = (await api('sync?since=' + cur, undefined, tok.dad)).body;
+    assert.equal(after.messages.find((x) => x.id === mid)?.kind, 'deleted');
+    assert.equal(after.messages.find((x) => x.id === mid)?.body, '');
+
     // 영상: Range
     const mp4 = crypto.randomBytes(5000);
     r = await api('media/start', { room_id: room, kind: 'video', mime: 'video/mp4', size: mp4.length, dur: 12, thumb: jpg.subarray(0, 1000).toString('base64') }, tok.mom);

@@ -21,6 +21,7 @@ export function preview(m) {
   if (!m) return '';
   if (m.kind === 'photo') return '사진';
   if (m.kind === 'video') return '동영상';
+  if (m.kind === 'deleted') return '삭제된 메시지';
   return m.body;
 }
 
@@ -198,4 +199,22 @@ export async function upload(roomId, p, clientId, onProgress) {
     onProgress?.(off / p.blob.size);
   }
   return (await api('media/finish', { key, client_id: clientId })).message;
+}
+
+// 저장: 휴대폰은 공유 창(→ "이미지 저장"/"비디오 저장")으로, 컴퓨터는 내려받기로
+export async function saveMedia(m) {
+  const info = mediaInfo(m);
+  const res = await fetch(mediaUrl(info.key));
+  if (!res.ok) throw new Error('파일을 받지 못했어요.');
+  const blob = await res.blob();
+  const ext = (blob.type.split('/')[1] || (m.kind === 'photo' ? 'jpg' : 'mp4')).replace('quicktime', 'mov').replace('jpeg', 'jpg');
+  const file = new File([blob], `SAKiTalk-${m.id}.${ext}`, { type: blob.type });
+  if (navigator.canShare?.({ files: [file] }) && matchMedia('(pointer: coarse)').matches) {
+    try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
