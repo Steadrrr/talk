@@ -234,11 +234,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             if (!preg_match('/^[A-Za-z0-9_-]{16,200}$/', $key)) throw new RuntimeException('SAKi Lite 열쇠 모양이 아니에요. SAKI 관리 화면에서 나온 값을 그대로 붙여 넣어 주세요.');
             $cfg['saki_lite_key'] = $key;
             talk_write_config($cfg['private_dir'], $cfg);
+            talk_saki_rooms_changed($pdo);
             $n = talk_saki_check($pdo, $cfg);
             $msg = 'SAKi Lite 열쇠를 저장했어요. 확인 결과: ' . talk_saki_status_text($n);
         } elseif ($act === 'saki_key_clear') {
             unset($cfg['saki_lite_key']);
             talk_write_config($cfg['private_dir'], $cfg);
+            talk_saki_rooms_changed($pdo);
             $msg = 'SAKi Lite 열쇠를 지웠어요. 사키를 초대한 방에서도 사키가 조용히 쉬어요.';
         } elseif ($act === 'saki_status') {
             $msg = 'SAKi Lite 상태: ' . talk_saki_status_text(talk_saki_check($pdo, $cfg));

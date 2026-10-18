@@ -25,6 +25,11 @@ function talk_saki_ready(): bool {
     return $ready ??= ((string)(talk_config()['saki_lite_key'] ?? '')) !== '';
 }
 
+// 열쇠를 넣거나 지우면 모든 단체방 정보를 다시 내려보낸다 (앱이 방마다 사키 칸을 보일지 다시 정하게)
+function talk_saki_rooms_changed(PDO $pdo): void {
+    foreach ($pdo->query("SELECT id FROM talk_rooms WHERE kind = 'group'")->fetchAll(PDO::FETCH_COLUMN) as $rid) talk_event($pdo, (int)$rid, 'room');
+}
+
 function talk_saki_settings(?string $json): array {
     $s = json_decode((string)$json, true);
     $s = (is_array($s) ? array_intersect_key($s, TALK_SAKI_DEFAULTS) : []) + TALK_SAKI_DEFAULTS;

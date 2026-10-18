@@ -668,12 +668,16 @@ try {
     sakiRoom = (await api('rooms/create', { group_id: Number(family), member_ids: [dad, admin], name: '소풍방' }, tok.mom)).body.room.id;
     let room = await roomOf(tok.mom);
     assert.equal(room.saki.ready, false);
+    const cur = (await api('sync?since=0', undefined, tok.mom)).body;
+    assert.equal(cur.saki_ready, false);
     assert.equal(room.saki.on, 0);
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, on: true }, tok.mom)).status, 503);
     let html = await adminPost({ act: 'saki_key', key: 'short key!' });
     assert.match(html, /열쇠 모양이 아니에요/);
     html = await adminPost({ act: 'saki_key', key: SAKI_KEY });
     assert.match(html, /열쇠를 저장했어요/);
+    const changed = (await api('sync?since=' + cur.cursor, undefined, tok.mom)).body;
+    assert.ok(changed.rooms.some((x) => x.id === sakiRoom && x.saki.ready), '열쇠를 넣으면 예전에 받아 둔 방도 다시 내려감');
     assert.match(html, /잘 됨/);
     assert.ok(html.includes('····' + SAKI_KEY.slice(-4)));
     assert.ok(!html.includes(SAKI_KEY), '관리 화면에 열쇠 전체가 안 보임');
@@ -683,6 +687,7 @@ try {
     assert.match(html, /오늘 \$0\.012 \/ \$0\.20/);
     room = await roomOf(tok.mom);
     assert.equal(room.saki.ready, true);
+    assert.equal((await api('sync?since=0', undefined, tok.dad)).body.saki_ready, true, '동기화에도 열쇠가 들어갔는지');
   });
 
   await t('사키: 방장·관리자만 초대, 초대하면 방 멤버에 봇과 안내 글, 봇은 로그인 못 함', async () => {

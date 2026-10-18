@@ -89,7 +89,7 @@ export function RoomSettings({ room, onClose, onLeft }) {
               <h3>방 이름 <span class="hint">(모두에게 보여요, 비우면 사람 이름으로)</span></h3>
               <div class="inline"><input value=${name} onInput=${(e) => setName(e.target.value)} maxlength="40" placeholder=${roomTitle({ ...room, name: '' })} /><button class="primary" type="submit" disabled=${name.trim() === (room.name || '')}>저장</button></div>
             </form>`}
-          ${room.saki && (room.saki.ready || room.saki.on) && html`<${SakiSection} room=${room} run=${run} />`}
+          ${isGroup && (state.sakiReady || room.saki?.ready || room.saki?.on > 0) && html`<${SakiSection} room=${room} run=${run} />`}
           <div class="section">
             <h3>나에게만</h3>
             <label class="switch-row"><span class="grow">새 메시지 알림</span>
@@ -122,7 +122,8 @@ export function RoomSettings({ room, onClose, onLeft }) {
 // 사키(SAKi Lite 봇): 단체방에서 방장·관리자가 초대하고 성격·말투·대답 빈도를 정함. 다른 사람은 보기만
 const PERSONALITIES = [['calm', '차분'], ['lively', '활발'], ['quiet', '조용'], ['tsundere', '츤데레']];
 function SakiSection({ room, run }) {
-  const s = room.saki;
+  // 사키가 생기기 전에 받아 둔 방 정보에는 saki 가 없음: 기본값(끔)으로
+  const s = room.saki || { on: 0, personality: 'lively', polite: 0, freq: 'called', gap: 10, react: 1 };
   const can = room.created_by === state.me.id || !!state.me.is_admin;
   const set = (changes) => run(() => setSaki(room.id, changes));
   const seg = (items, value, key) => html`

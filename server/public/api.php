@@ -270,6 +270,8 @@ switch ($route) {
         talk_release_notice($pdo);
         $out['app'] = talk_app_build();
         $out['notice'] = talk_notice_latest($pdo);
+        // saki_ready: 관리자가 SAKi Lite 열쇠를 넣었는지 (예전에 받아 둔 방 정보와 상관없이 방 설정에 사키 칸을 보이려고)
+        $out['saki_ready'] = talk_saki_ready();
         talk_json($out);
 
     case 'notices':

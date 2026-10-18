@@ -23,6 +23,7 @@ export const state = {
   online: true,
   notice: null,    // 공지사항 최신 글 { id, title, updated } (채팅 목록 맨 위 한 줄)
   notices: false,  // 공지사항 게시판을 열어 둠
+  sakiReady: false, // 관리자가 SAKi Lite 열쇠를 넣어 사키를 부를 수 있음
 };
 
 const listeners = new Set();
@@ -133,6 +134,7 @@ export async function syncNow() {
         more = r.more;
         if (r.groups_rev !== undefined && r.groups_rev !== state.groupsRev) await loadMe();
         if (r.notice !== undefined) state.notice = r.notice;
+        if (r.saki_ready !== undefined) state.sakiReady = r.saki_ready;
         app = r.app;
       }
       state.online = true;
