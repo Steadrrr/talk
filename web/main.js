@@ -104,7 +104,7 @@ function App() {
 
   if (!ready) return null;
   if (!getToken() || (!state.me && !problem)) {
-    if (!getToken()) return html`<${Auth} onDone=${() => { setProblem(''); start(); }} />`;
+    if (!getToken()) return html`<${Auth} onDone=${() => { setProblem(''); setTab('chats'); start(); }} />`;
     return html`<main class="splash"><p class="hint">불러오는 중…</p></main>`;
   }
   if (!state.me) {

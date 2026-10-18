@@ -75,7 +75,7 @@ export function PushCard() {
       </label>
       ${st === 'on' && html`
         <label class="switch-row">
-          <span class="grow"><b>정신병 방지(연속알림 차단)</b><div class="hint">한 방에 1분 안에 3개 넘게 올라오면 조용히 받아요. 5분 동안 대화가 없으면 다시 알림이 와요. 아이폰은 그동안 알림·뱃지가 멈추고, 안드로이드는 소리 없이 알림 한 칸만 바뀌어요.</div></span>
+          <span class="grow"><b>정신병 방지(연속알림 차단)</b><div class="hint">한 방에 1분 안에 3개 이상 몰아서 올라오면 그때부터 조용히 받아요. 5분 동안 대화가 없으면 다시 알림이 와요. 아이폰은 그동안 알림·뱃지가 멈추고, 안드로이드는 소리 없이 알림 한 칸만 바뀌어요.</div></span>
           <input type="checkbox" class="switch" checked=${quiet} onChange=${toggleQuiet} />
         </label>
         <button class="text left" onClick=${sendTest}>시험 알림 보내기</button>`}
