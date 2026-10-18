@@ -232,7 +232,7 @@ foreach ($st->fetchAll() as $r) $invites[(int)$r['group_id']][] = $r;
 $userGroups = [];
 foreach ($pdo->query('SELECT user_id, group_id FROM talk_group_members')->fetchAll() as $r) $userGroups[(int)$r['user_id']][(int)$r['group_id']] = true;
 $users = $pdo->query('SELECT u.id, u.name, u.nick, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
-$devs = $pdo->query('SELECT d.id, d.name, d.last_seen, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.id')->fetchAll();
+$devs = $pdo->query('SELECT d.id, d.name, d.last_seen, d.active_at, (SELECT COUNT(*) FROM talk_push_subs s WHERE s.device_id = d.id) subs, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.id')->fetchAll();
 $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT(*) FROM talk_messages) m')->fetch();
 $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf" value="' . h(csrf()) . '"><input type="hidden" name="act" value="' . h($act) . '">'
     . implode('', array_map(fn($k, $v) => '<input type="hidden" name="' . h($k) . '" value="' . h((string)$v) . '">', array_keys($extra), $extra));
@@ -295,7 +295,14 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php if (!$devs) echo '<p class="hint">아직 없어요.</p>'; ?>
 <?php foreach ($devs as $d): ?>
 <form method="post" class="row"><?= $hidden('device_revoke', ['id' => (int)$d['id']]) ?>
-<span><?= h($d['owner']) ?> · <?= h($d['name']) ?> <span class="hint">마지막 <?= h($d['last_seen']) ?> (UTC)</span></span><button type="submit" class="sub">로그인 끊기</button></form>
+<span><?= h($d['owner']) ?> · <?= h($d['name']) ?> <span class="hint">#<?= (int)$d['id'] ?> · 알림 <?= (int)$d['subs'] ? '<b class="ok">켬</b>' : '꺼짐' ?> · 마지막 <?= h($d['last_seen']) ?><?= $d['active_at'] ? ' · 앱 봄 ' . h($d['active_at']) : '' ?> (UTC)</span></span><button type="submit" class="sub">로그인 끊기</button></form>
+<?php endforeach; ?>
+</fieldset>
+
+<fieldset><legend>알림 기록 (최근 30개, UTC)</legend>
+<?php $plog = json_decode((string)talk_meta_get($pdo, 'push_log'), true) ?: []; if (!$plog) echo '<p class="hint">아직 보낸 알림이 없어요.</p>'; ?>
+<?php foreach ($plog as $l): ?>
+<div class="row"><span><?= h($l['at']) ?> · <?= h($l['what']) ?> <span class="hint">· <?= (int)$l['sent'] ?>/<?= (int)$l['total'] ?> 성공<?= $l['results'] ? ' · ' . h(implode(', ', $l['results'])) : '' ?></span></span></div>
 <?php endforeach; ?>
 </fieldset>
 

@@ -87,7 +87,7 @@ export async function syncNow() {
     try {
       let more = true;
       while (more) {
-        const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1'));
+        const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1&room=' + (state.openRoom || 0)));
         if (r.full) state.messages = Object.fromEntries(Object.entries(state.messages).map(([k, v]) => [k, v.filter((m) => m.pending)]));
         mergeRooms(r.rooms, r.full);
         mergeMessages(r.messages);

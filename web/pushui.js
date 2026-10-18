@@ -1,7 +1,8 @@
 // 알림 화면: 로그인 뒤 한 번 뜨는 "알림 받을까요?" 창, 설정 탭의 알림 켜기·끄기
 import { useEffect, useState } from 'preact/hooks';
 import { html } from './html.js';
-import { pushState, enablePush, disablePush, deniedHelp, setPushAsked } from './push.js';
+import { api } from './api.js';
+import { pushState, enablePush, disablePush, deniedHelp, setPushAsked, refreshPush } from './push.js';
 
 const INSTALL_HELP = html`
   <ol class="steps">
@@ -39,6 +40,7 @@ export function PushCard() {
   const [st, setSt] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [test, setTest] = useState('');
   const refresh = () => pushState().then(setSt).catch(() => setSt('unsupported'));
   useEffect(() => { refresh(); }, []);
   async function toggle() {
@@ -46,6 +48,16 @@ export function PushCard() {
     try { if (st === 'on') await disablePush(); else await enablePush(); } catch (e) { setErr(e.message); }
     setBusy(false);
     refresh();
+  }
+  async function sendTest() {
+    setErr(''); setTest('보내는 중…');
+    try {
+      await refreshPush();
+      const r = await api('push/test', {});
+      if (!r.total) setTest('서버에 이 기기 알림 주소가 없어요. 스위치를 껐다가 다시 켜 주세요.');
+      else if (r.sent) setTest('보냈어요. 몇 초 안에 알림이 안 오면 휴대폰 설정 > 알림 에서 SAKi Talk(안드로이드는 크롬) 알림과 집중 모드를 확인해 주세요.');
+      else setTest(`알림 서버가 받지 않았어요 (${r.results.map((x) => `${x.host} ${x.code || x.error}`).join(', ')}). 스위치를 껐다가 다시 켜 주세요.`);
+    } catch (e) { setTest(''); setErr(e.message); }
   }
   const canToggle = st === 'on' || st === 'off';
   return html`
@@ -55,6 +67,8 @@ export function PushCard() {
           st === 'on' ? '켜짐 · 이 기기로 알림이 와요' : st === 'off' ? '꺼짐' : st === 'install' ? '홈 화면에 추가한 앱에서 켤 수 있어요' : st === 'denied' ? '휴대폰 설정에서 막혀 있어요' : st === 'unsupported' ? '이 브라우저는 알림을 받을 수 없어요' : ''}</div></span>
         <input type="checkbox" class="switch" checked=${st === 'on'} disabled=${!canToggle || busy} onChange=${toggle} />
       </label>
+      ${st === 'on' && html`<button class="text left" onClick=${sendTest}>시험 알림 보내기</button>`}
+      ${test && html`<p class="hint">${test}</p>`}
       ${st === 'install' && INSTALL_HELP}
       ${st === 'denied' && html`<p class="hint">${deniedHelp()}</p>`}
       ${err && html`<p class="err">${err}</p>`}

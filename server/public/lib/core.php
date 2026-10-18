@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 6;
+const TALK_SERVER_VERSION = 7;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -109,6 +109,8 @@ function talk_migrate(PDO $pdo): void {
         p256dh VARCHAR(200) NOT NULL, auth VARCHAR(100) NOT NULL, created_at DATETIME NOT NULL, INDEX (device_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     $q[] = "ALTER TABLE talk_devices ADD COLUMN IF NOT EXISTS active_at DATETIME NULL";
+    // 7: 알림은 그 방을 보고 있는 기기에만 안 보냄 (목록 화면이면 보냄)
+    $q[] = "ALTER TABLE talk_devices ADD COLUMN IF NOT EXISTS active_room INT NOT NULL DEFAULT 0";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);

@@ -139,3 +139,4 @@ button.me-row { width: 100%; text-align: left; font-size: 18px; }
 .switch:checked { background: var(--acc); }
 .switch:checked::after { transform: translateX(20px); }
 .switch:focus { outline: none; }
+.text.left { align-self: flex-start; padding: 4px 0; }

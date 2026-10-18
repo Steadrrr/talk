@@ -111,6 +111,10 @@ switch ($route) {
         talk_push_subscribe($pdo, $me['device_id'], talk_body());
         talk_json(['ok' => true]);
 
+    case 'push/test':
+        $need('POST');
+        talk_json(['ok' => true] + talk_push_test($pdo, $me['device_id']));
+
     case 'push/unsubscribe':
         $need('POST');
         talk_push_unsubscribe($pdo, $me['device_id'], (string)(talk_body()['endpoint'] ?? ''));
@@ -143,7 +147,7 @@ switch ($route) {
         talk_json(['ok' => true, 'groups' => talk_my_groups($pdo, $uid)]);
 
     case 'sync':
-        if ($q('active', '0') === '1') talk_mark_active($pdo, $me);
+        if ($q('active', '0') === '1') talk_mark_active($pdo, $me, (int)$q('room', 0));
         talk_json(['ok' => true] + talk_sync($pdo, $uid, (int)$q('since', 0)));
 
     case 'rooms/dm':

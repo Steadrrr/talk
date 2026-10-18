@@ -294,7 +294,7 @@ try {
     assert.equal(r.body.me.nick, null);
   });
 
-  await t('알림: 받는 사람 기기로 암호화해 보냄, 앱을 보고 있거나 끄면 안 보냄', async () => {
+  await t('알림: 받는 사람 기기로 암호화해 보냄, 그 방을 보고 있거나 끄면 안 보냄, 시험 알림', async () => {
     const ecdh = crypto.createECDH('prime256v1');
     ecdh.generateKeys();
     const authSecret = crypto.randomBytes(16);
@@ -333,13 +333,22 @@ try {
     assert.equal(msg.body, '알림 시험 둘째 줄');
     assert.equal(msg.room, room);
 
-    await api('sync?since=0&active=1', undefined, tok.dad);
-    await api('messages/send', { room_id: room, body: '보고 있을 때' }, tok.mom);
-    assert.equal((await waitPush(800)).length, 0, '앱을 보고 있으면 안 보냄');
+    await api('sync?since=0&active=1&room=0', undefined, tok.dad);
+    await api('messages/send', { room_id: room, body: '목록을 보고 있을 때' }, tok.mom);
+    assert.equal((await waitPush(3000)).length, 1, '목록 화면이면 보냄');
+    await api(`sync?since=0&active=1&room=${room}`, undefined, tok.dad);
+    await api('messages/send', { room_id: room, body: '그 방을 보고 있을 때' }, tok.mom);
+    assert.equal((await waitPush(800)).length, 0, '그 방을 보고 있으면 안 보냄');
 
     await api('me/away', {}, tok.dad);
     await api('messages/send', { room_id: room, body: '앱을 닫은 뒤' }, tok.mom);
     assert.equal((await waitPush(3000)).length, 1, '앱을 숨기면 다시 보냄');
+
+    r = await api('push/test', {}, tok.dad);
+    assert.equal(r.body.sent, 1, '시험 알림은 기다렸다가 결과');
+    assert.equal(open((await waitPush(1000))[0].body).tag, 'test');
+    r = await api('push/test', {}, tok.mom);
+    assert.equal(r.body.total, 0, '알림 안 켠 기기');
 
     await api('push/unsubscribe', { endpoint: sub.endpoint }, tok.dad);
     await api('messages/send', { room_id: room, body: '알림 끈 뒤' }, tok.mom);

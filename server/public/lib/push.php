@@ -152,12 +152,12 @@ function talk_push_unsubscribe(PDO $pdo, int $deviceId, string $endpoint): void 
     else $pdo->prepare('DELETE FROM talk_push_subs WHERE device_id = ? AND endpoint_hash = ?')->execute([$deviceId, hash('sha256', $endpoint)]);
 }
 
-// 앱을 보고 있는 기기 (최근 15초 안에 동기화했고 숨기지 않음) 에는 알림을 안 보낸다
+// 그 방을 보고 있는 기기 (최근 15초 안에 그 방에서 동기화했고 숨기지 않음) 에는 알림을 안 보낸다
 const TALK_ACTIVE_SECONDS = 15;
 
-// 새 메시지 알림: 방 사람 중 보낸 사람·알림 끈 방·지금 앱을 보고 있는 기기를 빼고
+// 새 메시지 알림: 방 사람 중 보낸 사람·알림 끈 방·지금 이 방을 보고 있는 기기를 빼고
 function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): array {
-    $out = ['sent' => 0, 'failed' => 0, 'total' => 0];
+    $out = ['sent' => 0, 'failed' => 0, 'total' => 0, 'results' => []];
     $st = $pdo->prepare('SELECT r.kind, r.name, COALESCE(u.nick, u.name) AS who FROM talk_rooms r JOIN talk_users u ON u.id = ? WHERE r.id = ?');
     $st->execute([$senderId, $roomId]);
     $room = $st->fetch();
@@ -165,11 +165,10 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
     $st = $pdo->prepare('SELECT s.* FROM talk_push_subs s JOIN talk_devices d ON d.id = s.device_id
         JOIN talk_room_members m ON m.user_id = d.user_id AND m.room_id = ? JOIN talk_users u ON u.id = d.user_id
         WHERE d.revoked = 0 AND u.disabled = 0 AND m.muted = 0 AND d.user_id <> ?
-          AND (d.active_at IS NULL OR d.active_at < ?)');
-    $st->execute([$roomId, $senderId, gmdate('Y-m-d H:i:s', time() - TALK_ACTIVE_SECONDS)]);
+          AND (d.active_at IS NULL OR d.active_room <> ? OR d.active_at < ?)');
+    $st->execute([$roomId, $senderId, $roomId, gmdate('Y-m-d H:i:s', time() - TALK_ACTIVE_SECONDS)]);
     $subs = $st->fetchAll();
-    $out['total'] = count($subs);
-    if (!$subs) return $out;
+    if (!$subs) { talk_push_log($pdo, "방 $roomId 새 메시지 (받을 기기 없음: 알림 켠 기기가 없거나 모두 이 방을 보는 중)", $out); return $out; }
     $text = preg_replace('/\s+/u', ' ', $text);
     $payload = json_encode([
         'title' => mb_substr($room['kind'] === 'dm' ? $room['who'] : ($room['name'] ?: $room['who']), 0, 60),
@@ -177,16 +176,46 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
         'room' => $roomId,
         'tag' => "room-$roomId",
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $out = talk_push_send_many($pdo, $subs, $payload, "room$roomId");
+    talk_push_log($pdo, "방 $roomId 새 메시지", $out);
+    return $out;
+}
+
+// 여러 기기에 보내기. 알림 서비스가 "없는 구독"(404/410)이라고 하면 지운다
+// → ['sent', 'failed', 'total', 'results' => [['device' => 번호, 'host' => 알림 서비스, 'code' => HTTP 상태, 'error' => 까닭]]]
+function talk_push_send_many(PDO $pdo, array $subs, string $payload, string $topic): array {
+    $out = ['sent' => 0, 'failed' => 0, 'total' => count($subs), 'results' => []];
+    if (!$subs) return $out;
     $vapid = talk_vapid($pdo);
     $subject = talk_push_subject();
     foreach ($subs as $s) {
-        try { $code = talk_push_send_one($vapid, $s, $payload, $subject, "room$roomId"); } catch (Throwable $e) { $code = 0; }
+        $err = '';
+        try { $code = talk_push_send_one($vapid, $s, $payload, $subject, $topic); } catch (Throwable $e) { $code = 0; $err = $e->getMessage(); }
+        $out['results'][] = ['device' => (int)$s['device_id'], 'host' => (string)parse_url($s['endpoint'], PHP_URL_HOST), 'code' => $code, 'error' => $err];
         if ($code >= 200 && $code < 300) $out['sent']++;
         else {
             $out['failed']++;
             if ($code === 404 || $code === 410) $pdo->prepare('DELETE FROM talk_push_subs WHERE id = ?')->execute([$s['id']]);
         }
     }
+    return $out;
+}
+
+// 최근 알림 보낸 기록 30개 (관리 화면에서 봄)
+function talk_push_log(PDO $pdo, string $what, array $out): void {
+    $log = json_decode((string)talk_meta_get($pdo, 'push_log'), true) ?: [];
+    array_unshift($log, ['at' => talk_now(), 'what' => $what, 'total' => $out['total'], 'sent' => $out['sent'],
+        'results' => array_map(fn($r) => "{$r['host']} {$r['code']}" . ($r['error'] ? " {$r['error']}" : ''), $out['results'])]);
+    talk_meta_set($pdo, 'push_log', json_encode(array_slice($log, 0, 30), JSON_UNESCAPED_UNICODE));
+}
+
+// 시험 알림: 이 기기로만, 기다렸다가 결과를 돌려준다
+function talk_push_test(PDO $pdo, int $deviceId): array {
+    $st = $pdo->prepare('SELECT * FROM talk_push_subs WHERE device_id = ?');
+    $st->execute([$deviceId]);
+    $payload = json_encode(['title' => 'SAKi Talk', 'body' => '알림 시험이에요. 이게 보이면 알림이 잘 와요.', 'room' => 0, 'tag' => 'test'], JSON_UNESCAPED_UNICODE);
+    $out = talk_push_send_many($pdo, $st->fetchAll(), $payload, 'test');
+    talk_push_log($pdo, "기기 $deviceId 시험", $out);
     return $out;
 }
 
