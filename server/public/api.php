@@ -8,6 +8,7 @@ require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/accounts.php';
 require __DIR__ . '/lib/chat.php';
 require __DIR__ . '/lib/push.php';
+require __DIR__ . '/lib/media.php';
 
 header('X-Robots-Tag: noindex');
 
@@ -54,6 +55,9 @@ try {
 
 $need = function (string $m) use ($method) { if ($method !== $m) talk_fail('지원하지 않는 방식이에요.', 405); };
 $q = fn(string $k, mixed $d = null) => $_GET[$k] ?? $d;
+
+// 사진·영상 내려 주기 (로그인 없이 무작위 열쇠로: <img>·<video> 는 머리를 못 붙임)
+if (preg_match('#^media/([a-f0-9]{32})(/thumb)?$#', $route, $mm)) talk_media_serve($pdo, $cfg, $mm[1], !empty($mm[2]));
 
 // ───── 로그인 없이 ─────
 if ($route === 'auth/login') {
@@ -123,6 +127,19 @@ switch ($route) {
         }
         talk_set_photo($pdo, $uid, $data);
         talk_json(['ok' => true]);
+
+    case 'media/start':
+        $need('POST');
+        talk_json(['ok' => true] + talk_media_start($pdo, $cfg, $uid, talk_body(400_000)));
+
+    case 'media/chunk':
+        $need('POST');
+        talk_json(['ok' => true] + talk_media_chunk($pdo, $cfg, $uid, (string)$q('key', ''), (int)$q('offset', -1)));
+
+    case 'media/finish':
+        $need('POST');
+        $b = talk_body();
+        talk_json(['ok' => true, 'message' => talk_media_finish($pdo, $cfg, $uid, (string)($b['key'] ?? ''), (string)($b['client_id'] ?? ''))]);
 
     case 'rooms/photo':
         $need('POST');

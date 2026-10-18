@@ -6,6 +6,7 @@ import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, sh
 import { nickOf, fullName } from './names.js';
 import { PushCard } from './pushui.js';
 import { TAB_ICONS } from './icons.js';
+import { preview } from './media.js';
 import { FONT_SIZES, getFontSize, setFontSize } from './fontsize.js';
 
 export function Home({ tab, setTab, onOpen }) {
@@ -61,7 +62,7 @@ function Chats({ onOpen }) {
               ${r.photo ? html`<${Avatar} photo=${r.photo} size=${72} />` : other ? html`<${Avatar} name=${nickOf(other)} id=${other.id} photo=${other.photo} size=${72} />` : html`<span class="avatar multi">${r.members.length}</span>`}
               <span class="room-main">
                 <span class="room-top"><b class="ellipsis">${roomTitle(r)}</b>${r.kind === 'group' && html`<span class="hint">${r.members.length}</span>`}${r.pinned > 0 && html`<span class="mark" title="위에 고정">📌</span>`}${r.muted > 0 && html`<span class="mark" title="알림 끔">🔕</span>`}</span>
-                <span class="ellipsis hint">${r.last ? r.last.body : '새 대화방'}</span>
+                <span class="ellipsis hint">${r.last ? preview(r.last) : '새 대화방'}</span>
               </span>
               <span class="room-side"><span class="hint small">${listTime(r.last?.at || r.created_at)}</span>${r.unread > 0 && html`<span class="badge">${r.unread > 99 ? '99+' : r.unread}</span>`}</span>
             </button>`;

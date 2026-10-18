@@ -176,3 +176,17 @@ img.avatar { object-fit: cover; background: var(--line); }
 .fs-seg button { white-space: nowrap; padding: 8px 2px; }
 .fs-preview { margin: 0; }
 .admin-link { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); margin: 8px 0; font-weight: 600; color: var(--acc); }
+
+/* 사진·영상 */
+.attach { flex: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--acc); background: var(--card); border: 1px solid var(--line); margin: 0; cursor: pointer; }
+.media { position: relative; max-width: 240px; border-radius: 14px; overflow: hidden; background: var(--line); display: block; padding: 0; }
+.media img, .media-blank { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-blank { background: #222; }
+.media .play { position: absolute; inset: 0; margin: auto; width: 46px; height: 46px; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; padding-left: 3px; }
+.media .dur { position: absolute; right: 6px; bottom: 6px; font-size: 11px; color: #fff; background: rgba(0,0,0,.5); border-radius: 6px; padding: 1px 6px; }
+.media-progress { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 6px 8px 8px; text-align: left; }
+.media-progress i { display: block; height: 3px; background: var(--mine); border-radius: 2px; margin-top: 4px; transition: width .2s; }
+.media-progress.err-box { background: rgba(198,40,40,.8); }
+.bubble.gone { color: var(--dim); font-size: calc(13px * var(--fs)); }
+.viewer video { max-width: 100%; max-height: 80dvh; border-radius: 8px; background: #000; }
+.viewer-close { position: absolute; top: calc(env(safe-area-inset-top) + 12px); right: 14px; color: #fff; font-size: 26px; padding: 6px 10px; }

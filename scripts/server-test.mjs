@@ -446,6 +446,71 @@ try {
     assert.equal((await req('/api.php/photo/' + me.photo)).status, 404);
   });
 
+  await t('사진·영상: 조각으로 올리고, 메시지로 보이고, 영상은 Range, 보관 기간이 지나면 지워짐', async () => {
+    const room = (await api('rooms/dm', { user_id: await idOf(tok.mom, '아빠') }, tok.mom)).body.room.id;
+    const jpg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBytes(3 * 1024 * 1024)]); // 3MB 쯤 → 조각 2개
+    let r = await api('media/start', { room_id: room, kind: 'photo', mime: 'image/gif', size: 10 }, tok.mom);
+    assert.equal(r.status, 400, '모르는 종류');
+    r = await api('media/start', { room_id: room, kind: 'video', mime: 'video/mp4', size: 41 * 1024 * 1024 }, tok.mom);
+    assert.equal(r.status, 400, '너무 큰 영상');
+    r = await api('media/start', { room_id: room, kind: 'photo', mime: 'image/jpeg', size: jpg.length, w: 1600, h: 1200 }, tok.f1);
+    assert.equal(r.status, 403, '방 밖 사람');
+    r = await api('media/start', { room_id: room, kind: 'photo', mime: 'image/jpeg', size: jpg.length, w: 1600, h: 1200 }, tok.mom);
+    const key = r.body.key;
+    const chunk = async (off, buf, token = tok.mom) => {
+      const res = await req(`/api.php/media/chunk?key=${key}&offset=${off}`, { method: 'POST', headers: { 'X-Talk-Token': token, 'Content-Type': 'application/octet-stream' }, body: buf });
+      return { status: res.status, body: await res.json() };
+    };
+    const C = 2 * 1024 * 1024;
+    r = await chunk(0, jpg.subarray(0, C));
+    assert.equal(r.body.received, C);
+    r = await chunk(0, jpg.subarray(0, C));
+    assert.equal(r.body.received, C, '같은 조각을 다시 보내면 지금 받은 크기만 알려 줌');
+    r = await api('media/finish', { key, client_id: 'media-test-1' }, tok.mom);
+    assert.equal(r.status, 400, '덜 받았으면 못 끝냄');
+    r = await chunk(C, jpg.subarray(C), tok.dad);
+    assert.equal(r.status, 404, '다른 사람은 못 이어 붙임');
+    r = await chunk(C, jpg.subarray(C));
+    assert.equal(r.body.received, jpg.length);
+    r = await api('media/finish', { key, client_id: 'media-test-1' }, tok.mom);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.message.kind, 'photo');
+    const body = JSON.parse(r.body.message.body);
+    assert.equal(body.key, key); assert.equal(body.w, 1600);
+    const again = await api('media/finish', { key, client_id: 'media-test-1' }, tok.mom);
+    assert.equal(again.body.message.id, r.body.message.id, '두 번 끝내도 메시지 하나');
+    let res = await req('/api.php/media/' + key);
+    assert.equal(res.status, 200);
+    assert.ok(Buffer.from(await res.arrayBuffer()).equals(jpg), '받은 것과 같은 파일');
+    const dadView = (await api('sync?since=0', undefined, tok.dad)).body.rooms.find((x) => x.id === room);
+    assert.equal(dadView.last.kind, 'photo');
+
+    // 영상: Range
+    const mp4 = crypto.randomBytes(5000);
+    r = await api('media/start', { room_id: room, kind: 'video', mime: 'video/mp4', size: mp4.length, dur: 12, thumb: jpg.subarray(0, 1000).toString('base64') }, tok.mom);
+    const vkey = r.body.key;
+    await req(`/api.php/media/chunk?key=${vkey}&offset=0`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom }, body: mp4 });
+    r = await api('media/finish', { key: vkey }, tok.mom);
+    assert.equal(JSON.parse(r.body.message.body).thumb, true);
+    res = await req('/api.php/media/' + vkey, { headers: { Range: 'bytes=100-199' } });
+    assert.equal(res.status, 206);
+    assert.equal(res.headers.get('content-range'), 'bytes 100-199/5000');
+    assert.ok(Buffer.from(await res.arrayBuffer()).equals(mp4.subarray(100, 200)));
+    res = await req('/api.php/media/' + vkey + '/thumb');
+    assert.equal(res.status, 200);
+
+    // 보관 기간: 영상 3일 지난 것으로 바꾸고 다른 것을 올리면 정리됨
+    execFileSync('mariadb', ['-uroot', dbName, '-e', `UPDATE talk_media SET created_at = NOW() - INTERVAL 4 DAY WHERE mkey = '${vkey}'`]);
+    r = await api('media/start', { room_id: room, kind: 'photo', mime: 'image/jpeg', size: 4 }, tok.mom);
+    await req(`/api.php/media/chunk?key=${r.body.key}&offset=0`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom }, body: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) });
+    await api('media/finish', { key: r.body.key }, tok.mom);
+    await new Promise((ok) => setTimeout(ok, 300));
+    assert.equal((await req('/api.php/media/' + vkey)).status, 404, '지난 영상은 지워짐');
+    assert.equal((await req('/api.php/media/' + key)).status, 200, '사진은 14일이라 남음');
+    const msgs = (await api('sync?since=0', undefined, tok.dad)).body.messages.filter((m) => m.room_id === room && m.kind === 'video');
+    assert.equal(JSON.parse(msgs.at(-1).body).gone, true, '메시지에 지워짐 표시');
+  });
+
   await t('이미 가입한 사람이 초대 코드로 다른 그룹에 들어감', async () => {
     const inv = inviteOf(await adminPost({ act: 'invite', group: friends, uses: '1', days: '1' }));
     let r = await api('groups/join', { invite: inv }, tok.mom);

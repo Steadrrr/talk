@@ -3,6 +3,7 @@
 // 받은 것은 이 기기(localStorage)에 남겨서, 다음에 열 때 서버를 기다리지 않고 바로 보여 준다.
 import { api, AuthError, setToken } from './api.js';
 import { nickOf } from './names.js';
+import { prepPhoto, prepVideo, upload } from './media.js';
 
 const SAVE_KEY = 'talk.state.v1';
 const KEEP_PER_ROOM = 100; // 기기에 남기는 방별 최근 메시지 수
@@ -305,7 +306,44 @@ export async function send(roomId, body, retry) {
   notify();
 }
 
+// 사진·영상 보내기: 보내는 중 메시지(휴대폰의 미리보기 + 진행률)를 먼저 보이고, 줄이기 → 올리기
+export async function sendMedia(roomId, file, retry) {
+  const isVideo = retry ? retry.kind === 'video' : file.type.startsWith('video/');
+  const msg = retry || { id: 0, room_id: roomId, user_id: state.me.id, kind: isVideo ? 'video' : 'photo', body: '{}',
+    client_id: newClientId(), at: new Date().toISOString(), pending: true, file, local: isVideo ? '' : URL.createObjectURL(file) };
+  Object.assign(msg, { failed: false, error: '', progress: 0, stage: isVideo ? '영상 준비 중' : '사진 줄이는 중' });
+  const arr = state.messages[roomId] || (state.messages[roomId] = []);
+  if (!retry) arr.push(msg);
+  notify();
+  try {
+    const p = isVideo
+      ? await prepVideo(msg.file, (f) => { msg.stage = '영상 줄이는 중'; msg.progress = f; notify(); })
+      : await prepPhoto(msg.file);
+    if (p.thumb && !msg.local) msg.local = 'data:image/jpeg;base64,' + p.thumb;
+    msg.body = JSON.stringify({ w: p.w, h: p.h, dur: p.dur });
+    msg.stage = '보내는 중';
+    msg.progress = 0;
+    notify();
+    const m = await upload(roomId, p, msg.client_id, (f) => { msg.progress = f; notify(); });
+    if (msg.local.startsWith('blob:')) URL.revokeObjectURL(msg.local);
+    mergeMessages([m]);
+    const room = state.rooms[roomId];
+    if (room) {
+      room.last = m;
+      const mine = room.members.find((x) => x.id === state.me.id);
+      if (mine) mine.last_read_id = Math.max(mine.last_read_id, m.id);
+    }
+    saveSoon();
+  } catch (e) {
+    if (e instanceof AuthError) { clearAll(); return; }
+    msg.failed = true;
+    msg.error = e.message;
+  }
+  notify();
+}
+
 export function discard(roomId, msg) {
+  if (msg.local?.startsWith('blob:')) URL.revokeObjectURL(msg.local);
   state.messages[roomId] = (state.messages[roomId] || []).filter((m) => m !== msg);
   notify();
 }

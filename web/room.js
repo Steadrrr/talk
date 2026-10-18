@@ -1,7 +1,8 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, discard, showProfile } from './store.js';
+import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile } from './store.js';
+import { mediaUrl, mediaInfo } from './media.js';
 import { nickOf } from './names.js';
 import { RoomSettings } from './roomsettings.js';
 
@@ -16,6 +17,7 @@ export function Room({ id, onBack }) {
   const [text, setText] = useState('');
   const [settings, setSettings] = useState(false);
   const [viewing, setViewing] = useState(false);
+  const [big, setBig] = useState(null);   // 크게 보는 사진·영상 메시지
   const input = useRef(null);
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
@@ -52,6 +54,14 @@ export function Room({ id, onBack }) {
     atBottom.current = true;
     send(id, body);
     input.current?.focus();
+  }
+
+  // 사진·영상 고르기: 여러 개면 차례로 보냄
+  function pickFiles(e) {
+    const files = [...(e.target.files || [])].slice(0, 10);
+    e.target.value = '';
+    atBottom.current = true;
+    (async () => { for (const f of files) await sendMedia(id, f); })();
   }
 
   function onKey(e) {
@@ -103,9 +113,9 @@ export function Room({ id, onBack }) {
         <div class="msg-col">
           ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">
-            <div class="bubble">${m.body}</div>
+            ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig(m)} />` : html`<div class="bubble">${m.body}</div>`}
             <div class="meta">
-              ${m.failed ? html`<span class="fail"><button onClick=${() => send(id, null, m)}>다시 보내기</button><button onClick=${() => discard(id, m)}>지우기</button></span>`
+              ${m.failed ? html`<span class="fail"><button onClick=${() => m.kind === 'text' ? send(id, null, m) : sendMedia(id, null, m)}>다시 보내기</button><button onClick=${() => discard(id, m)}>지우기</button></span>`
                 : m.pending ? html`<span class="hint small">보내는 중</span>`
                 : html`${n > 0 && html`<span class="unread">${n}</span>`}${showTime && html`<span class="hint small">${minute}</span>`}`}
             </div>
@@ -132,11 +142,46 @@ export function Room({ id, onBack }) {
         ${rows}
       </div>
       <form class="composer" onSubmit=${(e) => { e.preventDefault(); submit(); }}>
+        <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
         <textarea ref=${input} rows="1" value=${text} onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
         <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
       </form>
+      ${big && html`<${MediaViewer} m=${big} who=${names.get(big.user_id) || ''} onClose=${() => setBig(null)} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} />`}
     </section>
   `;
+}
+
+const durText = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+// 사진·영상 말풍선: 가로세로 비율대로, 보내는 중이면 진행률, 지워졌으면 안내
+function MediaBubble({ m, onOpen }) {
+  const info = mediaInfo(m);
+  const [broken, setBroken] = useState(false);
+  if (!m.pending && (info.gone || broken)) return html`<div class="bubble gone">${m.kind === 'photo' ? '🖼️' : '🎬'} 보관 기간이 지나 지워졌어요</div>`;
+  const ratio = info.w && info.h ? Math.max(0.5, Math.min(2, info.w / info.h)) : 1;
+  const w = ratio >= 1 ? 240 : Math.round(240 * ratio);
+  const style = { width: w + 'px', aspectRatio: String(ratio) };
+  const src = m.pending ? m.local : m.kind === 'photo' ? mediaUrl(info.key) : info.thumb ? mediaUrl(info.key, true) : '';
+  return html`
+    <button class=${'media ' + m.kind} style=${style} onClick=${() => !m.pending && onOpen()} aria-label=${m.kind === 'photo' ? '사진 크게 보기' : '동영상 재생'}>
+      ${src ? html`<img src=${src} alt="" loading="lazy" onError=${() => !m.pending && setBroken(true)} />` : html`<span class="media-blank"></span>`}
+      ${m.kind === 'video' && !m.pending && html`<span class="play">▶</span><span class="dur">${durText(info.dur || 0)}</span>`}
+      ${m.pending && !m.failed && html`<span class="media-progress"><span>${m.stage} ${Math.round((m.progress || 0) * 100)}%</span><i style=${{ width: Math.round((m.progress || 0) * 100) + '%' }}></i></span>`}
+      ${m.failed && html`<span class="media-progress err-box"><span>${m.error || '보내지 못했어요'}</span></span>`}
+    </button>`;
+}
+
+// 크게 보기: 사진은 화면 가득, 영상은 바로 재생
+function MediaViewer({ m, who, onClose }) {
+  const info = mediaInfo(m);
+  return html`
+    <div class="viewer" onClick=${(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-label="크게 보기">
+      <button class="viewer-close" onClick=${onClose} aria-label="닫기">✕</button>
+      ${m.kind === 'photo'
+        ? html`<img src=${mediaUrl(info.key)} alt="" onClick=${onClose} />`
+        : html`<video src=${mediaUrl(info.key)} poster=${info.thumb ? mediaUrl(info.key, true) : undefined} controls autoplay playsinline></video>`}
+      <p>${who} · ${time(m.at)}</p>
+    </div>`;
 }

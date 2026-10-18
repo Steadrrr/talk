@@ -7,6 +7,8 @@ declare(strict_types=1);
 define('TALK', true);
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/accounts.php';
+require __DIR__ . '/lib/chat.php';
+require __DIR__ . '/lib/media.php';
 
 // DB 시각(UTC) → 한국 시간으로 보여 주기 (한국은 서머타임 없음)
 function kst(?string $utc): string { return $utc ? gmdate('Y-m-d H:i:s', strtotime($utc . ' UTC') + 9 * 3600) : ''; }
@@ -321,6 +323,8 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 </fieldset>
 
 <fieldset><legend>사진·영상 보관</legend>
+<?php talk_media_cleanup($pdo, $cfg); $mu = talk_media_usage($pdo); $mc = $pdo->query("SELECT kind, COUNT(*) n, COALESCE(SUM(size), 0) s FROM talk_media WHERE deleted = 0 AND done = 1 GROUP BY kind")->fetchAll(PDO::FETCH_UNIQUE); ?>
+<p>지금 <b><?= number_format($mu / 1048576, 1) ?>MB</b> / <?= (int)$cfg['media_limit_mb'] ?>MB 사용 <span class="hint">· 사진 <?= (int)($mc['photo']['n'] ?? 0) ?>장 <?= number_format(($mc['photo']['s'] ?? 0) / 1048576, 1) ?>MB · 영상 <?= (int)($mc['video']['n'] ?? 0) ?>개 <?= number_format(($mc['video']['s'] ?? 0) / 1048576, 1) ?>MB</span></p>
 <form method="post"><input type="hidden" name="csrf" value="<?= h(csrf()) ?>"><input type="hidden" name="act" value="media">
 <label>전체 상한 (MB, 넘으면 오래된 것부터 지움) <input name="limit" type="number" value="<?= (int)$cfg['media_limit_mb'] ?>" min="50" max="5000"></label>
 <label>사진 보관 (일) <input name="photo" type="number" value="<?= (int)$cfg['photo_days'] ?>" min="1" max="365"></label>
