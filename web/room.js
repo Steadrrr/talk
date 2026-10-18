@@ -57,9 +57,10 @@ export function Room({ id, onBack }) {
   }
 
   function submit() {
-    const body = text.trim();
+    const body = text.trim().slice(0, 4000);
     if (!body) return;
     setText('');
+    if (input.current) input.current.textContent = '';
     atBottom.current = true;
     send(id, body, null, replyTo);
     setReplyTo(null);
@@ -90,13 +91,19 @@ export function Room({ id, onBack }) {
     return () => clearInterval(t);
   }, [hasText, id]);
 
-  // 입력칸 높이를 글 길이에 맞춤 (최대 5줄 정도)
-  useLayoutEffect(() => {
-    const el = input.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  }, [text]);
+  // 입력칸은 textarea 대신 글만 받는 편집 칸: 아이폰 사파리가 textarea 를 주소 칸으로 보고
+  // autocomplete=off 여도 키보드 위에 '자동 완성 연락처'(집 주소)를 띄웠음. 높이는 CSS 로 최대 5줄 정도
+  function onEdit(e) {
+    const t = e.currentTarget.innerText.replace(/\n$/, '');
+    setText(t);
+    setTyping(id, t.trim() !== '');
+  }
+  // 붙여넣기는 글자만 (plaintext-only 를 모르는 브라우저에서 서식·그림이 들어오지 않게)
+  function onPaste(e) {
+    if (CE === 'plaintext-only') return;
+    e.preventDefault();
+    document.execCommand('insertText', false, e.clipboardData?.getData('text/plain') || '');
+  }
 
   // 검색 결과로 가기: 기기에 없으면 예전 대화를 더 받아 온 뒤
   async function goTo(msgId) {
@@ -193,7 +200,8 @@ export function Room({ id, onBack }) {
         </div>`}
       <div class="composer">
         <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
-        <textarea ref=${input} rows="1" name="talk-chat-text" autocomplete="off" autocapitalize="off" spellcheck="false" data-form-type="other" value=${text} onInput=${(e) => { setText(e.target.value); setTyping(id, e.target.value.trim() !== ''); }} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
+        <div ref=${input} class=${'msg-input' + (text ? '' : ' blank')} contentEditable=${CE} role="textbox" aria-multiline="true" aria-label="메시지" data-placeholder="메시지"
+          autocapitalize="off" spellcheck="false" onInput=${onEdit} onKeyDown=${onKey} onPaste=${onPaste}></div>
         <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label="보내기">↑</button>
       </div>
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
@@ -306,6 +314,9 @@ function NoticeBar({ notice, roomId, onGo }) {
       <button class="icon notice-fold" onClick=${() => fold(true)} aria-label="공지 접기">⌃</button>
     </div>`;
 }
+
+// 글만 받는 편집 칸을 지원하면 그것으로 (사파리·크롬), 아니면 일반 편집 칸
+const CE = (() => { try { const d = document.createElement('div'); d.contentEditable = 'plaintext-only'; return d.contentEditable === 'plaintext-only' ? 'plaintext-only' : 'true'; } catch { return 'true'; } })();
 
 // 답장 미리보기 한 줄
 const replyPreview = (r) => r.kind === 'photo' ? '사진' : r.kind === 'video' ? '동영상' : r.kind === 'deleted' ? '삭제된 메시지' : r.body;
