@@ -63,13 +63,27 @@ export function Room({ id, onBack }) {
     if (el && document.activeElement === el) { el.blur(); el.focus(); }
     const body = (el ? el.innerText.replace(/\n$/, '') : text).trim().slice(0, 4000);
     if (!body) return;
-    if (el) el.textContent = '';
+    if (el) clearInput(el);
     setText('');
     sent.current = { at: Date.now(), last: body.slice(-1) };
     atBottom.current = true;
     send(id, body, null, replyTo);
     setReplyTo(null);
     el?.focus();
+  }
+
+  // 입력칸 비우기: 편집 명령으로 지워야 아이폰 키보드도 비었다는 걸 앎
+  // (textContent 만 비우면 키보드가 앞 글자를 기억해 지우기를 누를 때 다시 꺼냄)
+  function clearInput(el) {
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      document.execCommand('delete');
+    } catch { /* 아래에서 정리 */ }
+    if (el.innerText.trim() !== '') el.textContent = '';
   }
 
   // 사진·영상 고르기: 여러 개면 차례로 보냄
@@ -102,10 +116,16 @@ export function Room({ id, onBack }) {
     const el = e.currentTarget;
     // 보낸 직후 키보드가 조합하던 글자를 늦게 넣으면 지움
     const j = sent.current;
-    if (j && Date.now() - j.at < 400 && /omposition/.test(e.inputType || '') && el.innerText.trim() === j.last) { el.textContent = ''; setText(''); return; }
+    if (j && Date.now() - j.at < 400 && /omposition/.test(e.inputType || '') && el.innerText.trim() === j.last) { clearInput(el); setText(''); return; }
+    // 빈 칸에서 지우기를 눌렀는데 글자가 생기면 키보드가 기억한 앞 글자 → 지움
+    if (!text && /^delete/.test(e.inputType || '') && el.innerText.trim() !== '') { clearInput(el); return; }
     const t = el.innerText.replace(/\n$/, '');
     setText(t);
     setTyping(id, t.trim() !== '');
+  }
+  // 빈 칸에서 지우기는 아무것도 안 함 (키보드가 앞 글자를 되살리지 않게)
+  function onBefore(e) {
+    if (/^delete/.test(e.inputType || '') && e.currentTarget.innerText.trim() === '') e.preventDefault();
   }
   // 붙여넣기는 글자만 (plaintext-only 를 모르는 브라우저에서 서식·그림이 들어오지 않게)
   function onPaste(e) {
@@ -211,7 +231,7 @@ export function Room({ id, onBack }) {
       <div class="composer">
         <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
         <div ref=${input} class=${'msg-input' + (text ? '' : ' blank')} contentEditable=${CE} role="textbox" aria-multiline="true" aria-label="메시지" data-placeholder="메시지"
-          autocapitalize="off" spellcheck="false" onInput=${onEdit} onKeyDown=${onKey} onPaste=${onPaste}></div>
+          autocapitalize="off" spellcheck="false" onInput=${onEdit} onBeforeInput=${onBefore} onKeyDown=${onKey} onPaste=${onPaste}></div>
         <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label="보내기">↑</button>
       </div>
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
