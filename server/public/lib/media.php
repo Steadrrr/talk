@@ -98,6 +98,12 @@ function talk_media_finish(PDO $pdo, array $cfg, int $uid, string $key, string $
     $body = json_encode(['key' => $key, 'w' => (int)$m['w'], 'h' => (int)$m['h'], 'dur' => (int)$m['dur'], 'size' => (int)$m['size'], 'thumb' => $m['thumb'] !== null],
         JSON_UNESCAPED_SLASHES);
     $clientId = preg_match('/^[A-Za-z0-9_-]{8,40}$/', $clientId) ? $clientId : null;
+    // 같은 사진을 다시 보낸 경우(처음 것은 올라갔는데 응답을 못 받음): 처음 메시지를 돌려주고 이번 파일은 지운다
+    if ($clientId !== null) {
+        $st = $pdo->prepare('SELECT * FROM talk_messages WHERE user_id = ? AND client_id = ?');
+        $st->execute([$uid, $clientId]);
+        if ($old = $st->fetch()) { talk_media_delete($pdo, $cfg, $m); return talk_msg_view($old); }
+    }
     $pdo->beginTransaction();
     $pdo->prepare('INSERT INTO talk_messages (room_id, user_id, kind, body, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         ->execute([$roomId, $uid, $m['kind'], $body, $clientId, talk_now()]);

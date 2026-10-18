@@ -256,6 +256,40 @@ try {
     assert.equal(r.body.rooms.length, 0, '친구1 은 가족 방을 못 봄');
   });
 
+  await t('동기화: 아직 끝나지 않은 거래의 변경 번호를 건너뛰지 않음 (거의 동시에 보낸 메시지가 사라지지 않게)', async () => {
+    // 다른 연결에서 변경 기록을 넣고 거래를 열어 둔다 (번호는 정해졌지만 아직 안 보임)
+    const sql = spawn('mariadb', ['-h', dbHost, '-u', dbUser, `-p${dbPass}`, '-N', '-n', dbName], { stdio: ['pipe', 'pipe', 'inherit'] });
+    let out = '';
+    sql.stdout.on('data', (d) => { out += d; });
+    const until = async (word) => { for (let i = 0; i < 100 && !out.includes(word); i++) await new Promise((r) => setTimeout(r, 50)); assert.ok(out.includes(word), 'mariadb: ' + out); };
+    let r;
+    try {
+      sql.stdin.write(`BEGIN; INSERT INTO talk_events (room_id, kind, ref_id, created_at) VALUES (${room}, 'read', 0, UTC_TIMESTAMP()); SELECT CONCAT('held=', LAST_INSERT_ID());\n`);
+      await until('held=');
+      const held = Number(out.match(/held=(\d+)/)[1]);
+      await api('messages/send', { room_id: room, body: '거의 동시에', client_id: 'racemsg001' }, tok.mom);
+      r = await api('sync?since=' + cursorDad, undefined, tok.dad);
+      assert.ok(r.body.cursor < held, `cursor ${r.body.cursor} 는 아직 안 보이는 ${held} 앞에서 멈춤`);
+      assert.ok(!r.body.messages.some((m) => m.body === '거의 동시에'));
+      sql.stdin.write("COMMIT; SELECT 'committed';\n");
+      await until('committed');
+    } finally { sql.kill(); }
+    r = await api('sync?since=' + r.body.cursor, undefined, tok.dad);
+    assert.deepEqual(r.body.messages.map((m) => m.body), ['거의 동시에'], '거래가 끝나면 이어서 받음');
+    cursorDad = r.body.cursor;
+    // 되돌려진 거래의 빈 번호(10초 넘게 비어 있음)는 건너뜀
+    execFileSync('mariadb', ['-h', dbHost, '-u', dbUser, `-p${dbPass}`, dbName, '-e',
+      `BEGIN; INSERT INTO talk_events (room_id, kind, ref_id, created_at) VALUES (${room}, 'read', 0, UTC_TIMESTAMP()); ROLLBACK;`]);
+    const m2 = (await api('messages/send', { room_id: room, body: '빈 번호 뒤', client_id: 'racemsg002' }, tok.mom)).body.message;
+    r = await api('sync?since=' + cursorDad, undefined, tok.dad);
+    assert.equal(r.body.messages.length, 0, '방금 생긴 빈 번호 뒤는 잠깐 기다림');
+    execFileSync('mariadb', ['-h', dbHost, '-u', dbUser, `-p${dbPass}`, dbName, '-e',
+      `UPDATE talk_events SET created_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE kind = 'msg' AND ref_id = ${m2.id}`]);
+    r = await api('sync?since=' + cursorDad, undefined, tok.dad);
+    assert.deepEqual(r.body.messages.map((m) => m.body), ['빈 번호 뒤']);
+    cursorDad = r.body.cursor;
+  });
+
   await t('읽음: 읽으면 안 읽은 수가 줄고 다른 사람에게도 알려짐', async () => {
     const r0 = await api('sync?since=0', undefined, tok.dad);
     const last = r0.body.rooms.find((x) => x.id === room).last.id;
@@ -560,6 +594,13 @@ try {
     assert.equal(body.key, key); assert.equal(body.w, 1600);
     const again = await api('media/finish', { key, client_id: 'media-test-1' }, tok.mom);
     assert.equal(again.body.message.id, r.body.message.id, '두 번 끝내도 메시지 하나');
+    // 응답을 못 받아 처음부터 다시 올린 경우 (같은 client_id, 새 열쇠): 처음 메시지를 돌려주고 새 파일은 지움
+    const k2 = (await api('media/start', { room_id: room, kind: 'photo', mime: 'image/jpeg', size: 4 }, tok.mom)).body.key;
+    await req(`/api.php/media/chunk?key=${k2}&offset=0`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom }, body: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) });
+    const dup = await api('media/finish', { key: k2, client_id: 'media-test-1' }, tok.mom);
+    assert.equal(dup.status, 200);
+    assert.equal(dup.body.message.id, r.body.message.id, '다시 올려도 메시지 하나');
+    assert.equal((await req('/api.php/media/' + k2)).status, 404, '두 번째 파일은 지워짐');
     let res = await req('/api.php/media/' + key);
     assert.equal(res.status, 200);
     assert.ok(Buffer.from(await res.arrayBuffer()).equals(jpg), '받은 것과 같은 파일');

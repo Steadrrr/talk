@@ -111,7 +111,8 @@ function App() {
       <button class="primary" onClick=${start}>다시 시도</button><button class="text" onClick=${clearAll}>로그아웃</button></main>`;
   }
   const profile = html`${state.profile && html`<${Profile} key=${state.profile} onOpen=${open} />`}${ask && html`<${PushPrompt} state=${ask} onClose=${() => setAsk('')} />`}${state.notices && html`<${NoticeBoard} />`}${toast && html`<div class="update-toast" onClick=${() => { setToast(''); showNotices(true); }}>${toast} · 바뀐 점 보기</div>`}`;
-  if (state.openRoom) return html`<${Room} id=${state.openRoom} onBack=${back} />${profile}`;
+  // key: 다른 방으로 바로 넘어갈 때(알림·프로필의 1:1 대화·1:1 방에서 단체방 만들기) 쓰던 글·답장·메뉴가 새 방으로 따라가지 않게
+  if (state.openRoom) return html`<${Room} key=${state.openRoom} id=${state.openRoom} onBack=${back} />${profile}`;
   return html`<${Home} tab=${tab} setTab=${setTab} onOpen=${open} />${profile}`;
 }
 
