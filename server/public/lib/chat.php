@@ -254,8 +254,8 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
 }
 
 // ───── 입력 중 ─────
-// 앱은 글자를 치는 동안 몇 초에 한 번 on=true, 지우거나 방을 나가면 on=false. 보내면 talk_send 가 끔
-const TALK_TYPING_SECONDS = 6;
+// 앱은 입력칸에 글자가 있는 동안 3초에 한 번 on=true, 지우거나 방을 나가면 on=false. 보내면 talk_send 가 끔
+const TALK_TYPING_SECONDS = 8;
 
 function talk_set_typing(PDO $pdo, int $uid, int $roomId, bool $on): void {
     if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);

@@ -82,6 +82,14 @@ export function Room({ id, onBack }) {
     }
   }
 
+  // 입력칸에 글자가 남아 있으면 계속 입력 중 (3초마다 다시 알림, 앱을 숨기면 서버가 끔)
+  const hasText = text.trim() !== '';
+  useEffect(() => {
+    if (!hasText) return;
+    const t = setInterval(() => { if (!document.hidden) setTyping(id, true); }, 3000);
+    return () => clearInterval(t);
+  }, [hasText, id]);
+
   // 입력칸 높이를 글 길이에 맞춤 (최대 5줄 정도)
   useLayoutEffect(() => {
     const el = input.current;

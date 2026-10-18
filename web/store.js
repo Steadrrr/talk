@@ -329,7 +329,7 @@ function newClientId() {
   return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// 입력 중: 글자를 치는 동안 3초에 한 번만 서버에 알림 (서버는 6초 지나면 저절로 끔), 다 지우거나 방을 나가면 바로 끔
+// 입력 중: 3초에 한 번만 서버에 알림 (입력칸에 글자가 있으면 방 화면이 3초마다 다시 부름, 서버는 8초 소식이 없으면 끔), 다 지우거나 방을 나가면 바로 끔
 let typingSent = { room: 0, at: 0 };
 export function setTyping(roomId, on) {
   const now = Date.now();
