@@ -1,6 +1,6 @@
 // 채팅방 설정: 방 이름(여럿 방), 알림·위에 고정(나에게만), 사람 목록·초대, 나가기
 import { useState } from 'preact/hooks';
-import { html, Avatar, squareJpeg, PhotoViewer } from './html.js';
+import { html, Avatar, squareJpeg, PhotoViewer, PhotoConfirm } from './html.js';
 import { nickOf } from './names.js';
 import { state, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto } from './store.js';
 
@@ -25,13 +25,18 @@ export function RoomSettings({ room, onClose, onLeft }) {
   // 사진이 이미 있으면 "현재 사진은 삭제됩니다" 를 먼저 보여 주고, 거기서 사진 고르기
   // (확인 창을 띄운 뒤 파일 고르기를 열면 아이폰이 막을 수 있어서 화면 안에서 묻는다)
   const [warn, setWarn] = useState(false);
+  const [draft, setDraft] = useState(null); // 고른 사진 (확인 전)
   async function pick(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    setBusy(true); setWarn(false);
-    await run(async () => setRoomPhoto(room.id, await squareJpeg(file, 640)), '채팅방 사진을 바꿨어요.');
-    setBusy(false);
+    setWarn(false);
+    try { setDraft(await squareJpeg(file, 640)); } catch (e2) { await run(() => { throw e2; }); }
+  }
+  async function confirmPhoto() {
+    setBusy(true);
+    await run(async () => setRoomPhoto(room.id, draft), '채팅방 사진을 바꿨어요.');
+    setBusy(false); setDraft(null);
   }
   async function removePhoto() {
     if (!confirm('채팅방 사진을 지울까요? 모두에게서 사라져요.')) return;
@@ -99,6 +104,7 @@ export function RoomSettings({ room, onClose, onLeft }) {
           <div class="section"><button class="danger" onClick=${leave}>${isGroup ? '채팅방 나가기' : '대화방 지우기'}</button></div>
         </div>
       </div>
+      ${draft && html`<${PhotoConfirm} data=${draft} title=${room.photo ? '이 사진으로 바꿀까요? 현재 사진은 삭제됩니다.' : '채팅방 사진으로 할까요?'} busy=${busy} onCancel=${() => setDraft(null)} onOk=${confirmPhoto} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
     </div>
   `;

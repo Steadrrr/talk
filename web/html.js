@@ -51,6 +51,21 @@ export async function squareJpeg(file, size) {
   } finally { URL.revokeObjectURL(url); }
 }
 
+// 고른 사진 미리 보기: 취소 / 확인 (확인해야 올라감)
+export function PhotoConfirm({ data, title, busy, onCancel, onOk }) {
+  return html`
+    <div class="sheet-bg center-bg" onClick=${(e) => e.target === e.currentTarget && !busy && onCancel()}>
+      <div class="photo-confirm" role="dialog" aria-label=${title}>
+        <p class="pc-title">${title}</p>
+        <img src=${'data:image/jpeg;base64,' + data} alt="" />
+        <div class="pc-btns">
+          <button class="pc-cancel" onClick=${onCancel} disabled=${busy}>취소</button>
+          <button class="pc-ok" onClick=${onOk} disabled=${busy}>${busy ? '올리는 중…' : '확인'}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 // 사진 크게 보기 (누르면 닫힘)
 export function PhotoViewer({ photo, caption, onClose }) {
   return html`
