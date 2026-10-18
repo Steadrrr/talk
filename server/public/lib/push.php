@@ -106,6 +106,9 @@ function talk_push_encrypt(string $payload, string $p256dhB64, string $authB64, 
 }
 
 // 하나 보내기 → HTTP 상태 (0 = 연결 실패)
+// 알림 서비스가 거절했을 때 돌려준 까닭 (애플은 {"reason":"..."}), 기록용
+$GLOBALS['talk_push_reason'] = '';
+
 function talk_push_send_one(array $vapid, array $sub, string $payload, string $subject, string $topic = ''): int {
     $body = talk_push_encrypt($payload, $sub['p256dh'], $sub['auth']);
     $headers = [
@@ -122,8 +125,9 @@ function talk_push_send_one(array $vapid, array $sub, string $payload, string $s
         CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_CONNECTTIMEOUT => 8,
         CURLOPT_PROTOCOLS => talk_push_test_prefix() !== '' ? CURLPROTO_HTTP | CURLPROTO_HTTPS : CURLPROTO_HTTPS, CURLOPT_FOLLOWLOCATION => false,
     ]);
-    curl_exec($ch);
+    $res = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $GLOBALS['talk_push_reason'] = $code >= 300 || $code === 0 ? mb_substr(trim(is_string($res) ? $res : curl_error($ch)), 0, 120) : '';
     curl_close($ch);
     return $code;
 }
@@ -190,7 +194,15 @@ function talk_push_send_many(PDO $pdo, array $subs, string $payload, string $top
     $subject = talk_push_subject();
     foreach ($subs as $s) {
         $err = '';
-        try { $code = talk_push_send_one($vapid, $s, $payload, $subject, $topic); } catch (Throwable $e) { $code = 0; $err = $e->getMessage(); }
+        try {
+            $code = talk_push_send_one($vapid, $s, $payload, $subject, $topic);
+            // 400 이면 Topic 머리 없이 한 번 더 (알림 서비스마다 Topic 규칙이 달라서)
+            if ($code === 400 && $topic !== '') {
+                $first = $GLOBALS['talk_push_reason'];
+                $code = talk_push_send_one($vapid, $s, $payload, $subject);
+                $err = trim("Topic 있으면 400 $first" . ($code >= 300 ? ' / 없이 ' . $GLOBALS['talk_push_reason'] : ''));
+            } elseif ($code >= 300 || $code === 0) $err = $GLOBALS['talk_push_reason'];
+        } catch (Throwable $e) { $code = 0; $err = $e->getMessage(); }
         $out['results'][] = ['device' => (int)$s['device_id'], 'host' => (string)parse_url($s['endpoint'], PHP_URL_HOST), 'code' => $code, 'error' => $err];
         if ($code >= 200 && $code < 300) $out['sent']++;
         else {

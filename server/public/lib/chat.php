@@ -8,6 +8,9 @@ const TALK_PAGE = 50;        // 예전 대화 한 번에 불러오는 수
 const TALK_FIRST_MSGS = 30;  // 처음 동기화 때 방마다 보내는 최근 메시지 수
 const TALK_SYNC_LIMIT = 500; // 동기화 한 번에 보는 변경 수 (넘으면 more=true, 앱이 곧바로 다시 부름)
 
+// DB 시각(UTC, "Y-m-d H:i:s") → "Y-m-dTH:i:sZ" (아이폰 사파리는 가운데 빈칸이 있으면 시간을 잘못 읽을 수 있음)
+function talk_iso(string $dt): string { return str_replace(' ', 'T', $dt) . 'Z'; }
+
 function talk_event(PDO $pdo, int $roomId, string $kind, int $ref = 0): void {
     $pdo->prepare('INSERT INTO talk_events (room_id, kind, ref_id, created_at) VALUES (?, ?, ?, ?)')->execute([$roomId, $kind, $ref, talk_now()]);
 }
@@ -26,7 +29,7 @@ function talk_room_member(PDO $pdo, int $uid, int $roomId): bool {
 
 function talk_msg_view(array $m): array {
     return ['id' => (int)$m['id'], 'room_id' => (int)$m['room_id'], 'user_id' => (int)$m['user_id'], 'kind' => $m['kind'],
-        'body' => $m['body'], 'client_id' => $m['client_id'], 'at' => $m['created_at'] . 'Z'];
+        'body' => $m['body'], 'client_id' => $m['client_id'], 'at' => talk_iso($m['created_at'])];
 }
 
 // 방 요약: 이름, 사람(마지막으로 읽은 번호 포함), 마지막 메시지, 내가 안 읽은 수
@@ -38,7 +41,7 @@ function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
     $rooms = [];
     foreach ($st->fetchAll() as $r) {
         $rooms[(int)$r['id']] = ['id' => (int)$r['id'], 'group_id' => (int)$r['group_id'], 'kind' => $r['kind'], 'name' => $r['name'],
-            'created_at' => $r['created_at'] . 'Z', 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0];
+            'created_at' => talk_iso($r['created_at']), 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0];
     }
     $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name, u.nick FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id IN ($in) ORDER BY m.joined_at, m.user_id");

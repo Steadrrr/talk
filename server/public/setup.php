@@ -8,6 +8,9 @@ define('TALK', true);
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/accounts.php';
 
+// DB 시각(UTC) → 한국 시간으로 보여 주기 (한국은 서머타임 없음)
+function kst(?string $utc): string { return $utc ? gmdate('Y-m-d H:i:s', strtotime($utc . ' UTC') + 9 * 3600) : ''; }
+
 const SETUP_WINDOW_HOURS = 24;
 header('X-Robots-Tag: noindex');
 header('Cache-Control: no-store');
@@ -232,7 +235,7 @@ foreach ($st->fetchAll() as $r) $invites[(int)$r['group_id']][] = $r;
 $userGroups = [];
 foreach ($pdo->query('SELECT user_id, group_id FROM talk_group_members')->fetchAll() as $r) $userGroups[(int)$r['user_id']][(int)$r['group_id']] = true;
 $users = $pdo->query('SELECT u.id, u.name, u.nick, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
-$devs = $pdo->query('SELECT d.id, d.name, d.last_seen, d.active_at, (SELECT COUNT(*) FROM talk_push_subs s WHERE s.device_id = d.id) subs, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.id')->fetchAll();
+$devs = $pdo->query('SELECT d.id, d.name, d.last_seen, d.active_at, d.active_room, (SELECT COUNT(*) FROM talk_push_subs s WHERE s.device_id = d.id) subs, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.id')->fetchAll();
 $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT(*) FROM talk_messages) m')->fetch();
 $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf" value="' . h(csrf()) . '"><input type="hidden" name="act" value="' . h($act) . '">'
     . implode('', array_map(fn($k, $v) => '<input type="hidden" name="' . h($k) . '" value="' . h((string)$v) . '">', array_keys($extra), $extra));
@@ -263,7 +266,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php foreach ($invites[$gid] ?? [] as $i): ?>
 <form method="post" class="row"><?= $hidden('invite_revoke', ['id' => (int)$i['id']]) ?>
 <span class="hint">└ 초대 코드 <?= $i['code'] ? '<code>' . h($i['code']) . '</code> · 링크 <code>' . h($base . '#invite=' . $i['code']) . '</code>' : '#' . (int)$i['id'] . ' (예전에 만든 코드라 다시 볼 수 없어요)' ?>
-<br>└ 남은 횟수 <?= (int)$i['uses_left'] ?> · <?= h($i['expires_at']) ?> (UTC) 까지</span><button type="submit" class="sub">없애기</button></form>
+<br>└ 남은 횟수 <?= (int)$i['uses_left'] ?> · <?= h(kst($i['expires_at'])) ?> 까지</span><button type="submit" class="sub">없애기</button></form>
 <?php endforeach; ?>
 <?php if (!(int)$g['closed']): ?>
 <form method="post" class="row"><?= $hidden('invite', ['group' => $gid]) ?>
@@ -278,7 +281,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 
 <fieldset><legend>사람 (그룹을 체크하고 저장하면 여러 그룹에 한꺼번에 넣고 빼요)</legend>
 <?php foreach ($users as $u): ?>
-<div class="row"><span><b><?= h($u['name']) ?></b><?= $u['nick'] ? ' · ' . h($u['nick']) : '' ?> <span class="hint"><?= (int)$u['is_admin'] ? '관리자' : '사용자' ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr($u['created_at'], 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
+<div class="row"><span><b><?= h($u['name']) ?></b><?= $u['nick'] ? ' · ' . h($u['nick']) : '' ?> <span class="hint"><?= (int)$u['is_admin'] ? '관리자' : '사용자' ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr(kst($u['created_at']), 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
 <?php if (!(int)$u['is_admin']): ?><span class="btns">
 <form method="post"><?= $hidden('user_pw', ['id' => (int)$u['id']]) ?><button type="submit" class="sub">새 비밀번호</button></form>
 <form method="post"><?= $hidden((int)$u['disabled'] ? 'user_on' : 'user_off', ['id' => (int)$u['id']]) ?><button type="submit" class="sub"><?= (int)$u['disabled'] ? '다시 켜기' : '멈추기' ?></button></form>
@@ -295,14 +298,14 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php if (!$devs) echo '<p class="hint">아직 없어요.</p>'; ?>
 <?php foreach ($devs as $d): ?>
 <form method="post" class="row"><?= $hidden('device_revoke', ['id' => (int)$d['id']]) ?>
-<span><?= h($d['owner']) ?> · <?= h($d['name']) ?> <span class="hint">#<?= (int)$d['id'] ?> · 알림 <?= (int)$d['subs'] ? '<b class="ok">켬</b>' : '꺼짐' ?> · 마지막 <?= h($d['last_seen']) ?><?= $d['active_at'] ? ' · 앱 봄 ' . h($d['active_at']) : '' ?> (UTC)</span></span><button type="submit" class="sub">로그인 끊기</button></form>
+<span><?= h($d['owner']) ?> · <?= h($d['name']) ?> <span class="hint">#<?= (int)$d['id'] ?> · 알림 <?= (int)$d['subs'] ? '<b class="ok">켬</b>' : '꺼짐' ?> · 마지막 <?= h(kst($d['last_seen'])) ?><?= $d['active_at'] ? ' · 앱 봄 ' . h(kst($d['active_at'])) . ($d['active_room'] ? " (방 {$d['active_room']})" : ' (목록)') : '' ?></span></span><button type="submit" class="sub">로그인 끊기</button></form>
 <?php endforeach; ?>
 </fieldset>
 
-<fieldset><legend>알림 기록 (최근 30개, UTC)</legend>
+<fieldset><legend>알림 기록 (최근 30개)</legend>
 <?php $plog = json_decode((string)talk_meta_get($pdo, 'push_log'), true) ?: []; if (!$plog) echo '<p class="hint">아직 보낸 알림이 없어요.</p>'; ?>
 <?php foreach ($plog as $l): ?>
-<div class="row"><span><?= h($l['at']) ?> · <?= h($l['what']) ?> <span class="hint">· <?= (int)$l['sent'] ?>/<?= (int)$l['total'] ?> 성공<?= $l['results'] ? ' · ' . h(implode(', ', $l['results'])) : '' ?></span></span></div>
+<div class="row"><span><?= h(kst($l['at'])) ?> · <?= h($l['what']) ?> <span class="hint">· <?= (int)$l['sent'] ?>/<?= (int)$l['total'] ?> 성공<?= $l['results'] ? ' · ' . h(implode(', ', $l['results'])) : '' ?></span></span></div>
 <?php endforeach; ?>
 </fieldset>
 

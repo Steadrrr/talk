@@ -8,14 +8,16 @@ const timeFmt = new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-d
 const dateFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
 const shortFmt = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' });
 
-export const time = (iso) => timeFmt.format(new Date(iso));
-export const dateLine = (iso) => dateFmt.format(new Date(iso));
-export const dayKey = (iso) => new Date(iso).toDateString();
+// 서버 시각은 UTC ("…T…Z"). 예전에 기기에 저장된 "2026-10-18 06:57:46Z" 모양도 같이 읽는다
+const toDate = (iso) => new Date(typeof iso === 'string' ? iso.replace(' ', 'T') : iso);
+export const time = (iso) => timeFmt.format(toDate(iso));
+export const dateLine = (iso) => dateFmt.format(toDate(iso));
+export const dayKey = (iso) => toDate(iso).toDateString();
 
 // 채팅 목록의 시각: 오늘이면 시각, 어제면 "어제", 그 전이면 날짜
 export function listTime(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
+  const d = toDate(iso);
   const today = new Date();
   if (d.toDateString() === today.toDateString()) return timeFmt.format(d);
   const y = new Date(today); y.setDate(today.getDate() - 1);
