@@ -5,6 +5,7 @@ import { api } from './api.js';
 import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile } from './store.js';
 import { nickOf, fullName } from './names.js';
 import { PushCard } from './pushui.js';
+import { TAB_ICONS } from './icons.js';
 import { FONT_SIZES, getFontSize, setFontSize } from './fontsize.js';
 
 export function Home({ tab, setTab, onOpen }) {
@@ -15,9 +16,9 @@ export function Home({ tab, setTab, onOpen }) {
       ${tab === 'chats' && html`<${Chats} onOpen=${onOpen} />`}
       ${tab === 'settings' && html`<${Settings} />`}
       <nav class="tabs">
-        <button class=${tab === 'friends' ? 'on' : ''} onClick=${() => setTab('friends')}><span class="ti">👥</span>친구</button>
-        <button class=${tab === 'chats' ? 'on' : ''} onClick=${() => setTab('chats')}><span class="ti">💬</span>채팅${unread > 0 && html`<span class="badge">${unread > 99 ? '99+' : unread}</span>`}</button>
-        <button class=${tab === 'settings' ? 'on' : ''} onClick=${() => setTab('settings')}><span class="ti">⚙️</span>설정</button>
+        <button class=${tab === 'friends' ? 'on' : ''} onClick=${() => setTab('friends')}><span class="ti">${TAB_ICONS.friends}</span>친구</button>
+        <button class=${tab === 'chats' ? 'on' : ''} onClick=${() => setTab('chats')}><span class="ti">${TAB_ICONS.chats}</span>채팅${unread > 0 && html`<span class="badge">${unread > 99 ? '99+' : unread}</span>`}</button>
+        <button class=${tab === 'settings' ? 'on' : ''} onClick=${() => setTab('settings')}><span class="ti">${TAB_ICONS.settings}</span>설정</button>
       </nav>
     </div>
   `;

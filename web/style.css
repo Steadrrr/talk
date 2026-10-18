@@ -56,9 +56,17 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; padding-bottom: 12px; }
 .tabs { display: flex; border-top: 1px solid var(--line); background: var(--bg); padding-bottom: env(safe-area-inset-bottom); }
 .tabs button { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 0 8px; font-size: calc(12px * var(--fs)); color: var(--dim); position: relative; }
-.tabs button.on { color: var(--acc); font-weight: 600; }
-.tabs .ti { font-size: 30px; line-height: 1.15; }
-.tabs .badge { position: absolute; top: 2px; left: calc(50% + 12px); }
+.tabs button.on { color: #ff5c9a; font-weight: 700; }
+.tabs .ti { display: block; width: 36px; height: 36px; margin-bottom: 1px;
+  /* 안 고른 탭: 연한 파스텔 핑크 */
+  --i1: #ffc4dc; --i2: #ffdeeb; --i3: #ff9cc4; --ie: #c97a9b; transition: transform .2s; }
+.tabs .ti svg { width: 100%; height: 100%; display: block; overflow: visible; }
+/* 고른 탭: 진한 핑크 + 통통 튀기 */
+.tabs button.on .ti { --i1: #ff5c9a; --i2: #ff9cc4; --i3: #ffc4dc; --ie: #fff; animation: boing .45s cubic-bezier(.3, 1.6, .5, 1); transform: scale(1.08); }
+@keyframes boing { 0% { transform: scale(.8) translateY(2px); } 60% { transform: scale(1.18) translateY(-3px); } 100% { transform: scale(1.08); } }
+.tabs button:active .ti { transform: scale(.9); }
+@media (prefers-color-scheme: dark) { .tabs .ti { --i1: #6e3a52; --i2: #5a3245; --i3: #8c4a69; --ie: #d79ab5; } .tabs button.on .ti { --i1: #ff5c9a; --i2: #ff9cc4; --i3: #ffc4dc; --ie: #fff; } }
+.tabs .badge { position: absolute; top: 2px; left: calc(50% + 10px); box-shadow: 0 0 0 2px var(--bg); }
 .badge { background: #ff4d6d; color: #fff; border-radius: 10px; font-size: calc(11px * var(--fs)); font-weight: 700; padding: 1px 6px; min-width: 18px; text-align: center; }
 
 .avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 38%; color: #fff; font-weight: 700; flex: none; }
