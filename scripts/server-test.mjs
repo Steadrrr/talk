@@ -767,6 +767,23 @@ try {
     await say({ body: '좋아' }, tok.dad);
     assert.equal(replies().length, n + 1, '방금 끼어들기를 물어봐서 간격이 안 지남');
     assert.equal((await botMsgs()).length, before, 'pass 면 안 올림');
+    // 조용할 때 대답: 마지막 사람 글이 5분 넘게 대답이 없으면 누구의 동기화든 한 번 (called), 같은 글에는 다시 안 함
+    lite.mode = 'reply';
+    const syncS = async (tk) => { await api('sync?since=0', undefined, tk); await fetch(BASE + '/api.php/health'); };
+    await syncS(tok.dad);
+    assert.equal(replies().length, n + 1, '아직 5분이 안 지남');
+    sql(`UPDATE talk_messages SET created_at = created_at - INTERVAL 6 MINUTE WHERE room_id = ${sakiRoom}`);
+    await syncS(tok.dad);
+    assert.equal(replies().length, n + 2);
+    assert.equal(replies().at(-1).body.mode, 'called');
+    assert.equal(replies().at(-1).body.messages.at(-1).text, '좋아');
+    assert.equal((await botMsgs()).length, before + 1);
+    await syncS(tok.mom);
+    assert.equal(replies().length, n + 2, '마지막이 사키 말이면 안 함');
+    await say({ body: '그럼 내일 봐' }, tok.dad);
+    sql(`UPDATE talk_messages SET created_at = created_at - INTERVAL 2 HOUR WHERE room_id = ${sakiRoom}`);
+    await syncS(tok.mom);
+    assert.equal(replies().length, n + 2, '1시간 넘게 지난 글은 안 함');
     await api('rooms/saki', { room_id: sakiRoom, freq: 'called' }, tok.mom);
   });
 

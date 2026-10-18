@@ -140,6 +140,7 @@ function SakiSection({ room, run }) {
           <input type="checkbox" class="switch" checked=${!!s.polite} disabled=${!can} onChange=${(e) => set({ polite: e.target.checked })} /></label>
         <p class="hint">대답 빈도</p>
         ${seg([['called', '부를 때만'], ['chime', '가끔 끼어들기']], s.freq, 'freq')}
+        ${s.freq === 'chime' && html`<p class="hint">대화 중에 가끔 끼어들고, 누가 글을 올렸는데 5분 동안 아무도 대답이 없으면 그 글에 대답해요.</p>`}
         ${s.freq === 'chime' && html`
           <label class="switch-row"><span class="grow">끼어들기 최소 간격</span>
             <select value=${s.gap} disabled=${!can} onChange=${(e) => set({ gap: Number(e.target.value) })}>

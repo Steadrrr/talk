@@ -127,6 +127,36 @@ function talk_saki_after_send(PDO $pdo, int $roomId, int $uid, int $msgId, strin
     talk_after_response(fn() => talk_saki_run($pdo, $cfg, $roomId, $bot, $msgId, $mode, $s, (string)$room['name']));
 }
 
+// 조용할 때 대답 ("가끔 끼어들기" 방): 사람이 글을 올리고 5분 동안 아무도 말이 없으면 그 대화를 보고 한 번 대답한다.
+// cron 이 없어서, 방 사람 누군가의 앱이 동기화할 때(응답 뒤) 살핀다. 앱이 모두 닫혀 있었으면 다음에 누가 열 때 (1시간 지난 글은 안 함)
+const TALK_SAKI_QUIET_SECONDS = 300;
+const TALK_SAKI_QUIET_MAX = 3600;
+
+function talk_saki_quiet_check(PDO $pdo, int $uid): void {
+    $st = $pdo->prepare("SELECT r.id, r.name, r.saki FROM talk_rooms r JOIN talk_room_members m ON m.room_id = r.id AND m.user_id = ?
+        WHERE r.kind = 'group' AND r.saki LIKE '%\"freq\":\"chime\"%'");
+    $st->execute([$uid]);
+    $rooms = array_filter($st->fetchAll(), fn($r) => talk_saki_settings($r['saki'])['on'] && talk_saki_settings($r['saki'])['freq'] === 'chime');
+    if (!$rooms) return;
+    $cfg = talk_config();
+    if ((string)($cfg['saki_lite_key'] ?? '') === '') return;
+    $bot = talk_saki_bot($pdo);
+    foreach ($rooms as $r) {
+        $rid = (int)$r['id'];
+        $st = $pdo->prepare("SELECT id, user_id, created_at FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video') ORDER BY id DESC LIMIT 1");
+        $st->execute([$rid]);
+        $last = $st->fetch();
+        if (!$last || (int)$last['user_id'] === $bot) continue; // 마지막이 사키 말이면 이미 대답함
+        $age = time() - strtotime($last['created_at'] . ' UTC');
+        if ($age < TALK_SAKI_QUIET_SECONDS || $age > TALK_SAKI_QUIET_MAX) continue;
+        if ((int)talk_meta_get($pdo, "saki_quiet:$rid") >= (int)$last['id']) continue; // 이 글에는 이미 한 번 해 봄
+        talk_meta_set($pdo, "saki_quiet:$rid", (string)$last['id']);
+        // 대답을 바라는 경우라 called 로 (chime 은 대부분 pass)
+        talk_after_response(fn() => talk_saki_run($pdo, $cfg, $rid, $bot, (int)$last['id'], 'called', talk_saki_settings($r['saki']), (string)$r['name']));
+        return; // 한 번에 한 방만
+    }
+}
+
 // 오늘 (한국 날짜)
 function talk_saki_day(): string { return gmdate('Y-m-d', time() + 9 * 3600); }
 
