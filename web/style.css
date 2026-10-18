@@ -93,7 +93,9 @@ h1 { font-size: 24px; margin: 12px 0; }
 .avatar-gap { width: 36px; flex: none; }
 .msg-col { display: flex; flex-direction: column; max-width: 76%; min-width: 0; }
 .msg.mine .msg-col { align-items: flex-end; }
-.who { font-size: 13px; color: var(--dim); margin: 0 0 3px 2px; }
+.who { font-size: 13px; line-height: 18px; color: var(--dim); margin: 0 0 4px 2px; }
+/* 얼굴 위쪽을 말풍선 위쪽과 맞춤 (이름 줄 18px + 4px 만큼 내림) */
+.msg.theirs.first > .tap { align-self: flex-start; margin-top: 22px; }
 .msg-line { display: flex; align-items: flex-end; gap: 5px; }
 .msg.mine .msg-line { flex-direction: row-reverse; }
 .bubble { padding: 8px 12px; border-radius: 16px; background: var(--theirs); white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgba(0,0,0,.04); }
