@@ -286,6 +286,13 @@ try {
     s = (await api('messages/history?room_id=' + room + '&before=0', undefined, tok.mom)).body;
     const list = s.messages || s;
     assert.deepEqual(list.find((m) => m.id === orig.id).reactions, [[await idOf(tok.mom, '일래'), '😂']]);
+    // 검색: 글자 그대로, 최근 것부터, 방 밖 사람은 못 함
+    r = await api('messages/search?room_id=' + room + '&q=' + encodeURIComponent('소풍'), undefined, tok.dad);
+    assert.deepEqual(r.body.messages.map((m) => m.body), ['내일 소풍 가자']);
+    assert.equal(r.body.messages[0].reactions.length, 1);
+    r = await api('messages/search?room_id=' + room + '&q=' + encodeURIComponent('%'), undefined, tok.dad);
+    assert.equal(r.body.messages.length, 0, '% 는 글자 그대로');
+    assert.equal((await api('messages/search?room_id=' + room + '&q=a', undefined, tok.f1)).status, 403);
   });
 
   await t('예전 대화 불러오기 (50개씩)', async () => {

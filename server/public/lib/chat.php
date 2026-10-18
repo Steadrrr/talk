@@ -264,6 +264,15 @@ function talk_history(PDO $pdo, int $uid, int $roomId, int $before): array {
     return talk_messages_where($pdo, 'room_id = ? AND id < ?', [$roomId, $before > 0 ? $before : PHP_INT_MAX], TALK_PAGE);
 }
 
+// 방 안 글 검색: 최근 것부터 50개 (글자 그대로 찾음, 대소문자 무시)
+function talk_search(PDO $pdo, int $uid, int $roomId, string $q): array {
+    if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
+    $q = trim($q);
+    if (mb_strlen($q) < 1) return [];
+    $like = '%' . addcslashes(mb_substr($q, 0, 50), '%_\\') . '%';
+    return talk_messages_where($pdo, "room_id = ? AND kind = 'text' AND body LIKE ?", [$roomId, $like], 50);
+}
+
 // 변경 기록은 30일만 둔다 (그보다 오래 앱을 안 연 기기는 처음부터 다시 받음)
 function talk_cleanup_events(PDO $pdo): void {
     $pdo->prepare('DELETE FROM talk_events WHERE created_at < ?')->execute([gmdate('Y-m-d H:i:s', time() - 30 * 86400)]);

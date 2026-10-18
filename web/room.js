@@ -1,7 +1,7 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS } from './store.js';
+import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil } from './store.js';
 import { mediaUrl, mediaInfo, saveMedia } from './media.js';
 import { nickOf } from './names.js';
 import { RoomSettings } from './roomsettings.js';
@@ -20,6 +20,7 @@ export function Room({ id, onBack }) {
   const [big, setBig] = useState(null);   // 크게 보는 사진·영상 메시지
   const [menu, setMenu] = useState(null); // 길게 눌러 연 메시지 메뉴
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
+  const [searching, setSearching] = useState(false);
   const input = useRef(null);
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
@@ -90,6 +91,14 @@ export function Room({ id, onBack }) {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }, [text]);
 
+  // 검색 결과로 가기: 기기에 없으면 예전 대화를 더 받아 온 뒤
+  async function goTo(msgId) {
+    setSearching(false);
+    atBottom.current = false;
+    await loadUntil(id, msgId).catch(() => {});
+    requestAnimationFrame(() => requestAnimationFrame(() => jumpTo(msgId)));
+  }
+
   // 답장의 원래 글로 가기 (기기에 있는 것만)
   function jumpTo(msgId) {
     const el = scroller.current?.querySelector(`[data-id="${msgId}"]`);
@@ -158,7 +167,10 @@ export function Room({ id, onBack }) {
         ${!state.online && html`<span class="offline">연결 끊김</span>`}
         ${room.muted > 0 && html`<span class="mark">🔕</span>`}
         </div>
-        <button class="icon" onClick=${() => setSettings(true)} aria-label="방 설정">☰</button>
+        <div class="bar-right">
+          <button class="icon search-btn" onClick=${() => setSearching(true)} aria-label="대화 검색">${SEARCH_ICON}</button>
+          <button class="icon" onClick=${() => setSettings(true)} aria-label="방 설정">☰</button>
+        </div>
       </header>
       <div class="messages" ref=${scroller} onScroll=${onScroll}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
@@ -179,6 +191,7 @@ export function Room({ id, onBack }) {
         onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} />`}
       ${big && html`<${MediaViewer} m=${big} who=${names.get(big.user_id) || ''} onClose=${() => setBig(null)} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
+      ${searching && html`<${RoomSearch} roomId=${id} names=${names} onClose=${() => setSearching(false)} onPick=${goTo} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} />`}
     </section>
   `;
@@ -223,6 +236,46 @@ function useLongPress(onLong, onTap) {
     onContextMenu: (e) => { e.preventDefault(); if (!fired.current) { cancel(); fired.current = true; onLong(); } },
     onClick: () => { if (fired.current) { fired.current = false; return; } onTap(); },
   };
+}
+
+const SEARCH_ICON = html`<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5 21 21" /></svg>`;
+
+// 대화 검색: 글자를 넣으면 잠깐 뒤 서버에서 찾고, 누르면 그 메시지로
+function RoomSearch({ roomId, names, onClose, onPick }) {
+  const [q, setQ] = useState('');
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    const word = q.trim();
+    if (!word) { setRes(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      searchRoom(roomId, word).then((r) => live && (setRes(r), setErr(''))).catch((e) => live && setErr(e.message));
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [q]);
+  const mark = (body) => {
+    const word = q.trim(), i = body.toLowerCase().indexOf(word.toLowerCase());
+    if (i < 0) return body;
+    const from = Math.max(0, i - 20);
+    return html`${from > 0 ? '…' : ''}${body.slice(from, i)}<mark>${body.slice(i, i + word.length)}</mark>${body.slice(i + word.length, i + word.length + 60)}`;
+  };
+  return html`
+    <div class="sheet-bg" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="sheet">
+        <header class="bar"><button class="icon" onClick=${onClose} aria-label="닫기">✕</button>
+          <input class="grow search-input" type="search" value=${q} onInput=${(e) => setQ(e.target.value)} placeholder="대화 검색" autofocus enterkeyhint="search" /></header>
+        <div class="scroll">
+          ${err && html`<p class="err pad">${err}</p>`}
+          ${res && res.length === 0 && html`<p class="empty">찾는 글이 없어요.</p>`}
+          ${res && res.map((m) => html`
+            <button class="search-hit" onClick=${() => onPick(m.id)}>
+              <span class="hit-top"><b>${names.get(m.user_id) || '나간 사람'}</b><span class="hint small">${dateLine(m.at)} ${time(m.at)}</span></span>
+              <span class="hit-body">${mark(m.body)}</span>
+            </button>`)}
+        </div>
+      </div>
+    </div>`;
 }
 
 // 답장 미리보기 한 줄

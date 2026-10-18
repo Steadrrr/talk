@@ -54,7 +54,7 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 .bar { display: flex; align-items: center; gap: 6px; padding: calc(env(safe-area-inset-top) + 24px) 10px 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); min-height: 52px; }
 .bar h2 { font-size: calc(19px * var(--fs)); margin: 0; }
 /* 채팅방 위: 뒤로·설정 버튼 사이 가운데에 방 이름 */
-.room-bar { display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; padding-left: 6px; padding-right: 6px; }
+.room-bar { display: grid; grid-template-columns: 92px minmax(0, 1fr) 92px; padding-left: 6px; padding-right: 6px; }
 .room-title { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
 .offline { font-size: calc(12px * var(--fs)); color: var(--bad); border: 1px solid var(--bad); border-radius: 10px; padding: 1px 8px; }
 .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; padding-bottom: 12px; }
@@ -232,3 +232,12 @@ img.avatar { object-fit: cover; background: var(--line); }
 @keyframes flash { 0%, 60% { background: rgba(255, 105, 160, .25); } 100% { background: transparent; } }
 .msg.flash { animation: flash 1.6s ease-out; border-radius: 10px; }
 @media (pointer: coarse) { .bubble { -webkit-user-select: none; user-select: none; } }
+
+/* 대화 검색 */
+.bar-right { display: flex; justify-content: flex-end; align-items: center; }
+.search-btn { font-size: calc(22px * var(--fs)); padding: 4px 6px; display: flex; }
+.search-input { margin: 0 8px 0 4px; border-radius: 18px; padding: 8px 14px; }
+.search-hit { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); background: none; color: var(--fg); }
+.hit-top { display: flex; gap: 8px; align-items: baseline; }
+.hit-body { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: calc(15px * var(--fs)); }
+.search-hit mark { background: rgba(255, 105, 160, .35); color: inherit; border-radius: 3px; }

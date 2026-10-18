@@ -263,6 +263,9 @@ switch ($route) {
         talk_react($pdo, $uid, (int)($b['id'] ?? 0), (string)($b['emoji'] ?? ''));
         talk_json(['ok' => true]);
 
+    case 'messages/search':
+        talk_json(['ok' => true, 'messages' => array_reverse(talk_search($pdo, $uid, (int)$q('room_id', 0), (string)$q('q', '')))]);
+
     case 'messages/history':
         talk_json(['ok' => true, 'messages' => talk_history($pdo, $uid, (int)$q('room_id', 0), (int)$q('before', 0))]);
 

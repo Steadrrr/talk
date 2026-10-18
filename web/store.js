@@ -284,6 +284,21 @@ export async function createRoom(groupId, memberIds, name) {
 }
 
 // 예전 대화 50개 더. 더 없으면 false
+// 방 안 글 검색 (서버)
+export async function searchRoom(roomId, q) {
+  return (await api(`messages/search?room_id=${roomId}&q=${encodeURIComponent(q)}`)).messages;
+}
+
+// 그 메시지가 기기에 올 때까지 예전 대화를 더 받기 (검색 결과로 갈 때)
+export async function loadUntil(roomId, msgId) {
+  for (let i = 0; i < 40; i++) {
+    const first = (state.messages[roomId] || []).find((m) => !m.pending);
+    if (first && first.id <= msgId) return true;
+    if (!(await loadOlder(roomId))) return false;
+  }
+  return false;
+}
+
 export async function loadOlder(roomId) {
   const list = state.messages[roomId] || [];
   const first = list.find((m) => !m.pending);
