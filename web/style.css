@@ -241,3 +241,10 @@ img.avatar { object-fit: cover; background: var(--line); }
 .hit-top { display: flex; gap: 8px; align-items: baseline; }
 .hit-body { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: calc(15px * var(--fs)); }
 .search-hit mark { background: rgba(255, 105, 160, .35); color: inherit; border-radius: 3px; }
+
+/* 방 공지 */
+.notice-bar { display: flex; align-items: center; gap: 4px; margin: 8px 10px 0; padding: 4px 4px 4px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+.notice-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: none; color: var(--fg); padding: 6px 0; }
+.notice-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; word-break: break-word; font-size: calc(14px * var(--fs)); }
+.notice-fold { font-size: calc(20px * var(--fs)); color: var(--dim); }
+.notice-pill { align-self: flex-end; margin: 6px 10px 0; padding: 5px 12px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); color: var(--fg); font-size: calc(13px * var(--fs)); }

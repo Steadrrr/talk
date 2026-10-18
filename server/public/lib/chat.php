@@ -78,14 +78,18 @@ function talk_react(PDO $pdo, int $uid, int $msgId, string $emoji): void {
 function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
     if (!$roomIds) return [];
     $in = implode(',', array_fill(0, count($roomIds), '?'));
-    $st = $pdo->prepare("SELECT r.id, r.group_id, r.kind, r.name, r.created_at, r.photo_key, r.photo_by, COALESCE(u.nick, u.name) AS photo_by_name
-        FROM talk_rooms r LEFT JOIN talk_users u ON u.id = r.photo_by WHERE r.id IN ($in)");
+    $st = $pdo->prepare("SELECT r.id, r.group_id, r.kind, r.name, r.created_at, r.photo_key, r.photo_by, COALESCE(u.nick, u.name) AS photo_by_name,
+            n.id AS notice_id, n.body AS notice_body, n.user_id AS notice_user, COALESCE(nb.nick, nb.name) AS notice_by_name
+        FROM talk_rooms r LEFT JOIN talk_users u ON u.id = r.photo_by
+        LEFT JOIN talk_messages n ON n.id = r.notice_id AND n.kind = 'text' LEFT JOIN talk_users nb ON nb.id = r.notice_by
+        WHERE r.id IN ($in)");
     $st->execute($roomIds);
     $rooms = [];
     foreach ($st->fetchAll() as $r) {
         $rooms[(int)$r['id']] = ['id' => (int)$r['id'], 'group_id' => (int)$r['group_id'], 'kind' => $r['kind'], 'name' => $r['name'],
             'created_at' => talk_iso($r['created_at']),
-            'photo' => $r['photo_key'], 'photo_by' => $r['photo_key'] ? $r['photo_by_name'] : null, 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0];
+            'photo' => $r['photo_key'], 'photo_by' => $r['photo_key'] ? $r['photo_by_name'] : null, 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0,
+            'notice' => $r['notice_id'] ? ['id' => (int)$r['notice_id'], 'body' => $r['notice_body'], 'user_id' => (int)$r['notice_user'], 'by' => $r['notice_by_name']] : null];
     }
     $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name, u.nick, u.photo_key FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id IN ($in) ORDER BY m.joined_at, m.user_id");
@@ -353,6 +357,21 @@ function talk_room_leave(PDO $pdo, int $uid, int $roomId): void {
 }
 
 // 채팅방 대표 사진: 방 사람 누구나. 새로 올리면 예전 사진은 지워짐 (null 이면 지우기)
+// 공지 올리기(그 방의 글 메시지)·내리기(0): 방 사람 누구나
+function talk_room_notice(PDO $pdo, int $uid, int $roomId, int $msgId): void {
+    talk_room_row($pdo, $uid, $roomId);
+    if ($msgId > 0) {
+        $st = $pdo->prepare("SELECT 1 FROM talk_messages WHERE id = ? AND room_id = ? AND kind = 'text'");
+        $st->execute([$msgId, $roomId]);
+        if (!$st->fetchColumn()) talk_fail('글 메시지만 공지로 올릴 수 있어요.');
+    }
+    $pdo->beginTransaction();
+    $pdo->prepare('UPDATE talk_rooms SET notice_id = ?, notice_by = ? WHERE id = ?')->execute([$msgId ?: null, $msgId ? $uid : null, $roomId]);
+    talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . ($msgId ? '님이 공지를 올렸어요.' : '님이 공지를 내렸어요.'));
+    talk_event($pdo, $roomId, 'room');
+    $pdo->commit();
+}
+
 function talk_room_photo(PDO $pdo, int $uid, int $roomId, ?string $data): void {
     talk_room_row($pdo, $uid, $roomId);
     if ($data !== null) {

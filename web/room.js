@@ -1,7 +1,7 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil } from './store.js';
+import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice } from './store.js';
 import { mediaUrl, mediaInfo, saveMedia } from './media.js';
 import { nickOf } from './names.js';
 import { RoomSettings } from './roomsettings.js';
@@ -172,6 +172,7 @@ export function Room({ id, onBack }) {
           <button class="icon" onClick=${() => setSettings(true)} aria-label="방 설정">☰</button>
         </div>
       </header>
+      ${room.notice && html`<${NoticeBar} notice=${room.notice} roomId=${id} onGo=${() => goTo(room.notice.id)} />`}
       <div class="messages" ref=${scroller} onScroll=${onScroll}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
         ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map(nickOf).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
@@ -187,7 +188,7 @@ export function Room({ id, onBack }) {
         <textarea ref=${input} rows="1" value=${text} onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
         <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
       </form>
-      ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} onClose=${() => setMenu(null)}
+      ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
         onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} />`}
       ${big && html`<${MediaViewer} m=${big} who=${names.get(big.user_id) || ''} onClose=${() => setBig(null)} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
@@ -278,6 +279,23 @@ function RoomSearch({ roomId, names, onClose, onPick }) {
     </div>`;
 }
 
+// 공지 띠: 방 위에 걸린 글. 누르면 그 글로, 접으면 이 기기에서 작은 단추로 (새 공지가 올라오면 다시 펼침)
+function NoticeBar({ notice, roomId, onGo }) {
+  const key = 'talk.noticeFold.' + roomId;
+  const [folded, setFolded] = useState(() => { try { return localStorage.getItem(key) === String(notice.id); } catch { return false; } });
+  useEffect(() => { try { setFolded(localStorage.getItem(key) === String(notice.id)); } catch { /* 무시 */ } }, [notice.id]);
+  const fold = (v) => { setFolded(v); try { v ? localStorage.setItem(key, String(notice.id)) : localStorage.removeItem(key); } catch { /* 무시 */ } };
+  if (folded) return html`<button class="notice-pill" onClick=${() => fold(false)} aria-label="공지 펼치기">📢 공지</button>`;
+  return html`
+    <div class="notice-bar">
+      <button class="notice-body" onClick=${onGo}>
+        <span class="notice-text">📢 ${notice.body}</span>
+        <span class="hint small">${notice.by}님이 올린 공지</span>
+      </button>
+      <button class="icon notice-fold" onClick=${() => fold(true)} aria-label="공지 접기">⌃</button>
+    </div>`;
+}
+
 // 답장 미리보기 한 줄
 const replyPreview = (r) => r.kind === 'photo' ? '사진' : r.kind === 'video' ? '동영상' : r.kind === 'deleted' ? '삭제된 메시지' : r.body;
 
@@ -305,7 +323,7 @@ function Reactions({ m, names }) {
 }
 
 // 메시지 메뉴(길게 누르기): 반응, 답장, 복사(글)·저장(사진·영상), 삭제(이 기기에서 숨김), 모두에게 삭제(내가 보낸 것만)
-function MsgMenu({ m, mine, onClose, onReply }) {
+function MsgMenu({ m, mine, isNotice, onClose, onReply }) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const media = m.kind === 'photo' || m.kind === 'video';
@@ -325,6 +343,7 @@ function MsgMenu({ m, mine, onClose, onReply }) {
         ${err && html`<p class="err">${err}</p>`}
         <button onClick=${onReply}>답장</button>
         ${!media && html`<button onClick=${() => run('copy', () => navigator.clipboard.writeText(m.body))}>복사</button>`}
+        ${!media && html`<button onClick=${() => run('notice', () => setNotice(m.room_id, isNotice ? 0 : m.id))} disabled=${!!busy}>${isNotice ? '공지 내리기' : '공지로 올리기'}</button>`}
         ${media && !gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
         <button class="danger" onClick=${() => confirm(`이 ${what} 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
         ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what} 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}

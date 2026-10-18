@@ -175,6 +175,12 @@ switch ($route) {
         talk_room_invite($pdo, $uid, (int)($b['room_id'] ?? 0), (array)($b['user_ids'] ?? []));
         talk_json(['ok' => true]);
 
+    case 'rooms/notice':
+        $need('POST');
+        $b = talk_body();
+        talk_room_notice($pdo, $uid, (int)($b['room_id'] ?? 0), (int)($b['message_id'] ?? 0));
+        talk_json(['ok' => true]);
+
     case 'rooms/leave':
         $need('POST');
         talk_room_leave($pdo, $uid, (int)(talk_body()['room_id'] ?? 0));

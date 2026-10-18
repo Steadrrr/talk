@@ -293,6 +293,16 @@ try {
     r = await api('messages/search?room_id=' + room + '&q=' + encodeURIComponent('%'), undefined, tok.dad);
     assert.equal(r.body.messages.length, 0, '% 는 글자 그대로');
     assert.equal((await api('messages/search?room_id=' + room + '&q=a', undefined, tok.f1)).status, 403);
+    // 공지: 글만, 방 사람 누구나, 지우면(모두에게 삭제) 공지도 내려감
+    assert.equal((await api('rooms/notice', { room_id: room, message_id: orig.id }, tok.dad)).status, 200);
+    let fam = (await api('sync?since=0', undefined, tok.me)).body.rooms.find((x) => x.id === room);
+    assert.equal(fam.notice.body, '내일 소풍 가자');
+    assert.equal(fam.notice.by, '아빠');
+    assert.equal((await api('rooms/notice', { room_id: room, message_id: orig.id }, tok.f1)).status, 403);
+    assert.equal((await api('rooms/notice', { room_id: room, message_id: 999999 }, tok.dad)).status, 400);
+    await api('messages/delete', { id: orig.id }, tok.mom);
+    fam = (await api('sync?since=0', undefined, tok.me)).body.rooms.find((x) => x.id === room);
+    assert.equal(fam.notice, null);
   });
 
   await t('예전 대화 불러오기 (50개씩)', async () => {

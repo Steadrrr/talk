@@ -214,6 +214,12 @@ export async function setRoomPhoto(roomId, data) {
   await syncNow();
 }
 
+// 공지 올리기(메시지 번호)·내리기(0)
+export async function setNotice(roomId, msgId) {
+  await api('rooms/notice', { room_id: roomId, message_id: msgId || 0 });
+  await syncNow();
+}
+
 // 프로필 사진: data = base64 (JPEG) 또는 null(지우기)
 export async function setPhoto(data) {
   await api('me/photo', { data: data || '' });

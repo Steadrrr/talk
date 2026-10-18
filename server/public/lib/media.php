@@ -205,5 +205,8 @@ function talk_message_delete(PDO $pdo, array $cfg, int $uid, int $msgId): void {
         $pdo->prepare('UPDATE talk_media SET deleted = 1, thumb = NULL WHERE id = ?')->execute([(int)$md['id']]);
     }
     $pdo->prepare("UPDATE talk_messages SET kind = 'deleted', body = '' WHERE id = ?")->execute([$msgId]);
+    $u = $pdo->prepare('UPDATE talk_rooms SET notice_id = NULL, notice_by = NULL WHERE notice_id = ?');
+    $u->execute([$msgId]);
+    if ($u->rowCount() > 0) talk_event($pdo, (int)$m['room_id'], 'room');   // 공지였으면 공지도 내림
     talk_event($pdo, (int)$m['room_id'], 'msg', $msgId);
 }
