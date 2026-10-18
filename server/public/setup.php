@@ -9,6 +9,7 @@ require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/accounts.php';
 require __DIR__ . '/lib/chat.php';
 require __DIR__ . '/lib/media.php';
+require __DIR__ . '/lib/backup.php';
 
 // DB 시각(UTC) → 한국 시간으로 보여 주기 (한국은 서머타임 없음)
 function kst(?string $utc): string { return $utc ? gmdate('Y-m-d H:i:s', strtotime($utc . ' UTC') + 9 * 3600) : ''; }
@@ -204,13 +205,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             $msg = "새 비밀번호: $pw — 이 화면을 나가면 다시 볼 수 없어요. 그 사람에게 알려 주고, 로그인 후 바꾸라고 해 주세요.";
         } elseif ($act === 'device_revoke') {
             talk_revoke_device($pdo, (int)($_POST['id'] ?? 0));
+            $msg = '기기 로그인을 끊었어요.';
         } elseif ($act === 'devices_prune') {
             $st = $pdo->prepare('SELECT id FROM talk_devices WHERE revoked = 0 AND last_seen < ?');
             $st->execute([gmdate('Y-m-d H:i:s', time() - 7 * 86400)]);
             $ids = $st->fetchAll(PDO::FETCH_COLUMN);
             foreach ($ids as $id) talk_revoke_device($pdo, (int)$id);
             $msg = count($ids) . '개 기기를 끊었어요.';
-            $msg = '기기 로그인을 끊었어요.';
+        } elseif ($act === 'backup_txt' || $act === 'backup_json') {
+            talk_backup_download($pdo, $act === 'backup_json' ? 'json' : 'txt');
         }
         if (in_array($act, ['group_new', 'group_close', 'group_open', 'member_remove', 'user_off', 'user_on', 'user_groups'], true)) talk_groups_changed($pdo);
     } catch (Throwable $e) {
@@ -338,6 +341,12 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <label>사진 보관 (일) <input name="photo" type="number" value="<?= (int)$cfg['photo_days'] ?>" min="1" max="365"></label>
 <label>영상 보관 (일) <input name="video" type="number" value="<?= (int)$cfg['video_days'] ?>" min="1" max="365"></label>
 <button type="submit">바꾸기</button></form>
+</fieldset>
+
+<fieldset><legend>백업 내려받기</legend>
+<p class="hint">모든 방의 대화를 파일 하나로 내려받아요. 사진·영상 파일과 비밀번호는 들어 있지 않아요. 가끔 한 번씩 받아 두세요.</p>
+<form method="post" class="row"><?= $hidden('backup_txt') ?><button type="submit">대화 기록 (.txt, 읽기용)</button></form>
+<form method="post" class="row"><?= $hidden('backup_json') ?><button type="submit" class="sub">전체 자료 (.json, 옮기기용)</button></form>
 </fieldset>
 
 <fieldset><legend>관리자 비밀번호 바꾸기</legend>

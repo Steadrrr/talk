@@ -583,6 +583,17 @@ try {
     assert.equal(r.status, 200);
   });
 
+  await t('관리: 백업 내려받기 (읽기용 txt·옮기기용 json, 비밀번호는 안 들어감)', async () => {
+    const txt = await adminPost({ act: 'backup_txt' });
+    assert.match(txt, /SAKi Talk 대화 백업/);
+    assert.match(txt, /김치찌개/);
+    assert.match(txt, /\[사진\]/);
+    const raw = await adminPost({ act: 'backup_json' });
+    const j = JSON.parse(raw);
+    assert.ok(j.messages.length > 5 && j.users.length >= 4 && j.rooms.length >= 2);
+    assert.ok(!/pass_hash|password|token/i.test(raw), '비밀번호·토큰 없음');
+  });
+
   await t('관리: 그룹을 닫으면 그 방이 안 보이고, 사람을 멈추면 로그인이 끊김', async () => {
     await adminPost({ act: 'group_close', id: friends });
     let r = await api('me', undefined, tok.f1);
