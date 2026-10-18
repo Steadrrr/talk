@@ -29,7 +29,49 @@ function talk_room_member(PDO $pdo, int $uid, int $roomId): bool {
 
 function talk_msg_view(array $m): array {
     return ['id' => (int)$m['id'], 'room_id' => (int)$m['room_id'], 'user_id' => (int)$m['user_id'], 'kind' => $m['kind'],
-        'body' => $m['body'], 'client_id' => $m['client_id'], 'at' => talk_iso($m['created_at'])];
+        'body' => $m['body'], 'client_id' => $m['client_id'], 'at' => talk_iso($m['created_at']),
+        'reply_to' => (int)($m['reply_to'] ?? 0) ?: null];
+}
+
+const TALK_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
+
+// 메시지 목록에 답장한 원래 글 미리보기(reply)와 반응(reactions: [[사람, 이모지], …])을 붙인다
+function talk_decorate(PDO $pdo, array $msgs): array {
+    if (!$msgs) return $msgs;
+    $ids = array_map(fn($m) => $m['id'], $msgs);
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    $st = $pdo->prepare("SELECT message_id, user_id, emoji FROM talk_reactions WHERE message_id IN ($in) ORDER BY created_at");
+    $st->execute($ids);
+    $re = [];
+    foreach ($st->fetchAll() as $r) $re[(int)$r['message_id']][] = [(int)$r['user_id'], $r['emoji']];
+    $rids = array_values(array_unique(array_filter(array_map(fn($m) => $m['reply_to'], $msgs))));
+    $orig = [];
+    if ($rids) {
+        $st = $pdo->prepare('SELECT id, user_id, kind, body FROM talk_messages WHERE id IN (' . implode(',', array_fill(0, count($rids), '?')) . ')');
+        $st->execute($rids);
+        foreach ($st->fetchAll() as $o) $orig[(int)$o['id']] = ['id' => (int)$o['id'], 'user_id' => (int)$o['user_id'], 'kind' => $o['kind'],
+            'body' => $o['kind'] === 'text' ? mb_substr($o['body'], 0, 80) : ''];
+    }
+    foreach ($msgs as &$m) {
+        $m['reactions'] = $re[$m['id']] ?? [];
+        if ($m['reply_to']) $m['reply'] = $orig[$m['reply_to']] ?? ['id' => $m['reply_to'], 'user_id' => 0, 'kind' => 'deleted', 'body' => ''];
+    }
+    return $msgs;
+}
+
+// 반응 달기: 같은 이모지를 다시 누르면 뺌, 다른 것을 누르면 바꿈
+function talk_react(PDO $pdo, int $uid, int $msgId, string $emoji): void {
+    $st = $pdo->prepare('SELECT room_id, kind FROM talk_messages WHERE id = ?');
+    $st->execute([$msgId]);
+    $m = $st->fetch();
+    if (!$m || !talk_room_member($pdo, $uid, (int)$m['room_id'])) talk_fail('메시지가 없어요.', 404);
+    if (in_array($m['kind'], ['system', 'deleted'], true)) talk_fail('여기에는 반응을 달 수 없어요.');
+    if (!in_array($emoji, TALK_REACTIONS, true)) talk_fail('고를 수 있는 반응이 아니에요.');
+    $st = $pdo->prepare('SELECT emoji FROM talk_reactions WHERE message_id = ? AND user_id = ?');
+    $st->execute([$msgId, $uid]);
+    if ($st->fetchColumn() === $emoji) $pdo->prepare('DELETE FROM talk_reactions WHERE message_id = ? AND user_id = ?')->execute([$msgId, $uid]);
+    else $pdo->prepare('REPLACE INTO talk_reactions (message_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)')->execute([$msgId, $uid, $emoji, talk_now()]);
+    talk_event($pdo, (int)$m['room_id'], 'msg', $msgId);
 }
 
 // 방 요약: 이름, 사람(마지막으로 읽은 번호 포함), 마지막 메시지, 내가 안 읽은 수
@@ -66,7 +108,7 @@ function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
 function talk_messages_where(PDO $pdo, string $where, array $args, int $limit): array {
     $st = $pdo->prepare("SELECT * FROM talk_messages WHERE $where ORDER BY id DESC LIMIT $limit");
     $st->execute($args);
-    return array_reverse(array_map('talk_msg_view', $st->fetchAll()));
+    return talk_decorate($pdo, array_reverse(array_map('talk_msg_view', $st->fetchAll())));
 }
 
 // ───── 동기화 ─────
@@ -172,7 +214,7 @@ function talk_create_room(PDO $pdo, int $uid, int $groupId, array $memberIds, st
 }
 
 // ───── 메시지 ─────
-function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $clientId): array {
+function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $clientId, int $replyTo = 0): array {
     if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
     $body = rtrim(str_replace("\r\n", "\n", $body));
     if (trim($body) === '') talk_fail('빈 메시지는 보낼 수 없어요.');
@@ -182,14 +224,20 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     if ($clientId !== null) {
         $st = $pdo->prepare('SELECT * FROM talk_messages WHERE user_id = ? AND client_id = ?');
         $st->execute([$uid, $clientId]);
-        if ($m = $st->fetch()) return talk_msg_view($m);
+        if ($m = $st->fetch()) return talk_decorate($pdo, [talk_msg_view($m)])[0];
+    }
+    // 답장: 같은 방의 메시지일 때만
+    if ($replyTo > 0) {
+        $st = $pdo->prepare('SELECT 1 FROM talk_messages WHERE id = ? AND room_id = ?');
+        $st->execute([$replyTo, $roomId]);
+        if (!$st->fetchColumn()) $replyTo = 0;
     }
     $st = $pdo->prepare("SELECT dm_key FROM talk_rooms WHERE id = ? AND kind = 'dm'");
     $st->execute([$roomId]);
     if ($key = $st->fetchColumn()) talk_dm_rejoin($pdo, $roomId, array_map('intval', explode(':', $key)));
     $pdo->beginTransaction();
-    $pdo->prepare('INSERT INTO talk_messages (room_id, user_id, kind, body, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        ->execute([$roomId, $uid, 'text', $body, $clientId, talk_now()]);
+    $pdo->prepare('INSERT INTO talk_messages (room_id, user_id, kind, body, client_id, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$roomId, $uid, 'text', $body, $clientId, talk_now(), $replyTo ?: null]);
     $id = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE talk_room_members SET last_read_id = ? WHERE room_id = ? AND user_id = ?')->execute([$id, $roomId, $uid]);
     talk_event($pdo, $roomId, 'msg', $id);
@@ -198,7 +246,7 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     if (random_int(1, 200) === 1) talk_cleanup_events($pdo);
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$id]);
-    return talk_msg_view($st->fetch());
+    return talk_decorate($pdo, [talk_msg_view($st->fetch())])[0];
 }
 
 function talk_mark_read(PDO $pdo, int $uid, int $roomId, int $lastId): void {

@@ -1,7 +1,7 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll } from './store.js';
+import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS } from './store.js';
 import { mediaUrl, mediaInfo, saveMedia } from './media.js';
 import { nickOf } from './names.js';
 import { RoomSettings } from './roomsettings.js';
@@ -18,7 +18,8 @@ export function Room({ id, onBack }) {
   const [settings, setSettings] = useState(false);
   const [viewing, setViewing] = useState(false);
   const [big, setBig] = useState(null);   // 크게 보는 사진·영상 메시지
-  const [menu, setMenu] = useState(null); // 길게 눌러 연 사진·영상 메뉴
+  const [menu, setMenu] = useState(null); // 길게 눌러 연 메시지 메뉴
+  const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
   const input = useRef(null);
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
@@ -60,7 +61,8 @@ export function Room({ id, onBack }) {
     if (!body) return;
     setText('');
     atBottom.current = true;
-    send(id, body);
+    send(id, body, null, replyTo);
+    setReplyTo(null);
     input.current?.focus();
   }
 
@@ -87,6 +89,14 @@ export function Room({ id, onBack }) {
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }, [text]);
+
+  // 답장의 원래 글로 가기 (기기에 있는 것만)
+  function jumpTo(msgId) {
+    const el = scroller.current?.querySelector(`[data-id="${msgId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
 
   if (!room) return html`<section class="page"><header class="bar"><button class="icon" onClick=${onBack}>‹</button></header><p class="empty">방을 찾지 못했어요.</p></section>`;
 
@@ -117,20 +127,21 @@ export function Room({ id, onBack }) {
     prevUser = m.user_id; prevMin = minute;
     const n = m.pending ? 0 : unreadCount(m);
     rows.push(html`
-      <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (first ? ' first' : '')} key=${m.id || m.client_id}>
+      <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (first ? ' first' : '')} key=${m.id || m.client_id} data-id=${m.id || undefined}>
         ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} photo=${byId.get(m.user_id)?.photo} size=${54} /></button>` : html`<span class="avatar-gap"></span>`)}
         <div class="msg-col">
           ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">
             ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig(m)} onMenu=${() => setMenu(m)} />`
               : m.kind === 'deleted' ? html`<div class="bubble gone">삭제된 메시지예요</div>`
-              : html`<div class="bubble">${m.body}</div>`}
+              : html`<${TextBubble} m=${m} names=${names} onMenu=${() => setMenu(m)} onJump=${jumpTo} />`}
             <div class="meta">
               ${m.failed ? html`<span class="small bad">못 보냄</span>`
                 : m.pending ? html`<span class="hint small">보내는 중</span>`
                 : html`${n > 0 && html`<span class="unread">${n}</span>`}${showTime && html`<span class="hint small">${minute}</span>`}`}
             </div>
           </div>
+          ${m.kind !== 'deleted' && m.reactions?.length > 0 && html`<${Reactions} m=${m} names=${names} />`}
           ${m.failed && html`<div class="fail"><button class="del" onClick=${() => confirm('보내지 못한 것을 지울까요?') && discard(id, m)}>지우기</button><button class="retry" onClick=${() => m.kind === 'text' ? send(id, null, m) : sendMedia(id, null, m)}>재전송</button></div>`}
         </div>
       </div>`);
@@ -154,12 +165,18 @@ export function Room({ id, onBack }) {
         ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map(nickOf).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
         ${rows}
       </div>
+      ${replyTo && html`
+        <div class="reply-bar">
+          <div class="grow ellipsis"><b>${names.get(replyTo.user_id) || '나간 사람'}</b>에게 답장<br /><span class="hint">${replyPreview(replyTo)}</span></div>
+          <button class="icon" onClick=${() => setReplyTo(null)} aria-label="답장 그만두기">✕</button>
+        </div>`}
       <form class="composer" onSubmit=${(e) => { e.preventDefault(); submit(); }}>
         <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
         <textarea ref=${input} rows="1" value=${text} onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
         <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
       </form>
-      ${menu && html`<${MediaMenu} m=${menu} mine=${menu.user_id === state.me.id} onClose=${() => setMenu(null)} />`}
+      ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} onClose=${() => setMenu(null)}
+        onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} />`}
       ${big && html`<${MediaViewer} m=${big} who=${names.get(big.user_id) || ''} onClose=${() => setBig(null)} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} />`}
@@ -208,23 +225,56 @@ function useLongPress(onLong, onTap) {
   };
 }
 
-// 사진·영상 메뉴: 저장, 나에게서 삭제, 모두에게 삭제(내가 보낸 것만)
-function MediaMenu({ m, mine, onClose }) {
+// 답장 미리보기 한 줄
+const replyPreview = (r) => r.kind === 'photo' ? '사진' : r.kind === 'video' ? '동영상' : r.kind === 'deleted' ? '삭제된 메시지' : r.body;
+
+// 글 말풍선: 길게 누르면 메뉴, 답장이면 위에 원래 글
+function TextBubble({ m, names, onMenu, onJump }) {
+  const press = useLongPress(() => !m.pending && onMenu(), () => {});
+  return html`
+    <div class="bubble" ...${press}>
+      ${m.reply && html`<div class="quote" onClick=${(e) => { e.stopPropagation(); onJump(m.reply.id); }}>
+        <b>${names.get(m.reply.user_id) || '나간 사람'}</b><span>${replyPreview(m.reply)}</span></div>`}
+      ${m.body}
+    </div>`;
+}
+
+// 반응 모음: 이모지별 개수, 누르면 나도 같은 반응(다시 누르면 뺌)
+function Reactions({ m, names }) {
+  const groups = new Map();
+  for (const [u, e] of m.reactions) groups.set(e, [...(groups.get(e) || []), u]);
+  return html`
+    <div class="reactions">
+      ${[...groups].map(([e, us]) => html`
+        <button class=${'react-chip' + (us.includes(state.me.id) ? ' on' : '')} title=${us.map((u) => names.get(u) || '나간 사람').join(', ')}
+          onClick=${() => react(m, e).catch(() => {})}>${e}${us.length > 1 ? html` <span>${us.length}</span>` : ''}</button>`)}
+    </div>`;
+}
+
+// 메시지 메뉴(길게 누르기): 반응, 답장, 복사(글)·저장(사진·영상), 삭제(이 기기에서 숨김), 모두에게 삭제(내가 보낸 것만)
+function MsgMenu({ m, mine, onClose, onReply }) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
-  const what = m.kind === 'photo' ? '사진' : '영상';
+  const media = m.kind === 'photo' || m.kind === 'video';
+  const what = m.kind === 'photo' ? '사진을' : m.kind === 'video' ? '영상을' : '메시지를';
   async function run(label, fn) {
     setErr(''); setBusy(label);
     try { await fn(); onClose(); } catch (e) { setErr(e.message || '하지 못했어요.'); } finally { setBusy(''); }
   }
-  const gone = mediaInfo(m).gone;
+  const myReaction = (m.reactions || []).find(([u]) => u === state.me.id)?.[1];
+  const gone = media && mediaInfo(m).gone;
   return html`
     <div class="sheet-bg" onClick=${(e) => e.target === e.currentTarget && onClose()}>
       <div class="sheet action-sheet" role="menu">
+        <div class="react-pick">
+          ${REACTIONS.map((e) => html`<button class=${e === myReaction ? 'on' : ''} onClick=${() => run('react', () => react(m, e))} aria-label=${'반응 ' + e}>${e}</button>`)}
+        </div>
         ${err && html`<p class="err">${err}</p>`}
-        ${!gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
-        <button class="danger" onClick=${() => confirm(`이 ${what}을 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
-        ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what}을 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}
+        <button onClick=${onReply}>답장</button>
+        ${!media && html`<button onClick=${() => run('copy', () => navigator.clipboard.writeText(m.body))}>복사</button>`}
+        ${media && !gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
+        <button class="danger" onClick=${() => confirm(`이 ${what} 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
+        ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what} 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}
         <button class="cancel" onClick=${onClose}>취소</button>
       </div>
     </div>`;

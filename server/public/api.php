@@ -255,7 +255,13 @@ switch ($route) {
     case 'messages/send':
         $need('POST');
         $b = talk_body();
-        talk_json(['ok' => true, 'message' => talk_send($pdo, $uid, (int)($b['room_id'] ?? 0), (string)($b['body'] ?? ''), (string)($b['client_id'] ?? ''))]);
+        talk_json(['ok' => true, 'message' => talk_send($pdo, $uid, (int)($b['room_id'] ?? 0), (string)($b['body'] ?? ''), (string)($b['client_id'] ?? ''), (int)($b['reply_to'] ?? 0))]);
+
+    case 'messages/react':
+        $need('POST');
+        $b = talk_body();
+        talk_react($pdo, $uid, (int)($b['id'] ?? 0), (string)($b['emoji'] ?? ''));
+        talk_json(['ok' => true]);
 
     case 'messages/history':
         talk_json(['ok' => true, 'messages' => talk_history($pdo, $uid, (int)$q('room_id', 0), (int)$q('before', 0))]);

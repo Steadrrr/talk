@@ -301,14 +301,16 @@ function newClientId() {
   return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function send(roomId, body, retry) {
-  const msg = retry || { id: 0, room_id: roomId, user_id: state.me.id, kind: 'text', body, client_id: newClientId(), at: new Date().toISOString(), pending: true };
+// reply: 답장할 원래 메시지 (없으면 null)
+export async function send(roomId, body, retry, reply = null) {
+  const msg = retry || { id: 0, room_id: roomId, user_id: state.me.id, kind: 'text', body, client_id: newClientId(), at: new Date().toISOString(), pending: true,
+    reply_to: reply?.id || null, reply: reply ? { id: reply.id, user_id: reply.user_id, kind: reply.kind, body: reply.kind === 'text' ? reply.body.slice(0, 80) : '' } : undefined };
   msg.failed = false;
   const arr = state.messages[roomId] || (state.messages[roomId] = []);
   if (!retry) arr.push(msg);
   notify();
   try {
-    const r = await api('messages/send', { room_id: roomId, body: msg.body, client_id: msg.client_id });
+    const r = await api('messages/send', { room_id: roomId, body: msg.body, client_id: msg.client_id, reply_to: msg.reply_to || 0 });
     mergeMessages([r.message]);
     const room = state.rooms[roomId];
     if (room) {
@@ -389,6 +391,19 @@ export async function deleteForAll(m) {
   if (room?.last?.id === m.id) room.last = { ...room.last, kind: 'deleted', body: '' };
   saveSoon();
   notify();
+}
+
+export const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
+// 반응: 바로 화면에 바꾸고 서버에 (같은 것을 다시 누르면 뺌). 실패하면 다음 동기화에서 바로잡힘
+export async function react(m, emoji) {
+  const mineIdx = (m.reactions || []).findIndex(([u]) => u === state.me.id);
+  const had = mineIdx >= 0 ? m.reactions[mineIdx][1] : null;
+  const next = (m.reactions || []).filter(([u]) => u !== state.me.id);
+  if (had !== emoji) next.push([state.me.id, emoji]);
+  mergeMessages([{ ...m, reactions: next }]);
+  notify();
+  await api('messages/react', { id: m.id, emoji });
+  saveSoon();
 }
 
 export function discard(roomId, msg) {

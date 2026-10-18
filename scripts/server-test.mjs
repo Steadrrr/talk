@@ -267,6 +267,27 @@ try {
     assert.equal(r.status, 403);
   });
 
+  await t('답장·반응: 원래 글 미리보기, 반응은 한 사람 하나(같은 것 다시 누르면 뺌), 다른 사람에게 바뀐 것이 내려감', async () => {
+    const orig = (await api('messages/send', { room_id: room, body: '내일 소풍 가자' }, tok.mom)).body.message;
+    let r = await api('messages/send', { room_id: room, body: '좋아요!', reply_to: orig.id }, tok.dad);
+    assert.equal(r.body.message.reply_to, orig.id);
+    assert.equal(r.body.message.reply.body, '내일 소풍 가자');
+    assert.equal(r.body.message.reply.user_id, orig.user_id);
+    r = await api('messages/send', { room_id: room, body: '엉뚱한 답장', reply_to: 999999 }, tok.dad);
+    assert.equal(r.body.message.reply_to, null, '다른 방·없는 메시지면 답장 없이');
+    const cur = (await api('sync?since=0', undefined, tok.me)).body.cursor;
+    assert.equal((await api('messages/react', { id: orig.id, emoji: '❤️' }, tok.dad)).status, 200);
+    assert.equal((await api('messages/react', { id: orig.id, emoji: '😂' }, tok.me)).status, 200);
+    assert.equal((await api('messages/react', { id: orig.id, emoji: '💩' }, tok.me)).status, 400);
+    assert.equal((await api('messages/react', { id: orig.id, emoji: '❤️' }, tok.f1)).status, 404);
+    let s = (await api('sync?since=' + cur, undefined, tok.mom)).body;
+    assert.deepEqual(s.messages.find((m) => m.id === orig.id).reactions.map((x) => x[1]).sort(), ['❤️', '😂'].sort());
+    await api('messages/react', { id: orig.id, emoji: '❤️' }, tok.dad);
+    s = (await api('messages/history?room_id=' + room + '&before=0', undefined, tok.mom)).body;
+    const list = s.messages || s;
+    assert.deepEqual(list.find((m) => m.id === orig.id).reactions, [[await idOf(tok.mom, '일래'), '😂']]);
+  });
+
   await t('예전 대화 불러오기 (50개씩)', async () => {
     for (let i = 0; i < 55; i++) await api('messages/send', { room_id: dm, body: '메시지 ' + i }, tok.mom);
     let r = await api('messages/history?room_id=' + dm, undefined, tok.dad);

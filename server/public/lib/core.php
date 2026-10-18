@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 11;
+const TALK_SERVER_VERSION = 12;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -124,6 +124,12 @@ function talk_migrate(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     // 11: 기기 열쇠 (앱이 기기에 기억하는 무작위 값). 같은 기기에서 다시 로그인하면 예전 기기 줄을 끊어 쌓이지 않게
     $q[] = "ALTER TABLE talk_devices ADD COLUMN IF NOT EXISTS device_key CHAR(32) NULL, ADD INDEX IF NOT EXISTS idx_key (user_id, device_key)";
+    // 12: 답장(어느 메시지에 답했는지)·반응(메시지마다 한 사람 이모지 하나)
+    $q[] = "ALTER TABLE talk_messages ADD COLUMN IF NOT EXISTS reply_to BIGINT NULL";
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_reactions (
+        message_id BIGINT NOT NULL, user_id INT NOT NULL, emoji VARCHAR(16) NOT NULL, created_at DATETIME NOT NULL,
+        PRIMARY KEY (message_id, user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);

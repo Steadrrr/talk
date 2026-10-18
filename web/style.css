@@ -216,3 +216,19 @@ img.avatar { object-fit: cover; background: var(--line); }
 .pc-cancel { background: var(--bg); color: var(--dim); }
 .pc-ok { background: var(--acc); color: var(--acc-fg); }
 .msg.mine .bubble.gone { background: var(--card); color: var(--dim); }
+
+/* 답장·반응 */
+.bubble { -webkit-touch-callout: none; }
+.quote { display: flex; flex-direction: column; gap: 1px; margin: -2px 0 6px; padding: 4px 8px; border-left: 3px solid var(--acc); border-radius: 6px; background: rgba(127,127,127,.14); font-size: calc(13px * var(--fs)); cursor: pointer; max-width: 100%; }
+.quote span { opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-bar { display: flex; align-items: center; gap: 8px; padding: 8px 6px 8px 14px; background: var(--card); border-top: 1px solid var(--line); font-size: calc(13px * var(--fs)); line-height: 1.35; }
+.reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.react-chip { font-size: calc(14px * var(--fs)); padding: 2px 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); color: var(--fg); }
+.react-chip.on { border-color: var(--acc); }
+.react-chip span { font-size: calc(12px * var(--fs)); color: var(--dim); }
+.react-pick { display: flex; justify-content: space-between; padding: 4px 2px 8px; }
+.action-sheet .react-pick button { min-height: 50px; width: 50px; font-size: 28px; border-radius: 50%; background: var(--bg); padding: 0; }
+.action-sheet .react-pick button.on { outline: 2px solid var(--acc); }
+@keyframes flash { 0%, 60% { background: rgba(255, 105, 160, .25); } 100% { background: transparent; } }
+.msg.flash { animation: flash 1.6s ease-out; border-radius: 10px; }
+@media (pointer: coarse) { .bubble { -webkit-user-select: none; user-select: none; } }
