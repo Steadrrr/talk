@@ -1,6 +1,6 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
+import { html, Avatar, time, dateLine, dayKey } from './html.js';
 import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
 import { mediaUrl, mediaInfo, saveMedia } from './media.js';
 import { nickOf } from './names.js';
@@ -16,7 +16,6 @@ export function Room({ id, onBack }) {
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState('');
   const [settings, setSettings] = useState(false);
-  const [viewing, setViewing] = useState(false);
   const [big, setBig] = useState(null);   // 크게 보는 사진·영상 메시지
   const [menu, setMenu] = useState(null); // 길게 눌러 연 메시지 메뉴
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
@@ -161,7 +160,6 @@ export function Room({ id, onBack }) {
       <header class="bar room-bar">
         <button class="icon" onClick=${onBack} aria-label="뒤로">‹</button>
         <div class="room-title">
-        ${room.photo && html`<button class="tap" onClick=${() => setViewing(true)} aria-label="채팅방 사진"><${Avatar} photo=${room.photo} size=${34} /></button>`}
         <h2 class=${'ellipsis' + (room.kind === 'dm' && others[0] ? ' tap' : '')} onClick=${() => room.kind === 'dm' && others[0] && showProfile(others[0].id)}>${roomTitle(room)}</h2>
         ${room.kind === 'group' && html`<span class="hint">${room.members.length}</span>`}
         ${!state.online && html`<span class="offline">연결 끊김</span>`}
@@ -193,7 +191,6 @@ export function Room({ id, onBack }) {
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
         onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} />`}
       ${big && html`<${MediaViewer} m=${big} who=${names.get(big.user_id) || ''} onClose=${() => setBig(null)} />`}
-      ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
       ${searching && html`<${RoomSearch} roomId=${id} names=${names} onClose=${() => setSearching(false)} onPick=${goTo} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} />`}
     </section>
