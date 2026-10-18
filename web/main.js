@@ -1,34 +1,71 @@
-// S.A.K.I Talk 웹앱 시작점. 화면은 Preact + htm (빌드 없이 쓰는 JSX 대신 태그 문자열, 둘 합쳐 약 5KB)
-import { h, render } from 'preact';
+// S.A.K.I Talk 웹앱 시작점. 화면은 Preact + htm (빌드 없이 쓰는 JSX 대신 태그 문자열)
+import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import htm from 'htm';
-import { api } from './api.js';
+import { html } from './html.js';
+import { getToken, api } from './api.js';
+import { state, subscribe, loadSaved, loadMe, startSync, openRoom, closeRoom, clearAll } from './store.js';
+import { Auth, inviteFromHash } from './auth.js';
+import { Home } from './home.js';
+import { Room } from './room.js';
 import './style.css';
 
-const html = htm.bind(h);
-
 function App() {
-  const [health, setHealth] = useState(null);
-  const [error, setError] = useState('');
+  const [, force] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [tab, setTab] = useState('chats');
+  const [problem, setProblem] = useState('');
 
+  useEffect(() => subscribe(() => force((n) => n + 1)), []);
+
+  async function start() {
+    if (!getToken()) { setReady(true); return; }
+    loadSaved();
+    setReady(true);
+    try {
+      await loadMe();
+      setProblem('');
+    } catch (e) {
+      if (!state.me) setProblem(e.message);
+    }
+    if (state.me) startSync();
+  }
+  useEffect(() => { start(); }, []);
+
+  // 휴대폰 뒤로 가기(또는 스와이프)로 방에서 나오기
   useEffect(() => {
-    api('health').then(setHealth).catch((e) => setError(e.message));
+    const onPop = () => { if (state.openRoom) closeRoom(); };
+    addEventListener('popstate', onPop);
+    return () => removeEventListener('popstate', onPop);
   }, []);
+  function open(id) {
+    if (!state.openRoom) history.pushState({ room: id }, '');
+    openRoom(id);
+  }
+  function back() {
+    if (history.state?.room) history.back();
+    else closeRoom();
+  }
 
-  let status = '서버 확인 중…';
-  if (error) status = `서버에 연결하지 못했어요 (${error})`;
-  else if (health && !health.configured) status = '서버 설정이 아직 안 됐어요. 관리자가 setup.php 를 열어 주세요.';
-  else if (health && health.db === false) status = '서버 DB 에 연결하지 못했어요.';
-  else if (health) status = `서버 연결됨 · 버전 ${health.version}`;
+  // 이미 로그인한 채로 초대 링크를 열면: 설정 탭에서 코드 넣기
+  useEffect(() => {
+    if (state.me && inviteFromHash()) {
+      const code = inviteFromHash();
+      history.replaceState(null, '', location.pathname + location.search);
+      api('groups/join', { invite: code }).then(loadMe).then(() => setTab('friends')).catch((e) => alert(e.message));
+    }
+  }, [state.me?.id]);
 
-  return html`
-    <main class="splash">
-      <img class="logo" src="./icon-192.png" alt="" width="96" height="96" />
-      <h1>S.A.K.I Talk</h1>
-      <p class="status ${error || health?.db === false ? 'bad' : ''}">${status}</p>
-      <p class="hint">가족·친구끼리 쓰는 메신저를 준비하고 있어요.</p>
-    </main>
-  `;
+  if (!ready) return null;
+  if (!getToken() || (!state.me && !problem)) {
+    if (!getToken()) return html`<${Auth} onDone=${() => { setProblem(''); start(); }} />`;
+    return html`<main class="splash"><p class="hint">불러오는 중…</p></main>`;
+  }
+  if (!state.me) {
+    return html`<main class="splash"><p class="err">서버에 연결하지 못했어요 (${problem})</p>
+      <button class="primary" onClick=${start}>다시 시도</button><button class="text" onClick=${clearAll}>로그아웃</button></main>`;
+  }
+  if (state.openRoom) return html`<${Room} id=${state.openRoom} onBack=${back} />`;
+  return html`<${Home} tab=${tab} setTab=${setTab} onOpen=${open} />`;
 }
 
 render(html`<${App} />`, document.getElementById('app'));

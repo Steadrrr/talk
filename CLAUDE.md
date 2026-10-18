@@ -15,8 +15,8 @@ Project S.A.K.I(저장소 Steadrrr/SAKI)의 카페24 호스팅을 같이 쓴다:
 - 비밀번호·FTP·DB 정보를 대화나 저장소에 절대 넣지 않기.
 
 ## 구조
-- `web/` 웹앱 (Vite + Preact + htm, JSX 빌드 없음). `npx vite build` → `server/public/` 에 index.html·assets·sw.js 를 만든다 (빌드 결과는 git 에 넣지 않음).
-- `server/public/` 카페24 에 올라가는 폴더: `api.php`(API, `/talk/api.php/<경로>`), `setup.php`(처음 설정·관리 화면), `lib/core.php`(설정·DB·표·JSON).
+- `web/` 웹앱 (Vite + Preact + htm, JSX 빌드 없음): `main.js` 시작·화면 전환, `store.js` 상태·동기화·보내기, `auth.js` 로그인·가입, `home.js` 친구·채팅 목록·설정 탭, `room.js` 채팅방, `api.js` 서버 부르기. `npx vite build` → `server/public/` 에 index.html·assets·sw.js 를 만든다 (빌드 결과는 git 에 넣지 않음).
+- `server/public/` 카페24 에 올라가는 폴더: `api.php`(API, `/talk/api.php/<경로>`), `setup.php`(처음 설정·관리 화면), `lib/core.php`(설정·DB·표·JSON), `lib/accounts.php`(계정·기기·그룹·초대), `lib/chat.php`(방·메시지·동기화).
 - `scripts/server-test.mjs` 서버 시험.
 
 ## 테스트

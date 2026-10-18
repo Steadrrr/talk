@@ -87,9 +87,9 @@ try {
     assert.equal(body.db, true);
   });
 
-  await t('설정 후: 없는 경로는 404', async () => {
+  await t('설정 후: 로그인 없이 부르면 401', async () => {
     const { status } = await json('/api.php/nothing');
-    assert.equal(status, 404);
+    assert.equal(status, 401);
   });
 
   await t('관리 화면: 보관 설정 바꾸기', async () => {
@@ -107,6 +107,178 @@ try {
     assert.match(html, /맞지 않아요/);
     html = await (await req('/setup.php', form({ csrf: csrfOf(html), act: 'login', pw: 'test-password-1' }))).text();
     assert.match(html, /서버 상태/);
+  });
+
+  // ───── 1단계: 그룹·초대·계정·채팅 ─────
+  const adminPost = async (data) => {
+    const html = await (await req('/setup.php')).text();
+    return (await req('/setup.php', form({ csrf: csrfOf(html), ...data }))).text();
+  };
+  const inviteOf = (html) => html.match(/초대 코드 <code>([A-Z0-9]{8})<\/code>/)[1];
+  const api = async (p, body, token) => {
+    const headers = token ? { 'X-Talk-Token': token } : {};
+    const opts = body === undefined ? { headers } : { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+    const r = await fetch(BASE + '/api.php/' + p, opts);
+    return { status: r.status, body: await r.json() };
+  };
+  let family, friends, inviteFamily, inviteFriends;
+  const tok = {};
+
+  await t('관리 화면: 그룹 두 개 만들고 초대 코드', async () => {
+    let html = await adminPost({ act: 'group_new', name: '가족' });
+    assert.match(html, /그룹 (&quot;|")가족(&quot;|") 을 만들었어요/);
+    await adminPost({ act: 'group_new', name: '친구' });
+    html = await (await req('/setup.php')).text();
+    const ids = [...html.matchAll(/name="act" value="invite"><input type="hidden" name="group" value="(\d+)"/g)].map((m) => m[1]);
+    [family, friends] = ids;
+    inviteFamily = inviteOf(await adminPost({ act: 'invite', group: family, uses: '2', days: '7' }));
+    inviteFriends = inviteOf(await adminPost({ act: 'invite', group: friends, uses: '1', days: '7' }));
+    assert.ok(inviteFamily && inviteFriends);
+  });
+
+  await t('가입: 틀린 초대 코드는 거절, 맞으면 토큰', async () => {
+    let r = await api('auth/register', { invite: 'WRONG123', name: '엄마', password: 'pass1234' });
+    assert.equal(r.status, 401);
+    r = await api('auth/invite', { invite: inviteFamily.toLowerCase() });
+    assert.equal(r.body.group, '가족');
+    r = await api('auth/register', { invite: inviteFamily, name: '엄마', password: 'pass1234', device: '엄마 폰' });
+    assert.equal(r.status, 200);
+    tok.mom = r.body.token;
+    r = await api('auth/register', { invite: inviteFamily, name: '엄마', password: 'pass1234' });
+    assert.equal(r.status, 409, '같은 이름');
+    r = await api('auth/register', { invite: inviteFamily, name: '아빠', password: 'pass1234' });
+    tok.dad = r.body.token;
+    r = await api('auth/register', { invite: inviteFamily, name: '동생', password: 'pass1234' });
+    assert.equal(r.status, 401, '2번 쓰는 코드를 3번째');
+    r = await api('auth/register', { invite: inviteFriends, name: '친구1', password: 'pass1234' });
+    tok.f1 = r.body.token;
+  });
+
+  await t('관리자도 메신저에 로그인 (관리자 비밀번호)', async () => {
+    let r = await api('auth/login', { name: '일래', password: 'nope' });
+    assert.equal(r.status, 401);
+    r = await api('auth/login', { name: '일래', password: 'test-password-1', device: 'PC' });
+    assert.equal(r.status, 200);
+    tok.me = r.body.token;
+  });
+
+  await t('그룹: 같은 그룹 사람만 보임', async () => {
+    let r = await api('me', undefined, tok.mom);
+    assert.deepEqual(r.body.groups.map((g) => g.name), ['가족']);
+    assert.deepEqual(r.body.groups[0].members.map((m) => m.name).sort(), ['아빠', '엄마', '일래'].sort());
+    r = await api('me', undefined, tok.f1);
+    assert.deepEqual(r.body.groups[0].members.map((m) => m.name).sort(), ['일래', '친구1'].sort());
+    r = await api('me', undefined, tok.me);
+    assert.equal(r.body.groups.length, 2);
+  });
+
+  const idOf = async (token, name) => (await api('me', undefined, token)).body.groups.flatMap((g) => g.members).find((m) => m.name === name).id;
+  let dm, room;
+
+  await t('1:1 방: 다른 그룹 사람과는 못 만듦, 같은 방은 하나', async () => {
+    const f1 = await idOf(tok.me, '친구1');
+    let r = await api('rooms/dm', { user_id: f1 }, tok.mom);
+    assert.equal(r.status, 403);
+    const dad = await idOf(tok.mom, '아빠');
+    r = await api('rooms/dm', { user_id: dad }, tok.mom);
+    dm = r.body.room.id;
+    const mom = await idOf(tok.dad, '엄마');
+    r = await api('rooms/dm', { user_id: mom }, tok.dad);
+    assert.equal(r.body.room.id, dm);
+  });
+
+  await t('여럿 방: 다른 그룹 사람은 못 넣음', async () => {
+    const f1 = await idOf(tok.me, '친구1');
+    const mom = await idOf(tok.me, '엄마');
+    let r = await api('rooms/create', { group_id: Number(family), member_ids: [f1], name: '' }, tok.me);
+    assert.equal(r.status, 403);
+    const dad = await idOf(tok.me, '아빠');
+    r = await api('rooms/create', { group_id: Number(family), member_ids: [mom, dad], name: '우리 가족' }, tok.me);
+    room = r.body.room.id;
+    assert.equal(r.body.room.members.length, 3);
+  });
+
+  let cursorDad;
+  await t('메시지: 보내기·재시도 중복 없음·방 밖 사람은 못 보냄', async () => {
+    let r = await api('messages/send', { room_id: room, body: '저녁 뭐 먹어?', client_id: 'abcdefgh01' }, tok.me);
+    const id = r.body.message.id;
+    r = await api('messages/send', { room_id: room, body: '저녁 뭐 먹어?', client_id: 'abcdefgh01' }, tok.me);
+    assert.equal(r.body.message.id, id);
+    r = await api('messages/send', { room_id: room, body: '나도 끼워줘' }, tok.f1);
+    assert.equal(r.status, 403);
+    r = await api('messages/send', { room_id: room, body: '   ' }, tok.me);
+    assert.equal(r.status, 400);
+  });
+
+  await t('동기화: 처음엔 전부, 그다음엔 바뀐 것만', async () => {
+    let r = await api('sync?since=0', undefined, tok.dad);
+    assert.equal(r.body.full, true);
+    assert.equal(r.body.rooms.length, 2);
+    const fam = r.body.rooms.find((x) => x.id === room);
+    assert.equal(fam.unread, 1);
+    assert.equal(fam.last.body, '저녁 뭐 먹어?');
+    cursorDad = r.body.cursor;
+    r = await api('sync?since=' + cursorDad, undefined, tok.dad);
+    assert.equal(r.body.rooms.length, 0);
+    await api('messages/send', { room_id: room, body: '김치찌개', client_id: 'momclient01' }, tok.mom);
+    r = await api('sync?since=' + cursorDad, undefined, tok.dad);
+    assert.deepEqual(r.body.messages.map((m) => m.body), ['김치찌개']);
+    assert.equal(r.body.rooms[0].unread, 2);
+    cursorDad = r.body.cursor;
+    r = await api('sync?since=0', undefined, tok.f1);
+    assert.equal(r.body.rooms.length, 0, '친구1 은 가족 방을 못 봄');
+  });
+
+  await t('읽음: 읽으면 안 읽은 수가 줄고 다른 사람에게도 알려짐', async () => {
+    const r0 = await api('sync?since=0', undefined, tok.dad);
+    const last = r0.body.rooms.find((x) => x.id === room).last.id;
+    await api('rooms/read', { room_id: room, last_id: last }, tok.dad);
+    let r = await api('sync?since=0', undefined, tok.dad);
+    assert.equal(r.body.rooms.find((x) => x.id === room).unread, 0);
+    r = await api('sync?since=0', undefined, tok.me);
+    const dadId = await idOf(tok.me, '아빠');
+    assert.equal(r.body.rooms.find((x) => x.id === room).members.find((m) => m.id === dadId).last_read_id, last);
+    r = await api('rooms/read', { room_id: room, last_id: last }, tok.f1);
+    assert.equal(r.status, 403);
+  });
+
+  await t('예전 대화 불러오기 (50개씩)', async () => {
+    for (let i = 0; i < 55; i++) await api('messages/send', { room_id: dm, body: '메시지 ' + i }, tok.mom);
+    let r = await api('messages/history?room_id=' + dm, undefined, tok.dad);
+    assert.equal(r.body.messages.length, 50);
+    assert.equal(r.body.messages.at(-1).body, '메시지 54');
+    r = await api('messages/history?room_id=' + dm + '&before=' + r.body.messages[0].id, undefined, tok.dad);
+    assert.equal(r.body.messages.length, 5);
+    r = await api('messages/history?room_id=' + dm, undefined, tok.f1);
+    assert.equal(r.status, 403);
+  });
+
+  await t('이미 가입한 사람이 초대 코드로 다른 그룹에 들어감', async () => {
+    const inv = inviteOf(await adminPost({ act: 'invite', group: friends, uses: '1', days: '1' }));
+    let r = await api('groups/join', { invite: inv }, tok.mom);
+    assert.deepEqual(r.body.groups.map((g) => g.name), ['가족', '친구']);
+    const f1 = await idOf(tok.mom, '친구1');
+    r = await api('rooms/dm', { user_id: f1 }, tok.mom);
+    assert.equal(r.status, 200);
+  });
+
+  await t('관리: 그룹을 닫으면 그 방이 안 보이고, 사람을 멈추면 로그인이 끊김', async () => {
+    await adminPost({ act: 'group_close', id: friends });
+    let r = await api('me', undefined, tok.f1);
+    assert.equal(r.body.groups.length, 0);
+    await adminPost({ act: 'group_open', id: friends });
+    const html = await (await req('/setup.php')).text();
+    const f1 = html.match(/<b>친구1<\/b>[\s\S]*?name="act" value="user_off"><input type="hidden" name="id" value="(\d+)"/)[1];
+    await adminPost({ act: 'user_off', id: f1 });
+    r = await api('me', undefined, tok.f1);
+    assert.equal(r.status, 401);
+  });
+
+  await t('로그아웃하면 그 기기 토큰은 못 씀', async () => {
+    let r = await api('auth/logout', {}, tok.dad);
+    assert.equal(r.status, 200);
+    r = await api('me', undefined, tok.dad);
+    assert.equal(r.status, 401);
   });
 
   await t('DB 표는 talk_ 로 시작', async () => {

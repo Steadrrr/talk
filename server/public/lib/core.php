@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 1;
+const TALK_SERVER_VERSION = 2;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -58,6 +58,46 @@ function talk_db(array $cfg): PDO {
 function talk_migrate(PDO $pdo): void {
     $q = [
         "CREATE TABLE IF NOT EXISTS talk_meta (k VARCHAR(64) PRIMARY KEY, v MEDIUMTEXT NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        // 사람. 이름은 로그인 아이디라 서버 전체에서 하나
+        "CREATE TABLE IF NOT EXISTS talk_users (
+            id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(20) NOT NULL UNIQUE, password_hash VARCHAR(255) NOT NULL,
+            is_admin TINYINT NOT NULL DEFAULT 0, disabled TINYINT NOT NULL DEFAULT 0, created_at DATETIME NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS talk_devices (
+            id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, name VARCHAR(100) NOT NULL, token_hash CHAR(64) NOT NULL UNIQUE,
+            created_at DATETIME NOT NULL, last_seen DATETIME NOT NULL, revoked TINYINT NOT NULL DEFAULT 0, INDEX (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS talk_login_fails (id INT AUTO_INCREMENT PRIMARY KEY, ip VARCHAR(64) NOT NULL, at DATETIME NOT NULL, INDEX (ip, at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        // 그룹: 같은 그룹 사람끼리만 서로 보인다
+        "CREATE TABLE IF NOT EXISTS talk_groups (
+            id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(40) NOT NULL, closed TINYINT NOT NULL DEFAULT 0, created_at DATETIME NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS talk_group_members (
+            group_id INT NOT NULL, user_id INT NOT NULL, joined_at DATETIME NOT NULL, PRIMARY KEY (group_id, user_id), INDEX (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS talk_invites (
+            id INT AUTO_INCREMENT PRIMARY KEY, group_id INT NOT NULL, code_hash CHAR(64) NOT NULL UNIQUE, uses_left INT NOT NULL,
+            expires_at DATETIME NOT NULL, revoked TINYINT NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, INDEX (group_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        // 채팅방: dm(1:1, dm_key='작은ID:큰ID') 또는 group(여럿). 방은 한 그룹 안에 있다
+        "CREATE TABLE IF NOT EXISTS talk_rooms (
+            id INT AUTO_INCREMENT PRIMARY KEY, group_id INT NOT NULL, kind VARCHAR(8) NOT NULL, name VARCHAR(40) NULL,
+            dm_key VARCHAR(24) NULL UNIQUE, created_by INT NOT NULL, created_at DATETIME NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS talk_room_members (
+            room_id INT NOT NULL, user_id INT NOT NULL, joined_at DATETIME NOT NULL, last_read_id BIGINT NOT NULL DEFAULT 0,
+            muted TINYINT NOT NULL DEFAULT 0, pinned TINYINT NOT NULL DEFAULT 0, PRIMARY KEY (room_id, user_id), INDEX (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        "CREATE TABLE IF NOT EXISTS talk_messages (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY, room_id INT NOT NULL, user_id INT NOT NULL, kind VARCHAR(8) NOT NULL DEFAULT 'text',
+            body TEXT NOT NULL, client_id VARCHAR(40) NULL, created_at DATETIME NOT NULL,
+            INDEX idx_room (room_id, id), UNIQUE KEY uq_client (user_id, client_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        // 동기화용 변경 기록: 앱은 sync?since=<마지막 번호> 로 자기 방의 새 변경만 받는다
+        "CREATE TABLE IF NOT EXISTS talk_events (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY, room_id INT NOT NULL, kind VARCHAR(8) NOT NULL, ref_id BIGINT NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL, INDEX idx_room (room_id, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
     foreach ($q as $sql) $pdo->exec($sql);
     talk_meta_set($pdo, 'schema', (string)TALK_SERVER_VERSION);
