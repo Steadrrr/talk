@@ -19,9 +19,9 @@ import './saki-splash.js';
 
 applyFontSize();
 fitViewport();
-// 앱을 완전히 껐다가 새로 열 때만 S.A.K.i 스플래시 (같은 창에서 새로고침하면 다시 안 띄움)
+// S.A.K.i 스플래시: 앱을 완전히 껐다가 새로 열 때, 새 버전으로 저절로 새로고침했을 때 (그냥 새로고침하면 다시 안 띄움)
 try {
-  if (!sessionStorage.getItem('talk_splash')) { sessionStorage.setItem('talk_splash', '1'); window.SakiSplash.show(); }
+  if (!sessionStorage.getItem('talk_splash') || sessionStorage.getItem('talk_resume')) { sessionStorage.setItem('talk_splash', '1'); window.SakiSplash.show(); }
 } catch { window.SakiSplash.show(); }
 
 function App() {
@@ -61,7 +61,7 @@ function App() {
       if (r.notices) showNotices(true);
       if (r.room) syncNow().then(() => open(r.room));
       setToast('새 버전으로 바꿨어요');
-      setTimeout(() => setToast(''), 3000);
+      setTimeout(() => setToast(''), 5000);
     }
   }
   useEffect(() => { start(); }, []);
