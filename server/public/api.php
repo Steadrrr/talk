@@ -186,7 +186,7 @@ switch ($route) {
 
     case 'rooms/leave':
         $need('POST');
-        talk_room_leave($pdo, $uid, (int)(talk_body()['room_id'] ?? 0));
+        talk_room_leave($pdo, $cfg, $uid, (int)(talk_body()['room_id'] ?? 0));
         talk_json(['ok' => true]);
 
     case 'admin/ticket':

@@ -463,16 +463,28 @@ try {
     assert.ok(s2.messages.some((m) => m.room_id === room && m.body === '일래님이 나갔어요.'));
     assert.equal(s2.rooms.find((x) => x.id === room).members.length, 2);
 
-    // 1:1 방: 나가면 안 보이고, 상대가 보내면 다시 들어옴
+    // 1:1 방: 지우면 두 사람 모두에게서 사라지고, 다시 대화하면 빈 새 방
     const dm = (await api('rooms/dm', { user_id: dad }, tok.mom)).body.room.id;
     r = await api('rooms/rename', { room_id: dm, name: 'x' }, tok.mom);
     assert.equal(r.status, 400, '1:1 방은 이름 못 바꿈');
-    await api('rooms/leave', { room_id: dm }, tok.dad);
+    await api('messages/send', { room_id: dm, body: '안녕' }, tok.mom);
+    r = await api('rooms/leave', { room_id: dm }, tok.dad);
+    assert.equal(r.status, 200);
     assert.ok(!(await view(tok.dad)).room_ids.includes(dm));
-    await api('messages/send', { room_id: dm, body: '돌아와' }, tok.mom);
+    assert.ok(!(await view(tok.mom)).room_ids.includes(dm), '상대에게서도 사라짐');
+    r = await api('messages/send', { room_id: dm, body: '돌아와' }, tok.mom);
+    assert.equal(r.status, 403, '지운 방에는 못 보냄');
+    const dm2 = (await api('rooms/dm', { user_id: dad }, tok.mom)).body.room.id;
+    assert.notEqual(dm2, dm, '다시 대화하면 새 방');
     v = await view(tok.dad);
-    assert.ok(v.room_ids.includes(dm), '상대가 보내면 다시 보임');
-    assert.equal(v.rooms.find((x) => x.id === dm).unread, 1, '안 읽은 것은 새 메시지만');
+    assert.ok(v.room_ids.includes(dm2));
+    assert.ok(!v.messages.some((m) => m.room_id === dm2), '예전 메시지는 없음');
+
+    // 여럿 방: 마지막 사람이 나가면 방이 없어짐
+    const solo = (await api('rooms/create', { group_id: v.rooms.find((x) => x.id === dm2).group_id, member_ids: [dad], name: '둘' }, tok.mom)).body.room.id;
+    await api('rooms/leave', { room_id: solo }, tok.mom);
+    await api('rooms/leave', { room_id: solo }, tok.dad);
+    assert.ok(!(await view(tok.dad)).room_ids.includes(solo));
   });
 
   await t('프로필·채팅방 사진: 올리면 모두에게 주소가 보이고, 로그인 없이 그 주소로 받음, 방 사진은 누구나 바꿈', async () => {

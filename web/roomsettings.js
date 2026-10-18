@@ -52,7 +52,7 @@ export function RoomSettings({ room, onClose, onLeft }) {
     setBusy(false);
   }
   async function leave() {
-    if (!confirm(isGroup ? '이 방에서 나갈까요? 대화 목록에서 사라져요.' : '이 대화방을 목록에서 지울까요? 상대가 다시 보내면 다시 보여요.')) return;
+    if (!confirm(leaveQuestion(room))) return;
     await run(async () => { await leaveRoom(room.id); onLeft(); });
   }
 
@@ -116,4 +116,11 @@ export function RoomSettings({ room, onClose, onLeft }) {
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
     </div>
   `;
+}
+
+// 나가기 전에 묻는 말: 1:1 은 두 사람 모두에게서 사라지고, 여럿 방은 나만 나감
+export function leaveQuestion(room) {
+  return room.kind === 'dm'
+    ? '이 대화방을 지울까요?\n상대방 채팅 목록에서도 사라지고, 대화 내용은 되돌릴 수 없어요.'
+    : '이 채팅방에서 나갈까요?\n나만 나가고, 다른 사람들은 그대로 대화해요.';
 }

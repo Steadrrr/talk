@@ -1,8 +1,9 @@
 // 아래 탭 세 개: 친구(그룹별), 채팅(방 목록), 설정
-import { useState } from 'preact/hooks';
+import { useState, useRef } from 'preact/hooks';
 import { html, Avatar, listTime } from './html.js';
 import { api } from './api.js';
-import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile } from './store.js';
+import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile, leaveRoom } from './store.js';
+import { leaveQuestion } from './roomsettings.js';
 import { nickOf, fullName } from './names.js';
 import { PushCard } from './pushui.js';
 import { InstallCard } from './install.js';
@@ -51,7 +52,13 @@ function Friends() {
 
 function Chats({ onOpen }) {
   const [making, setMaking] = useState(false);
+  const [swiped, setSwiped] = useState(0);   // 왼쪽으로 밀어서 쓰레기통이 보이는 방 (한 번에 하나)
   const rooms = sortedRooms();
+  async function remove(r) {
+    if (!confirm(leaveQuestion(r))) return;
+    setSwiped(0);
+    try { await leaveRoom(r.id); } catch (e) { alert(e.message); }
+  }
   return html`
     <section class="page">
       <${Header} title="채팅"><button class="icon hicon" title="새 채팅방" aria-label="새 채팅방" onClick=${() => setMaking(true)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 4v16M4 12h16" /></svg></button><//>
@@ -61,19 +68,62 @@ function Chats({ onOpen }) {
         ${rooms.map((r) => {
           const other = r.kind === 'dm' ? r.members.find((m) => m.id !== state.me.id) : null;
           return html`
-            <button class="room" onClick=${() => onOpen(r.id)}>
+            <${SwipeRow} open=${swiped === r.id} setOpen=${(on) => setSwiped(on ? r.id : 0)} onTap=${() => (swiped ? setSwiped(0) : onOpen(r.id))}
+              action=${html`<button class="swipe-del" aria-label=${r.kind === 'dm' ? '대화방 지우기' : '채팅방 나가기'} onClick=${() => remove(r)}>${TRASH}</button>`}>
               ${r.photo ? html`<${Avatar} photo=${r.photo} size=${72} />` : other ? html`<${Avatar} name=${nickOf(other)} id=${other.id} photo=${other.photo} size=${72} />` : html`<span class="avatar multi">${r.members.length}</span>`}
               <span class="room-main">
                 <span class="room-top"><b class="ellipsis">${roomTitle(r)}</b>${r.kind === 'group' && html`<span class="hint">${r.members.length}</span>`}${r.pinned > 0 && html`<span class="mark" title="위에 고정">📌</span>`}${r.muted > 0 && html`<span class="mark" title="알림 끔">🔕</span>`}</span>
                 <span class="ellipsis hint">${r.last ? preview(r.last) : '새 대화방'}</span>
               </span>
               <span class="room-side"><span class="hint small">${listTime(r.last?.at || r.created_at)}</span>${r.unread > 0 && html`<span class="badge">${r.unread > 99 ? '99+' : r.unread}</span>`}</span>
-            </button>`;
+            <//>`;
         })}
       </div>
       ${making && html`<${NewRoom} onClose=${() => setMaking(false)} onOpen=${(id) => { setMaking(false); onOpen(id); }} />`}
     </section>
   `;
+}
+
+const TRASH = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>`;
+const SWIPE_W = 76;
+
+// 채팅 목록 한 줄: 왼쪽으로 밀면 오른쪽에 action(쓰레기통)이 나옴. 위아래 스크롤은 그대로 (touch-action: pan-y)
+function SwipeRow({ open, setOpen, onTap, action, children }) {
+  const [dx, setDx] = useState(null);   // 끄는 중일 때만 숫자
+  const t = useRef(null);
+  const swallow = useRef(false);
+  const base = open ? -SWIPE_W : 0;
+  function down(e) { t.current = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: false }; }
+  function move(e) {
+    const s = t.current;
+    if (!s || s.id !== e.pointerId) return;
+    const mx = e.clientX - s.x, my = e.clientY - s.y;
+    if (!s.moved) {
+      if (Math.abs(mx) < 8) return;
+      if (Math.abs(my) > Math.abs(mx)) { t.current = null; return; }
+      s.moved = true;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+    setDx(Math.max(-SWIPE_W * 1.4, Math.min(0, base + mx)));
+  }
+  function up() {
+    const s = t.current;
+    t.current = null;
+    if (!s?.moved) return;
+    setOpen(dx !== null && dx < -SWIPE_W / 2);
+    setDx(null);
+    // 끌기를 마친 뒤 따라오는 click 은 방 열기로 치지 않음
+    swallow.current = true;
+    setTimeout(() => { swallow.current = false; }, 50);
+  }
+  const x = dx ?? base;
+  return html`
+    <div class="swipe">
+      <div class="swipe-act" style=${{ width: SWIPE_W + 'px', visibility: x < 0 ? 'visible' : 'hidden' }}>${action}</div>
+      <button class=${'room' + (dx === null ? ' settle' : '')} style=${{ transform: x ? `translateX(${x}px)` : '' }}
+        onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${() => { t.current = null; setDx(null); }}
+        onClick=${() => !swallow.current && onTap()}>${children}</button>
+    </div>`;
 }
 
 function NewRoom({ onClose, onOpen }) {
