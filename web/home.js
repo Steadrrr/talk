@@ -5,6 +5,7 @@ import { api } from './api.js';
 import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile } from './store.js';
 import { nickOf, fullName } from './names.js';
 import { PushCard } from './pushui.js';
+import { InstallCard } from './install.js';
 import { TAB_ICONS } from './icons.js';
 import { preview } from './media.js';
 import { FONT_SIZES, getFontSize, setFontSize } from './fontsize.js';
@@ -115,7 +116,6 @@ function Settings() {
   const [oldPw, setOldPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [fs, setFs] = useState(getFontSize());
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 
   async function join(e) {
     e.preventDefault();
@@ -163,7 +163,7 @@ function Settings() {
           <div class="seg fs-seg">${FONT_SIZES.map((f) => html`<button class=${fs === f.key ? 'on' : ''} onClick=${() => { setFontSize(f.key); setFs(f.key); }}>${f.label}</button>`)}</div>
           <p class="hint fs-preview">대화와 목록의 글씨가 이 크기로 보여요. 이 기기에만 적용돼요.</p>
         </div>
-        ${!standalone && html`<div class="card"><b>홈 화면에 추가하기</b><p class="hint">아이폰: 사파리 아래 공유 버튼 → "홈 화면에 추가". 안드로이드: 크롬 메뉴 ⋮ → "홈 화면에 추가". 앱처럼 바로 열려요.</p></div>`}
+        <${InstallCard} />
         <form class="card" onSubmit=${join}>
           <b>초대 코드 넣기</b>
           <p class="hint">다른 그룹의 초대 코드를 받았으면 여기에 넣어요.</p>
