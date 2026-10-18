@@ -1,4 +1,4 @@
-// S.A.K.I Talk 웹앱 시작점. 화면은 Preact + htm (빌드 없이 쓰는 JSX 대신 태그 문자열)
+// SAKi Talk 웹앱 시작점. 화면은 Preact + htm (빌드 없이 쓰는 JSX 대신 태그 문자열)
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { html } from './html.js';

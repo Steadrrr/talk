@@ -165,7 +165,7 @@ function Settings() {
           <button class="primary" type="submit">바꾸기</button>
         </form>
         <button class="danger" onClick=${logout}>로그아웃</button>
-        <p class="hint center">S.A.K.I Talk · 광고 없음</p>
+        <p class="hint center">SAKi Talk · 광고 없음</p>
       </div>
     </section>
   `;

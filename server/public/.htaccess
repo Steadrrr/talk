@@ -1,4 +1,4 @@
-# S.A.K.I Talk: 폴더 목록 숨기기, 내부 파일 직접 접근 막기
+# SAKi Talk: 폴더 목록 숨기기, 내부 파일 직접 접근 막기
 Options -Indexes
 DirectoryIndex index.html
 <FilesMatch "^(config-path)\.php$">

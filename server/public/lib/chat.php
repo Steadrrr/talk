@@ -1,5 +1,5 @@
 <?php
-// S.A.K.I Talk 채팅방·메시지·동기화
+// SAKi Talk 채팅방·메시지·동기화
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 

@@ -1,5 +1,5 @@
 <?php
-// S.A.K.I Talk 서버 공통: 설정 읽기, DB, 표 만들기, JSON 응답
+// SAKi Talk 서버 공통: 설정 읽기, DB, 표 만들기, JSON 응답
 // SAKI 와 같은 카페24 계정·DB 를 쓰므로 표 이름은 모두 talk_ 로 시작하고, 설정 파일도 따로 둔다 (/talk-private/).
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
@@ -29,7 +29,7 @@ function talk_config(): ?array {
 
 function talk_write_config(string $dir, array $cfg): void {
     unset($cfg['private_dir']);
-    $php = "<?php\n// S.A.K.I Talk 서버 설정 — DB 비밀번호가 들어 있어요. 다른 사람에게 보여 주지 마세요.\nreturn " . var_export($cfg, true) . ";\n";
+    $php = "<?php\n// SAKi Talk 서버 설정 — DB 비밀번호가 들어 있어요. 다른 사람에게 보여 주지 마세요.\nreturn " . var_export($cfg, true) . ";\n";
     $tmp = "$dir/config.php.tmp";
     if (file_put_contents($tmp, $php, LOCK_EX) === false) throw new RuntimeException('설정 파일을 쓸 수 없어요.');
     @chmod($tmp, 0600);

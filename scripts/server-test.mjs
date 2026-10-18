@@ -1,4 +1,4 @@
-// S.A.K.I Talk 서버 시험: 카페24 와 같은 폴더 구조(www/talk)로 server/public 을 복사해 php -S + MariaDB 로 띄우고 API·설정 화면을 확인한다.
+// SAKi Talk 서버 시험: 카페24 와 같은 폴더 구조(www/talk)로 server/public 을 복사해 php -S + MariaDB 로 띄우고 API·설정 화면을 확인한다.
 // 필요: php(pdo_mysql), MariaDB. DB 는 환경 변수 TALK_TEST_DB=호스트:DB:아이디:비밀번호 (기본 localhost:talktest:talk:talkpass)
 // 멈춰 있으면: service mariadb start
 import { spawn, execFileSync } from 'node:child_process';

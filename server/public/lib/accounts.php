@@ -1,5 +1,5 @@
 <?php
-// S.A.K.I Talk 계정·기기·그룹·초대 코드
+// SAKi Talk 계정·기기·그룹·초대 코드
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 

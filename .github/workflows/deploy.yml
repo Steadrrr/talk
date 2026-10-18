@@ -1,7 +1,7 @@
-# S.A.K.I Talk 자동 배포: main 에 올라오면 웹앱을 빌드하고 서버 시험을 돌린 뒤 server/public 을 카페24 /www/talk/ 로 올린다.
+# SAKi Talk 자동 배포: main 에 올라오면 웹앱을 빌드하고 서버 시험을 돌린 뒤 server/public 을 카페24 /www/talk/ 로 올린다.
 # 바뀐 파일만 올리고, 서버에서 직접 만든 파일(config-path.php, 설정 파일)은 건드리지 않는다.
 # 저장소 Settings → Secrets and variables → Actions 에 TALK_FTP_HOST / TALK_FTP_USER / TALK_FTP_PASSWORD 를 넣으면 켜진다.
-name: S.A.K.I Talk 배포 (카페24)
+name: SAKi Talk 배포 (카페24)
 
 on:
   push:

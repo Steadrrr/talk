@@ -55,7 +55,7 @@ export function Auth({ onDone }) {
   return html`
     <main class="auth">
       <img class="logo" src="./icon-192.png" alt="" width="80" height="80" />
-      <h1>S.A.K.I Talk</h1>
+      <h1>SAKi Talk</h1>
       <div class="seg">
         <button class=${mode === 'login' ? 'on' : ''} onClick=${() => { setMode('login'); setErr(''); }}>로그인</button>
         <button class=${mode === 'register' ? 'on' : ''} onClick=${() => { setMode('register'); setErr(''); }}>초대받아 가입</button>

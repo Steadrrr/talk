@@ -1,4 +1,4 @@
-# S.A.K.I Talk — Claude Code 작업 안내 (새 세션은 이것부터)
+# SAKi Talk — Claude Code 작업 안내 (새 세션은 이것부터)
 
 가족·친구(전체 10명 이내)끼리만 쓰는 광고 없는 가벼운 메신저. 웹앱(PWA) + 카페24 PHP 서버.
 Project S.A.K.I(저장소 Steadrrr/SAKI)의 카페24 호스팅을 같이 쓴다: SAKI 는 `/www/saki/`, 메신저는 `/www/talk/` (https://mysaki.mycafe24.com/talk/).

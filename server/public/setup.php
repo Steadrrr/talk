@@ -1,5 +1,5 @@
 <?php
-// S.A.K.I Talk 서버 설정 페이지
+// SAKi Talk 서버 설정 페이지
 //  - 처음: DB 정보(SAKI 와 같은 카페24 DB 를 써도 됨, 표 이름이 talk_ 로 달라 섞이지 않음)와 관리자 이름·비밀번호를 넣으면
 //    설정 파일(웹에서 안 열리는 곳)과 표를 만든다. 올린 지 24시간 안에만 처음 설정을 할 수 있다 (남이 먼저 설정하는 것을 막는 안전장치)
 //  - 설정 후: 관리자 비밀번호로 들어와 그룹·초대 코드·사람·기기를 관리하고, 사진·영상 보관 설정을 바꾼다
@@ -87,7 +87,7 @@ if ($cfg === null) {
         }
     }
     if ($cfg === null) {
-        page_head('S.A.K.I Talk 처음 설정');
+        page_head('SAKi Talk 처음 설정');
         if (!$https && !$local) echo '<p class="err">지금 http 로 열었어요. 비밀번호가 암호화 없이 전송되니 https:// 주소로 다시 열어 주세요.</p>';
         if ($expired) {
             echo '<p class="err">이 설정 페이지를 올린 지 ' . SETUP_WINDOW_HOURS . '시간이 지나 처음 설정이 잠겼어요. (남이 먼저 설정하지 못하게 하는 안전장치)<br>setup.php 를 다시 올린 뒤 바로 설정해 주세요.</p>';
@@ -205,7 +205,7 @@ function check_admin_password(PDO $pdo, array $cfg, string $pw): void {
     }
 }
 
-page_head('S.A.K.I Talk 관리');
+page_head('SAKi Talk 관리');
 if ($msg) echo '<p class="ok">' . h($msg) . '</p>';
 if ($err) echo '<p class="err">' . h($err) . '</p>';
 if (empty($_SESSION['admin'])) {
