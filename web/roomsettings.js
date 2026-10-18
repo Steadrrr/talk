@@ -88,12 +88,12 @@ export function RoomSettings({ room, onClose, onLeft }) {
             <h3>대화 상대 ${room.members.length}</h3>
           </div>
           ${room.members.map((m) => html`
-            <button class="person" onClick=${() => showProfile(m.id)}><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} /><span>${nickOf(m)}${m.id === state.me.id ? ' (나)' : ''}</span></button>`)}
-          ${isGroup && !inviting && html`<button class="person" onClick=${() => { setInviting(true); setPicked([]); }} disabled=${!candidates.length}><span class="avatar multi" style="width:40px;height:40px">＋</span><span>${candidates.length ? '초대하기' : '같은 그룹에 초대할 사람이 없어요'}</span></button>`}
+            <button class="person" onClick=${() => showProfile(m.id)}><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} size=${60} /><span>${nickOf(m)}${m.id === state.me.id ? ' (나)' : ''}</span></button>`)}
+          ${isGroup && !inviting && html`<button class="person" onClick=${() => { setInviting(true); setPicked([]); }} disabled=${!candidates.length}><span class="avatar multi" style="width:60px;height:60px">＋</span><span>${candidates.length ? '초대하기' : '같은 그룹에 초대할 사람이 없어요'}</span></button>`}
           ${isGroup && inviting && html`
             <div class="section"><h3>초대할 사람 (${group?.name || ''} 그룹)</h3></div>
             ${candidates.map((m) => html`
-              <label class="person check"><input type="checkbox" checked=${picked.includes(m.id)} onChange=${() => toggle(m.id)} /><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} /><span>${nickOf(m)}</span></label>`)}
+              <label class="person check"><input type="checkbox" checked=${picked.includes(m.id)} onChange=${() => toggle(m.id)} /><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} size=${60} /><span>${nickOf(m)}</span></label>`)}
             <div class="section inline"><button class="text" onClick=${() => setInviting(false)}>그만두기</button><span class="grow"></span>
               <button class="primary" disabled=${!picked.length} onClick=${() => run(async () => { await inviteToRoom(room.id, picked); setInviting(false); }, '초대했어요.')}>초대</button></div>`}
           <div class="section"><button class="danger" onClick=${leave}>${isGroup ? '채팅방 나가기' : '대화방 지우기'}</button></div>

@@ -99,7 +99,7 @@ export function Room({ id, onBack }) {
     const n = m.pending ? 0 : unreadCount(m);
     rows.push(html`
       <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (first ? ' first' : '')} key=${m.id || m.client_id}>
-        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} photo=${byId.get(m.user_id)?.photo} size=${36} /></button>` : html`<span class="avatar-gap"></span>`)}
+        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} photo=${byId.get(m.user_id)?.photo} size=${54} /></button>` : html`<span class="avatar-gap"></span>`)}
         <div class="msg-col">
           ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">

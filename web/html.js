@@ -28,7 +28,7 @@ export function listTime(iso) {
 // 얼굴: 프로필 사진이 있으면 사진, 없으면 이름 첫 글자
 const COLORS = ['#f48fb1', '#ce93d8', '#9fa8da', '#80cbc4', '#ffcc80', '#a5d6a7', '#90caf9', '#ffab91'];
 export const photoUrl = (key) => new URL('./api.php/photo/' + key, location.href).href;
-export function Avatar({ name, id, photo, size = 40 }) {
+export function Avatar({ name, id, photo, size = 60 }) {
   if (photo) return html`<img class="avatar" src=${photoUrl(photo)} alt="" width=${size} height=${size} style=${{ width: size + 'px', height: size + 'px' }} />`;
   const c = COLORS[Math.abs(id || 0) % COLORS.length];
   return html`<span class="avatar" style=${{ width: size + 'px', height: size + 'px', background: c, fontSize: Math.round(size * 0.42) + 'px' }}>${(name || '?').slice(0, 1)}</span>`;
