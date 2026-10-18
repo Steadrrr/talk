@@ -1,9 +1,9 @@
 :root {
-  --bg: #f6f7f9; --card: #fff; --fg: #1c1f24; --dim: #69707a; --acc: #3b6cf6; --bad: #c62828; --line: #e3e6ea;
+  --bg: #f6f7f9; --card: #fff; --fg: #1c1f24; --dim: #69707a; --acc: #e8508e; --bad: #c62828; --line: #e3e6ea;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #15171b; --card: #1f2228; --fg: #eceef1; --dim: #9aa1ab; --acc: #7b9cff; --bad: #ff8a80; --line: #2e333b; }
+  :root { --bg: #15171b; --card: #1f2228; --fg: #eceef1; --dim: #9aa1ab; --acc: #ff8fbd; --bad: #ff8a80; --line: #2e333b; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
