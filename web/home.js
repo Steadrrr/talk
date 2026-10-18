@@ -9,6 +9,7 @@ import { InstallCard } from './install.js';
 import { TAB_ICONS } from './icons.js';
 import { preview } from './media.js';
 import { FONT_SIZES, getFontSize, setFontSize } from './fontsize.js';
+import { NoticeStrip } from './notices.js';
 
 export function Home({ tab, setTab, onOpen }) {
   const unread = Object.values(state.rooms).reduce((n, r) => n + (r.unread || 0), 0);
@@ -55,6 +56,7 @@ function Chats({ onOpen }) {
     <section class="page">
       <${Header} title="채팅"><button class="icon hicon" title="새 채팅방" aria-label="새 채팅방" onClick=${() => setMaking(true)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 4v16M4 12h16" /></svg></button><//>
       <div class="scroll">
+        <${NoticeStrip} />
         ${rooms.length === 0 && html`<p class="empty">아직 대화가 없어요. 친구 탭에서 이름을 누르거나 ＋ 로 방을 만들어 보세요.</p>`}
         ${rooms.map((r) => {
           const other = r.kind === 'dm' ? r.members.find((m) => m.id !== state.me.id) : null;

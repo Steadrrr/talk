@@ -5,6 +5,7 @@ import { api, AuthError, setToken } from './api.js';
 import { nickOf } from './names.js';
 import { prepPhoto, prepVideo, upload } from './media.js';
 import { keepPending, dropPending, listPending, clearPending } from './pending.js';
+import { checkUpdate } from './update.js';
 
 const SAVE_KEY = 'talk.state.v1';
 const KEEP_PER_ROOM = 100; // 기기에 남기는 방별 최근 메시지 수
@@ -20,6 +21,8 @@ export const state = {
   profile: null,   // 프로필 창으로 보고 있는 사람 번호
   typing: [],      // 보고 있는 방에서 지금 입력 중인 다른 사람 번호
   online: true,
+  notice: null,    // 공지사항 최신 글 { id, title, updated } (채팅 목록 맨 위 한 줄)
+  notices: false,  // 공지사항 게시판을 열어 둠
 };
 
 const listeners = new Set();
@@ -36,7 +39,7 @@ function save() {
   try {
     const messages = {};
     for (const [rid, list] of Object.entries(state.messages)) messages[rid] = list.filter((m) => !m.pending).slice(-KEEP_PER_ROOM);
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ me: state.me, groups: state.groups, groupsRev: state.groupsRev, rooms: state.rooms, messages, cursor: state.cursor }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ me: state.me, groups: state.groups, groupsRev: state.groupsRev, rooms: state.rooms, messages, cursor: state.cursor, notice: state.notice }));
   } catch { /* 저장 공간이 없거나 막혀도 앱은 그대로 동작 */ }
 }
 let saveTimer = 0;
@@ -45,7 +48,7 @@ function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 500)
 export function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (s && s.me) Object.assign(state, { me: s.me, groups: s.groups || [], groupsRev: s.groupsRev || 0, rooms: s.rooms || {}, messages: s.messages || {}, cursor: s.cursor || 0 });
+    if (s && s.me) Object.assign(state, { me: s.me, groups: s.groups || [], groupsRev: s.groupsRev || 0, rooms: s.rooms || {}, messages: s.messages || {}, cursor: s.cursor || 0, notice: s.notice || null });
   } catch { /* 망가진 저장은 무시하고 서버에서 새로 받음 */ }
   restorePending();
 }
@@ -115,6 +118,7 @@ let stopped = true;
 export async function syncNow() {
   if (syncing) return syncing;
   syncing = (async () => {
+    let app = null;
     try {
       let more = true;
       while (more) {
@@ -128,10 +132,13 @@ export async function syncNow() {
         state.cursor = r.cursor;
         more = r.more;
         if (r.groups_rev !== undefined && r.groups_rev !== state.groupsRev) await loadMe();
+        if (r.notice !== undefined) state.notice = r.notice;
+        app = r.app;
       }
       state.online = true;
       markReadIfOpen();
       saveSoon();
+      checkUpdate(app, state);
     } catch (e) {
       if (e instanceof AuthError) { clearAll(); return; }
       state.online = false;
@@ -149,6 +156,8 @@ function schedule() {
   if (stopped || document.hidden) return;
   timer = setTimeout(async () => { await syncNow(); schedule(); }, state.openRoom ? (state.typing.length ? 1000 : 2000) : 5000);
 }
+
+export function showNotices(on) { state.notices = on; notify(); }
 
 export function startSync() {
   stopped = false;

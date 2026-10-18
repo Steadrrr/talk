@@ -9,6 +9,8 @@ require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/accounts.php';
 require __DIR__ . '/lib/chat.php';
 require __DIR__ . '/lib/media.php';
+require __DIR__ . '/lib/push.php';
+require __DIR__ . '/lib/notices.php';
 require __DIR__ . '/lib/backup.php';
 
 // DB 시각(UTC) → 한국 시간으로 보여 주기 (한국은 서머타임 없음)
@@ -212,6 +214,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             $ids = $st->fetchAll(PDO::FETCH_COLUMN);
             foreach ($ids as $id) talk_revoke_device($pdo, (int)$id);
             $msg = count($ids) . '개 기기를 끊었어요.';
+        } elseif ($act === 'notice_new') {
+            talk_notice_add($pdo, (string)($_POST['title'] ?? ''), (string)($_POST['body'] ?? ''));
+            $msg = '공지를 올렸어요. 앱을 켜 둔 사람은 몇 초 안에 채팅 목록 위에서 봐요.';
+            if (!empty($_POST['push'])) {
+                $r = talk_push_notice($pdo, trim((string)$_POST['title']));
+                $msg .= " 알림: {$r['total']}개 기기 중 {$r['sent']}개로 보냄.";
+            }
+        } elseif ($act === 'notice_edit') {
+            talk_notice_edit($pdo, (int)($_POST['id'] ?? 0), (string)($_POST['title'] ?? ''), (string)($_POST['body'] ?? ''));
+            $msg = '공지를 고쳤어요.';
+        } elseif ($act === 'notice_delete') {
+            talk_notice_delete($pdo, (int)($_POST['id'] ?? 0));
+            $msg = '공지를 지웠어요.';
         } elseif ($act === 'backup_txt' || $act === 'backup_json') {
             talk_backup_download($pdo, $act === 'backup_json' ? 'json' : 'txt');
         }
@@ -362,6 +377,27 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 </fieldset>
 </details>
 
+<?php $notices = talk_notice_list($pdo, 0)['notices']; ?>
+<details class="menu" id="m-notices"><summary>공지사항 <span class="hint"><?= count($notices) ?>개</span></summary>
+<fieldset><legend>새 공지</legend>
+<p class="hint">모두의 채팅 목록 맨 위에 최신 공지 한 줄이 보이고, 누르면 공지사항 게시판이 열려요. 배포할 때마다 바뀐 점은 저절로 올라가요 (30분 안에 이어진 배포는 한 글로 모음).</p>
+<form method="post"><?= $hidden('notice_new') ?>
+<label>제목 <input name="title" required maxlength="100" placeholder="예: 사진 보내기가 빨라졌어요"></label>
+<label>내용 <textarea name="body" maxlength="5000" rows="4"></textarea></label>
+<label class="check"><input type="checkbox" name="push" value="1"> 알림(푸시)도 보내기</label>
+<button type="submit">공지 올리기</button></form>
+</fieldset>
+<?php foreach ($notices as $n): ?>
+<details class="menu sub"><summary><?= h($n['title']) ?> <span class="hint"><?= $n['kind'] === 'auto' ? '자동 · ' : '' ?><?= h(substr($n['updated'], 0, 10)) ?></span></summary>
+<form method="post"><?= $hidden('notice_edit', ['id' => $n['id']]) ?>
+<label>제목 <input name="title" required maxlength="100" value="<?= h($n['title']) ?>"></label>
+<label>내용 <textarea name="body" maxlength="5000" rows="5"><?= h($n['body']) ?></textarea></label>
+<button type="submit">고치기</button></form>
+<form method="post"><?= $hidden('notice_delete', ['id' => $n['id']]) ?><button type="submit" class="sub">지우기</button></form>
+</details>
+<?php endforeach; ?>
+</details>
+
 <details class="menu" id="m-admin"><summary>관리자</summary>
 <fieldset><legend>관리자 비밀번호 바꾸기</legend>
 <form method="post" autocomplete="off"><input type="hidden" name="csrf" value="<?= h(csrf()) ?>"><input type="hidden" name="act" value="password">
@@ -382,7 +418,7 @@ function page_head(string $title): void {
 body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
 main{max-width:600px;margin:0 auto} h1{font-size:20px} fieldset{margin:12px 0;border:1px solid var(--line);border-radius:12px;background:var(--card)} legend{color:var(--acc);font-weight:600}
 label{display:block;margin:8px 0;color:var(--dim)}
-input{display:block;width:100%;box-sizing:border-box;margin-top:3px;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+input,textarea{display:block;width:100%;box-sizing:border-box;margin-top:3px;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 button{font:inherit;cursor:pointer;color:#fff;background:var(--acc);border:0;border-radius:8px;padding:8px 16px;font-weight:600;margin-top:6px}
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:6px 0;flex-wrap:wrap} .row label{flex:1;min-width:120px;margin:0}
 .btns{display:flex;gap:6px} .checks{display:flex;flex-wrap:wrap;gap:4px 14px;flex:1} label.check{display:flex;align-items:center;gap:4px;margin:0;color:var(--fg)} label.check input{width:auto;margin:0} .ugroups{border-top:0;padding-top:0} .group{border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:8px 0} button.sub{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:5px 10px}

@@ -647,6 +647,45 @@ try {
     assert.equal(r.body.groups.length, 3);
   });
 
+  await t('새 버전·공지사항: 동기화에 웹앱 판과 최신 공지, 배포의 바뀐 점은 자동 공지(30분 안이면 한 글), 관리자 글 쓰기·고치기·지우기', async () => {
+    const dir = path.join(www, 'talk');
+    fs.writeFileSync(path.join(dir, 'build.json'), JSON.stringify({ build: 'b1' }));
+    let r = await api('sync?since=0', undefined, tok.mom);
+    assert.equal(r.body.app, 'b1');
+    assert.equal(r.body.notice, null);
+    fs.writeFileSync(path.join(dir, 'deploy.json'), JSON.stringify({ sha: 'aaa111', title: '키보드 고침', notes: ['키보드 고침', '사진 빨라짐'] }));
+    r = await api('sync?since=0', undefined, tok.mom);
+    assert.match(r.body.notice.title, /^업데이트: 키보드 고침 외 1개$/);
+    const first = r.body.notice.id;
+    r = await api('sync?since=0', undefined, tok.dad);
+    assert.equal(r.body.notice.id, first, '같은 배포는 한 번만');
+    assert.equal((await api('health')).body.sha, 'aaa111');
+    fs.writeFileSync(path.join(dir, 'deploy.json'), JSON.stringify({ sha: 'bbb222', notes: ['스플래시 추가'] }));
+    r = await api('sync?since=0', undefined, tok.mom);
+    assert.equal(r.body.notice.id, first, '30분 안에 이어진 배포는 같은 글에');
+    r = await api('notices', undefined, tok.mom);
+    assert.equal(r.body.notices[0].body, '• 키보드 고침\n• 사진 빨라짐\n• 스플래시 추가');
+    assert.equal(r.body.notices[0].kind, 'auto');
+    // 관리자 글 (알림도)
+    const before = pushes.length;
+    let html = await adminPost({ act: 'notice_new', title: '이번 주 점검', body: '토요일 밤에 잠깐 멈춰요', push: '1' });
+    assert.match(html, /공지를 올렸어요/);
+    r = await api('sync?since=0', undefined, tok.mom);
+    assert.equal(r.body.notice.title, '이번 주 점검');
+    const mine = r.body.notice.id;
+    assert.ok(pushes.length >= before);
+    html = await adminPost({ act: 'notice_edit', id: String(first), title: '업데이트 정리', body: '고친 것들' });
+    assert.match(html, /공지를 고쳤어요/);
+    r = await api('notices', undefined, tok.dad);
+    assert.deepEqual(r.body.notices.map((n) => n.title), ['이번 주 점검', '업데이트 정리']);
+    assert.equal(r.body.notices[1].kind, 'admin', '고친 글에는 더 이상 자동으로 안 붙임');
+    await adminPost({ act: 'notice_delete', id: String(mine) });
+    r = await api('notices', undefined, tok.dad);
+    assert.equal(r.body.notices.length, 1);
+    assert.equal((await api('notices')).status, 401);
+    fs.rmSync(path.join(dir, 'deploy.json'));
+  });
+
   await t('관리자 계정은 앱에서 관리 화면을 비밀번호 없이 연다 (한 번 쓰는 표)', async () => {
     let r = await api('admin/ticket', {}, tok.mom);
     assert.equal(r.status, 403, '관리자만');

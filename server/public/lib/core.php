@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 14;
+const TALK_SERVER_VERSION = 15;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -134,6 +134,11 @@ function talk_migrate(PDO $pdo): void {
     $q[] = "ALTER TABLE talk_rooms ADD COLUMN IF NOT EXISTS notice_id BIGINT NULL, ADD COLUMN IF NOT EXISTS notice_by INT NULL";
     // 14: 입력 중 표시 (방 사람마다 마지막으로 글자를 친 시각, 몇 초 지나면 저절로 꺼짐. 변경 기록에는 안 남김)
     $q[] = "ALTER TABLE talk_room_members ADD COLUMN IF NOT EXISTS typing_at DATETIME NULL";
+    // 15: 공지사항 게시판 (관리자 글 + 배포 때 바뀐 점 자동 글)
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_notices (
+        id INT AUTO_INCREMENT PRIMARY KEY, kind VARCHAR(8) NOT NULL, title VARCHAR(120) NOT NULL, body TEXT NOT NULL,
+        created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);
@@ -159,6 +164,12 @@ function talk_migrate_if_needed(PDO $pdo): void {
         // talk_meta 가 아직 없음
     }
     talk_migrate($pdo);
+}
+
+// 웹앱 빌드 때 만든 build.json 의 판 번호 (개발 중처럼 없으면 null). 앱은 자기 판과 다르면 스스로 새로고침한다
+function talk_app_build(): ?string {
+    $j = json_decode((string)@file_get_contents(__DIR__ . '/../build.json'), true);
+    return is_array($j) && is_string($j['build'] ?? null) ? $j['build'] : null;
 }
 
 function talk_now(): string { return gmdate('Y-m-d H:i:s'); }

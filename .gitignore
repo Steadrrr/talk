@@ -11,3 +11,4 @@ node_modules/
 /server/public/deploy.json
 /server/public/config-path.php
 /server/public/private/
+/server/public/build.json

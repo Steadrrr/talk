@@ -20,6 +20,8 @@ jobs:
       HAS_FTP: ${{ secrets.TALK_FTP_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 지난 배포 뒤의 커밋 제목을 모아 공지("바뀐 점")로 쓰려고
 
       - uses: actions/setup-node@v4
         with:
@@ -41,9 +43,20 @@ jobs:
           sudo mariadb -e "CREATE DATABASE IF NOT EXISTS talktest CHARACTER SET utf8mb4; CREATE USER IF NOT EXISTS 'talk'@'localhost' IDENTIFIED BY 'talkpass'; GRANT ALL ON talktest.* TO 'talk'@'localhost';"
           node scripts/server-test.mjs
 
+      # notes: 지금 서버에 올라가 있는 판(health 의 sha) 뒤로 쌓인 커밋 제목들 → 서버가 공지사항에 "바뀐 점"으로 올린다
       - name: 배포 정보
         run: |
-          node -e "require('fs').writeFileSync('server/public/deploy.json', JSON.stringify({ sha: process.argv[1], title: process.argv[2], at: new Date().toISOString() }))" "$(git rev-parse HEAD)" "$(git log -1 --format=%s)"
+          PREV=$(curl -fsS -m 20 "${SERVER_URL:-https://mysaki.mycafe24.com/talk}/api.php/health" | jq -r '.sha // empty' || true)
+          if [ -n "$PREV" ] && git cat-file -e "$PREV^{commit}" 2>/dev/null; then
+            git log --no-merges --reverse --format=%s "$PREV..HEAD" > notes.txt
+          else
+            git log -1 --format=%s > notes.txt
+          fi
+          echo "지난 배포: ${PREV:-모름}"; cat notes.txt
+          node -e "const fs = require('fs'); const notes = fs.readFileSync('notes.txt', 'utf8').split('\n').filter(Boolean).slice(-50);
+            fs.writeFileSync('server/public/deploy.json', JSON.stringify({ sha: process.argv[1], title: process.argv[2], at: new Date().toISOString(), notes }))" "$(git rev-parse HEAD)" "$(git log -1 --format=%s)"
+        env:
+          SERVER_URL: ${{ vars.TALK_SERVER_URL }}
 
       - name: FTP 정보가 없으면 건너뜀
         if: env.HAS_FTP != 'true'

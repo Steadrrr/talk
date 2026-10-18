@@ -235,6 +235,16 @@ function talk_push_test(PDO $pdo, int $deviceId): array {
     return $out;
 }
 
+// 공지 알림: 알림 켠 모든 기기로 (멈춘 사람·끊긴 기기는 빼고). 누르면 앱의 공지사항이 열린다
+function talk_push_notice(PDO $pdo, string $title): array {
+    $subs = $pdo->query('SELECT s.* FROM talk_push_subs s JOIN talk_devices d ON d.id = s.device_id JOIN talk_users u ON u.id = d.user_id
+        WHERE d.revoked = 0 AND u.disabled = 0')->fetchAll();
+    $payload = json_encode(['title' => 'SAKi Talk 공지', 'body' => mb_substr($title, 0, 200), 'room' => 0, 'notice' => 1, 'tag' => 'notice'], JSON_UNESCAPED_UNICODE);
+    $out = talk_push_send_many($pdo, $subs, $payload, '');
+    talk_push_log($pdo, '공지', $out);
+    return $out;
+}
+
 // 응답을 먼저 돌려보내고 (보낸 사람이 기다리지 않게) 그다음 알림을 보낸다
 function talk_after_response(callable $fn): void {
     register_shutdown_function(function () use ($fn) {

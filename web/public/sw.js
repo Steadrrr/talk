@@ -40,23 +40,25 @@ self.addEventListener('push', (e) => {
     tag: d.tag || 'talk',
     renotify: true,
     icon: './icon-192.png',
-    data: { room: d.room || 0 },
+    data: { room: d.room || 0, notice: d.notice || 0 },
   }));
 });
 
-// 알림을 누르면: 열린 앱이 있으면 그 방으로, 없으면 앱을 그 방으로 연다
+// 알림을 누르면: 열린 앱이 있으면 그 방(공지면 공지사항)으로, 없으면 앱을 그렇게 연다
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const room = e.notification.data?.room || 0;
+  const notice = e.notification.data?.notice || 0;
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const w of wins) {
       if (new URL(w.url).pathname.startsWith(new URL('./', self.registration.scope).pathname)) {
         await w.focus();
         if (room) w.postMessage({ type: 'open-room', room });
+        else if (notice) w.postMessage({ type: 'open-notices' });
         return;
       }
     }
-    await self.clients.openWindow('./' + (room ? '#room=' + room : ''));
+    await self.clients.openWindow('./' + (room ? '#room=' + room : notice ? '#notices' : ''));
   })());
 });

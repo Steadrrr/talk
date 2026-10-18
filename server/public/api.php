@@ -9,6 +9,7 @@ require __DIR__ . '/lib/accounts.php';
 require __DIR__ . '/lib/chat.php';
 require __DIR__ . '/lib/push.php';
 require __DIR__ . '/lib/media.php';
+require __DIR__ . '/lib/notices.php';
 
 header('X-Robots-Tag: noindex');
 
@@ -32,7 +33,9 @@ if (preg_match('#^photo/([a-f0-9]{24})$#', $route, $pm)) {
 }
 
 if ($route === 'health') {
-    $out = ['ok' => true, 'name' => 'SAKi Talk', 'version' => TALK_SERVER_VERSION, 'configured' => $cfg !== null];
+    // sha: 지금 올라간 커밋 (배포 때 지난 배포 뒤의 바뀐 점을 모으려고), app: 웹앱 판
+    $dep = json_decode((string)@file_get_contents(__DIR__ . '/deploy.json'), true);
+    $out = ['ok' => true, 'name' => 'SAKi Talk', 'version' => TALK_SERVER_VERSION, 'configured' => $cfg !== null, 'sha' => $dep['sha'] ?? null, 'app' => talk_app_build()];
     if ($cfg !== null) {
         try {
             talk_migrate_if_needed(talk_db($cfg));
@@ -249,7 +252,14 @@ switch ($route) {
         $out = ['ok' => true] + talk_sync($pdo, $uid, (int)$q('since', 0));
         $out['room_ids'] = talk_my_room_ids($pdo, $uid);
         $out['typing'] = $openRoom > 0 && in_array($openRoom, $out['room_ids'], true) ? talk_typing($pdo, $uid, $openRoom) : [];
+        // app: 지금 서버에 올라간 웹앱 판, notice: 공지사항 최신 글 한 줄 (새로 배포됐으면 먼저 바뀐 점을 공지로)
+        talk_release_notice($pdo);
+        $out['app'] = talk_app_build();
+        $out['notice'] = talk_notice_latest($pdo);
         talk_json($out);
+
+    case 'notices':
+        talk_json(['ok' => true] + talk_notice_list($pdo, (int)$q('before', 0)));
 
     case 'rooms/typing':
         $need('POST');
