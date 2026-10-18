@@ -98,6 +98,7 @@ function NewRoom({ onClose, onOpen }) {
         ${groups.length > 1 && html`
           <div class="seg pad">${groups.map((g) => html`<button class=${g.id === gid ? 'on' : ''} onClick=${() => { setGid(g.id); setPicked([]); }}>${g.name}</button>`)}</div>`}
         ${group && html`
+          <p class="hint pad">한 명을 고르면 1:1 대화, 여러 명을 고르면 단체방이 돼요.</p>
           <label class="pad">방 이름 <span class="hint">(비우면 사람 이름으로)</span><input value=${name} onInput=${(e) => setName(e.target.value)} maxlength="40" /></label>
           <div class="scroll">
             ${group.members.filter((m) => m.id !== state.me.id).map((m) => html`
