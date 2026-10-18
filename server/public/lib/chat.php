@@ -362,7 +362,7 @@ function talk_room_invite(PDO $pdo, int $uid, int $roomId, array $userIds): void
     $pdo->commit();
 }
 
-// 나가기: 여럿 방은 안내 글을 남기고 나만 빠짐 (마지막 사람이 나가면 방을 없앰).
+// 나가기: 여럿 방은 안내 글을 남기고 나만 빠짐 (한 명만 남으면 방을 없앰).
 // 1:1 방은 두 사람 모두에게서 방을 없앰 (메시지·사진·영상도 지움. 다시 대화하면 새 방)
 function talk_room_leave(PDO $pdo, array $cfg, int $uid, int $roomId): void {
     $room = talk_room_row($pdo, $uid, $roomId);
@@ -373,7 +373,7 @@ function talk_room_leave(PDO $pdo, array $cfg, int $uid, int $roomId): void {
         $pdo->prepare('DELETE FROM talk_room_members WHERE room_id = ? AND user_id = ?')->execute([$roomId, $uid]);
         $st = $pdo->prepare('SELECT COUNT(*) FROM talk_room_members WHERE room_id = ?');
         $st->execute([$roomId]);
-        if ((int)$st->fetchColumn() === 0) talk_room_destroy($pdo, $cfg, $roomId);
+        if ((int)$st->fetchColumn() <= 1) talk_room_destroy($pdo, $cfg, $roomId);
         else talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . '님이 나갔어요.');
     }
     talk_event($pdo, $roomId, 'room');

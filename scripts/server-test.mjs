@@ -480,11 +480,10 @@ try {
     assert.ok(v.room_ids.includes(dm2));
     assert.ok(!v.messages.some((m) => m.room_id === dm2), '예전 메시지는 없음');
 
-    // 여럿 방: 마지막 사람이 나가면 방이 없어짐
+    // 여럿 방: 한 명만 남으면 방이 없어짐 (남은 사람 목록에서도)
     const solo = (await api('rooms/create', { group_id: v.rooms.find((x) => x.id === dm2).group_id, member_ids: [dad], name: '둘' }, tok.mom)).body.room.id;
     await api('rooms/leave', { room_id: solo }, tok.mom);
-    await api('rooms/leave', { room_id: solo }, tok.dad);
-    assert.ok(!(await view(tok.dad)).room_ids.includes(solo));
+    assert.ok(!(await view(tok.dad)).room_ids.includes(solo), '혼자 남은 사람에게서도 사라짐');
   });
 
   await t('프로필·채팅방 사진: 올리면 모두에게 주소가 보이고, 로그인 없이 그 주소로 받음, 방 사진은 누구나 바꿈', async () => {
