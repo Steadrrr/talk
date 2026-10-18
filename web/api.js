@@ -19,8 +19,14 @@ export function setToken(t, remember = true) {
 }
 let memToken = '';
 
+// 응답을 이만큼 못 받으면 끊긴 것으로 본다. 휴대폰이 잠들었다 깨면 요청이 대답 없이 매달려 있기도 해서,
+// 그러면 동기화가 그 요청을 계속 기다리느라 새 메시지가 안 들어왔다
+const TIMEOUT_MS = 20000;
+
 export async function api(route, body, extra = {}) {
   const opts = { headers: {}, ...extra };
+  if (!opts.signal && typeof AbortSignal !== 'undefined' && AbortSignal.timeout) opts.signal = AbortSignal.timeout(extra.timeout || TIMEOUT_MS);
+  delete opts.timeout;
   const token = getToken();
   if (token) opts.headers['X-Talk-Token'] = token;
   if (body instanceof Blob) {
@@ -33,7 +39,10 @@ export async function api(route, body, extra = {}) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(BASE + route, opts);
+  let res;
+  try { res = await fetch(BASE + route, opts); } catch (e) {
+    throw new Error(e?.name === 'TimeoutError' || e?.name === 'AbortError' ? '서버가 대답하지 않아요. 연결을 확인해 주세요.' : '서버에 연결하지 못했어요.');
+  }
   let data;
   try { data = await res.json(); } catch { throw new Error(`서버 응답이 이상해요 (HTTP ${res.status}, ${route.split('?')[0]})`); }
   if (res.status === 401 && token && !route.startsWith('auth/')) throw new AuthError(data.error || '로그인이 필요해요.');

@@ -178,6 +178,7 @@ export async function prepVideo(file, onProgress) {
 async function putChunk(key, offset, blob) {
   const res = await fetch(`${BASE}media/chunk?key=${key}&offset=${offset}`, {
     method: 'POST', headers: { 'X-Talk-Token': getToken(), 'Content-Type': 'application/octet-stream' }, body: blob,
+    signal: AbortSignal.timeout?.(120000),   // 2MB 조각: 느린 연결이어도 2분이면 넘음, 매달리면 다시 보냄
   });
   const data = await res.json().catch(() => null);
   if (!data) throw new Error(`서버 응답이 이상해요 (HTTP ${res.status}, media/chunk)`);

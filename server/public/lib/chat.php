@@ -124,8 +124,10 @@ function talk_sync(PDO $pdo, int $uid, int $since): array {
         // 오래된 변경 기록이 정리돼서 이어 받을 수 없으면 처음부터
         $min = (int)$pdo->query('SELECT COALESCE(MIN(id), 0) FROM talk_events')->fetchColumn();
         if ($min > $since + 1) $since = 0;
+        else $max = talk_safe_cursor($pdo, $since, $max);
     }
     if ($since <= 0 || $since > $max) {
+        $max = talk_safe_cursor($pdo, max(0, $max - 300), $max);
         $msgs = [];
         foreach ($myRooms as $rid) array_push($msgs, ...talk_messages_where($pdo, 'room_id = ?', [$rid], TALK_FIRST_MSGS));
         return ['full' => true, 'groups_rev' => talk_groups_rev($pdo), 'cursor' => $max, 'more' => false, 'rooms' => talk_rooms_view($pdo, $uid, $myRooms), 'messages' => $msgs];
@@ -150,6 +152,29 @@ function talk_sync(PDO $pdo, int $uid, int $since): array {
     }
     usort($msgs, fn($a, $b) => $a['id'] <=> $b['id']);
     return ['full' => false, 'groups_rev' => talk_groups_rev($pdo), 'cursor' => $cursor, 'more' => $more, 'rooms' => talk_rooms_view($pdo, $uid, $touched), 'messages' => $msgs];
+}
+
+// 번호는 넣을 때 정해지고 보이는 건 거래(transaction)가 끝날 때라, 두 사람이 거의 동시에 보내면
+// 101 번은 보이는데 100 번은 아직 안 보이는 순간이 있다. 그때 cursor 를 101 로 주면 100 번을 영영 못 받으므로
+// 최근(10초 안) 변경 바로 앞에 빈 번호가 있으면 그 앞까지만 준다 (다음 동기화에서 이어 받음).
+// 10초 넘게 비어 있는 번호는 되돌려진 거래라 건너뛴다.
+function talk_safe_cursor(PDO $pdo, int $since, int $max): int {
+    if ($max <= $since) return $max;
+    $st = $pdo->prepare('SELECT COUNT(*) FROM talk_events WHERE id > ? AND id <= ?');
+    $st->execute([$since, $max]);
+    if ((int)$st->fetchColumn() === $max - $since) return $max;   // 빈 번호 없음 (거의 언제나)
+    $step = max(1, (int)$pdo->query('SELECT @@auto_increment_increment')->fetchColumn());
+    $st = $pdo->prepare('SELECT id, created_at FROM talk_events WHERE id > ? AND id <= ? ORDER BY id DESC LIMIT 300');
+    $st->execute([$since, $max]);
+    $rows = array_reverse($st->fetchAll());
+    $recent = gmdate('Y-m-d H:i:s', time() - 10);
+    $prev = $rows && count($rows) === 300 ? (int)$rows[0]['id'] - $step : $since;
+    foreach ($rows as $r) {
+        $id = (int)$r['id'];
+        if ($id > $prev + $step && $r['created_at'] >= $recent) return $prev + $step - 1;
+        $prev = $id;
+    }
+    return $max;
 }
 
 // ───── 방 만들기 ─────

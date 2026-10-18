@@ -13,6 +13,12 @@ require __DIR__ . '/lib/notices.php';
 
 header('X-Robots-Tag: noindex');
 
+// 예상 못 한 오류(DB 끊김 등)도 JSON 으로: 앱이 "서버 응답이 이상해요" 대신 알맞은 안내를 보이고, 화면에 서버 경로가 새지 않게
+set_exception_handler(function (Throwable $e) {
+    error_log('talk api: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+    if (!headers_sent()) talk_json(['ok' => false, 'error' => '서버에서 문제가 생겼어요. 잠시 뒤에 다시 해 주세요.'], 500);
+});
+
 $route = trim((string)($_SERVER['PATH_INFO'] ?? ($_GET['r'] ?? '')), '/');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 

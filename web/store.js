@@ -99,11 +99,12 @@ function mergeRooms(rooms, full) {
   if (state.openRoom && state.rooms[state.openRoom] && !document.hidden) state.rooms[state.openRoom].unread = 0;
 }
 
-// 나간 방·닫힌 그룹의 방: 기기에서도 지운다
-function dropRooms(ids) {
+// 나간 방·닫힌 그룹의 방: 기기에서도 지운다.
+// known: 동기화를 물어볼 때 기기에 있던 방들. 그 사이 새로 만든 방은 서버 대답에 아직 없을 수 있어서 지우지 않는다
+function dropRooms(ids, known) {
   const keep = new Set(ids);
   for (const id of Object.keys(state.rooms).map(Number)) {
-    if (keep.has(id)) continue;
+    if (keep.has(id) || !known.has(id)) continue;
     delete state.rooms[id];
     delete state.messages[id];
     if (state.openRoom === id) state.openRoom = null;
@@ -122,13 +123,14 @@ export async function syncNow() {
     try {
       let more = true;
       while (more) {
+        const known = new Set(Object.keys(state.rooms).map(Number));
         const asked = document.hidden ? 0 : state.openRoom || 0;
         const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1&room=' + asked));
         state.typing = asked && asked === state.openRoom ? r.typing || [] : [];
         if (r.full) state.messages = Object.fromEntries(Object.entries(state.messages).map(([k, v]) => [k, v.filter((m) => m.pending)]));
         mergeRooms(r.rooms, r.full);
         mergeMessages(r.messages);
-        if (r.room_ids) dropRooms(r.room_ids);
+        if (r.room_ids) dropRooms(r.room_ids, known);
         state.cursor = r.cursor;
         more = r.more;
         if (r.groups_rev !== undefined && r.groups_rev !== state.groupsRev) await loadMe();
@@ -441,7 +443,7 @@ export async function deleteForAll(m) {
 }
 
 export const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
-// 반응: 바로 화면에 바꾸고 서버에 (같은 것을 다시 누르면 뺌). 실패하면 다음 동기화에서 바로잡힘
+// 반응: 바로 화면에 바꾸고 서버에 (같은 것을 다시 누르면 뺌). 실패하면 원래대로
 export async function react(m, emoji) {
   const mineIdx = (m.reactions || []).findIndex(([u]) => u === state.me.id);
   const had = mineIdx >= 0 ? m.reactions[mineIdx][1] : null;
@@ -449,7 +451,11 @@ export async function react(m, emoji) {
   if (had !== emoji) next.push([state.me.id, emoji]);
   mergeMessages([{ ...m, reactions: next }]);
   notify();
-  await api('messages/react', { id: m.id, emoji });
+  try { await api('messages/react', { id: m.id, emoji }); } catch (e) {
+    mergeMessages([m]);
+    notify();
+    throw e;
+  }
   saveSoon();
 }
 
