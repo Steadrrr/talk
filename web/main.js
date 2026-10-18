@@ -11,6 +11,9 @@ import { Profile } from './profile.js';
 import { PushPrompt } from './pushui.js';
 import { pushState, pushAsked, refreshPush, clearRoomNotifications } from './push.js';
 import './style.css';
+import { applyFontSize } from './fontsize.js';
+
+applyFontSize();
 
 function App() {
   const [, force] = useState(0);
