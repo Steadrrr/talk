@@ -30,7 +30,7 @@ export async function api(route, body, extra = {}) {
   }
   const res = await fetch(BASE + route, opts);
   let data;
-  try { data = await res.json(); } catch { throw new Error(`서버 응답이 이상해요 (HTTP ${res.status})`); }
+  try { data = await res.json(); } catch { throw new Error(`서버 응답이 이상해요 (HTTP ${res.status}, ${route.split('?')[0]})`); }
   if (res.status === 401 && token && !route.startsWith('auth/')) throw new AuthError(data.error || '로그인이 필요해요.');
   if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
   return data;

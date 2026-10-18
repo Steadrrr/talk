@@ -179,7 +179,8 @@ async function putChunk(key, offset, blob) {
   const res = await fetch(`${BASE}media/chunk?key=${key}&offset=${offset}`, {
     method: 'POST', headers: { 'X-Talk-Token': getToken(), 'Content-Type': 'application/octet-stream' }, body: blob,
   });
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => null);
+  if (!data) throw new Error(`서버 응답이 이상해요 (HTTP ${res.status}, media/chunk)`);
   if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
   return data.received;
 }
