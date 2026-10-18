@@ -13,9 +13,14 @@ import { pushState, pushAsked, refreshPush, clearRoomNotifications } from './pus
 import './style.css';
 import { applyFontSize } from './fontsize.js';
 import { fitViewport } from './viewport.js';
+import './saki-splash.js';
 
 applyFontSize();
 fitViewport();
+// 앱을 완전히 껐다가 새로 열 때만 S.A.K.i 스플래시 (같은 창에서 새로고침하면 다시 안 띄움)
+try {
+  if (!sessionStorage.getItem('talk_splash')) { sessionStorage.setItem('talk_splash', '1'); window.SakiSplash.show(); }
+} catch { window.SakiSplash.show(); }
 
 function App() {
   const [, force] = useState(0);
