@@ -20,8 +20,10 @@ export function Room({ id, onBack }) {
   const [menu, setMenu] = useState(null); // 길게 눌러 연 메시지 메뉴
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
   const [searching, setSearching] = useState(false);
-  const input = useRef(null);
-  const sent = useRef(null);
+  const input = useRef(null);           // 지금 쓰는 입력칸 (아래 두 칸 중 하나)
+  const boxes = [useRef(null), useRef(null)];
+  const [cur, setCur] = useState(0);
+  useLayoutEffect(() => { input.current = boxes[cur].current; });
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
   useEffect(() => {
@@ -57,33 +59,29 @@ export function Room({ id, onBack }) {
     }
   }
 
+  // 보내기: 입력칸을 비우지 않고 비어 있는 다른 칸으로 커서를 옮긴다.
+  // 아이폰 한글 키보드는 칸마다 조합 중인 글자·앞 글자를 기억해서, 같은 칸을 지우면 마지막 글자가
+  // 다시 들어오거나 지우기를 누를 때 되살아났다. 새 칸은 키보드 기억이 깨끗하다.
+  // (누르는 순간 안에서 칸을 옮기므로 키보드는 내려가지 않음)
   function submit() {
-    const el = input.current;
-    // 한글 조합 중이면 먼저 끝냄 (안 그러면 지운 뒤 마지막 글자가 다시 들어옴)
-    if (el && document.activeElement === el) { el.blur(); el.focus(); }
-    const body = (el ? el.innerText.replace(/\n$/, '') : text).trim().slice(0, 4000);
+    const old = input.current;
+    const body = (old ? old.innerText.replace(/\n$/, '') : text).trim().slice(0, 4000);
     if (!body) return;
-    if (el) clearInput(el);
+    const next = boxes[1 - cur].current;
+    if (old && next) {
+      next.textContent = '';
+      next.classList.remove('spare');
+      old.classList.add('spare');
+      input.current = next;
+      if (document.activeElement === old) next.focus();
+      old.textContent = '';
+      setTimeout(() => { if (input.current !== old) old.textContent = ''; }, 300); // 늦게 끝난 조합 글자도 정리
+      setCur(1 - cur);
+    }
     setText('');
-    sent.current = { at: Date.now(), last: body.slice(-1) };
     atBottom.current = true;
     send(id, body, null, replyTo);
     setReplyTo(null);
-    el?.focus();
-  }
-
-  // 입력칸 비우기: 편집 명령으로 지워야 아이폰 키보드도 비었다는 걸 앎
-  // (textContent 만 비우면 키보드가 앞 글자를 기억해 지우기를 누를 때 다시 꺼냄)
-  function clearInput(el) {
-    try {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      const sel = getSelection();
-      sel.removeAllRanges();
-      sel.addRange(r);
-      document.execCommand('delete');
-    } catch { /* 아래에서 정리 */ }
-    if (el.innerText.trim() !== '') el.textContent = '';
   }
 
   // 사진·영상 고르기: 여러 개면 차례로 보냄
@@ -114,18 +112,10 @@ export function Room({ id, onBack }) {
   // autocomplete=off 여도 키보드 위에 '자동 완성 연락처'(집 주소)를 띄웠음. 높이는 CSS 로 최대 5줄 정도
   function onEdit(e) {
     const el = e.currentTarget;
-    // 보낸 직후 키보드가 조합하던 글자를 늦게 넣으면 지움
-    const j = sent.current;
-    if (j && Date.now() - j.at < 400 && /omposition/.test(e.inputType || '') && el.innerText.trim() === j.last) { clearInput(el); setText(''); return; }
-    // 빈 칸에서 지우기를 눌렀는데 글자가 생기면 키보드가 기억한 앞 글자 → 지움
-    if (!text && /^delete/.test(e.inputType || '') && el.innerText.trim() !== '') { clearInput(el); return; }
+    if (el !== input.current) return;    // 보낸 뒤 쉬는 칸에 늦게 들어온 글자는 무시
     const t = el.innerText.replace(/\n$/, '');
     setText(t);
     setTyping(id, t.trim() !== '');
-  }
-  // 빈 칸에서 지우기는 아무것도 안 함 (키보드가 앞 글자를 되살리지 않게)
-  function onBefore(e) {
-    if (/^delete/.test(e.inputType || '') && e.currentTarget.innerText.trim() === '') e.preventDefault();
   }
   // 붙여넣기는 글자만 (plaintext-only 를 모르는 브라우저에서 서식·그림이 들어오지 않게)
   function onPaste(e) {
@@ -230,8 +220,12 @@ export function Room({ id, onBack }) {
         </div>`}
       <div class="composer">
         <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
-        <div ref=${input} class=${'msg-input' + (text ? '' : ' blank')} contentEditable=${CE} role="textbox" aria-multiline="true" aria-label="메시지" data-placeholder="메시지"
-          autocapitalize="off" spellcheck="false" onInput=${onEdit} onBeforeInput=${onBefore} onKeyDown=${onKey} onPaste=${onPaste}></div>
+        <div class="msg-box">
+          ${boxes.map((r, i) => html`
+            <div key=${i} ref=${r} class=${'msg-input' + (i === cur ? (text ? '' : ' blank') : ' spare')} contentEditable=${CE} role="textbox" aria-multiline="true" aria-label="메시지" data-placeholder="메시지"
+              aria-hidden=${i === cur ? null : 'true'} tabIndex=${i === cur ? 0 : -1}
+              autocapitalize="off" spellcheck="false" onInput=${onEdit} onKeyDown=${onKey} onPaste=${onPaste}></div>`)}
+        </div>
         <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label="보내기">↑</button>
       </div>
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
