@@ -134,6 +134,11 @@ function Settings() {
       setMsg('비밀번호를 바꿨어요.');
     } catch (e2) { setErr(e2.message); }
   }
+  // 관리자 계정: 관리 화면을 비밀번호 없이 연다 (서버가 60초짜리 한 번 쓰는 표를 줌)
+  async function openAdmin() {
+    setMsg(''); setErr('');
+    try { location.href = (await api('admin/ticket', {})).url; } catch (e2) { setErr(e2.message); }
+  }
   async function logout() {
     if (!confirm('이 기기에서 로그아웃할까요?')) return;
     try { await api('auth/logout', {}); } catch { /* 이미 끊긴 경우도 그냥 나감 */ }
@@ -169,6 +174,7 @@ function Settings() {
           <button class="primary" type="submit">바꾸기</button>
         </form>
         <button class="danger" onClick=${logout}>로그아웃</button>
+        ${state.me.is_admin ? html`<button class="admin-link" onClick=${openAdmin}>⚙️ SAKi Talk 관리 <span class="hint">그룹·초대 코드·사람·알림 기록</span></button>` : ''}
         <p class="hint center">SAKi Talk · 광고 없음</p>
       </div>
     </section>

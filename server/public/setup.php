@@ -126,6 +126,17 @@ talk_migrate_if_needed($pdo);
 talk_ensure_admin($pdo, $cfg);
 $invite = null; // [그룹 이름, 코드] — 방금 만든 코드를 위에 크게 보여 줌 (아래 그룹 목록에도 계속 보임)
 $act = (string)($_POST['act'] ?? '');
+// 앱에서 "SAKi Talk 관리" 로 열면: 한 번 쓰는 표로 바로 로그인하고 주소에서 표를 지움
+if (isset($_GET['ticket'])) {
+    $t = json_decode((string)talk_meta_get($pdo, 'admin_ticket'), true);
+    $pdo->prepare("DELETE FROM talk_meta WHERE k = 'admin_ticket'")->execute();
+    if (is_array($t) && ($t['exp'] ?? 0) >= time() && hash_equals((string)$t['hash'], hash('sha256', (string)$_GET['ticket']))) {
+        session_regenerate_id(true);
+        $_SESSION['admin'] = true;
+    }
+    header('Location: setup.php');
+    exit;
+}
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
     try {
         if (!csrf_ok()) throw new RuntimeException('페이지를 새로 고친 뒤 다시 시도해 주세요.');
@@ -340,7 +351,7 @@ button{font:inherit;cursor:pointer;color:#fff;background:var(--acc);border:0;bor
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:6px 0;flex-wrap:wrap} .row label{flex:1;min-width:120px;margin:0}
 .btns{display:flex;gap:6px} .checks{display:flex;flex-wrap:wrap;gap:4px 14px;flex:1} label.check{display:flex;align-items:center;gap:4px;margin:0;color:var(--fg)} label.check input{width:auto;margin:0} .ugroups{border-top:0;padding-top:0} .group{border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:8px 0} button.sub{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:5px 10px}
 .secret{border:2px solid var(--ok);border-radius:12px;padding:12px;margin:10px 0;font-size:16px;background:var(--card)} .secret code{font-size:17px}
-.hint{color:var(--dim);font-size:13px} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
-</style></head><body><main><h1>' . h($title) . '</h1>';
+.hint{color:var(--dim);font-size:13px} .back{margin:calc(env(safe-area-inset-top) + 4px) 0 0} .back a{color:var(--acc);text-decoration:none;font-weight:600} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
+</style></head><body><main><p class="back"><a href="./">← SAKi Talk 으로</a></p><h1>' . h($title) . '</h1>';
 }
 function page_foot(): void { echo '</main></body></html>'; }

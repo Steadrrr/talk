@@ -158,6 +158,14 @@ switch ($route) {
         talk_room_leave($pdo, $uid, (int)(talk_body()['room_id'] ?? 0));
         talk_json(['ok' => true]);
 
+    case 'admin/ticket':
+        // 앱의 관리자 계정 → 관리 화면을 비밀번호 없이 열기: 60초 동안 한 번 쓰는 표
+        $need('POST');
+        if (!$me['is_admin']) talk_fail('관리자만 쓸 수 있어요.', 403);
+        $ticket = bin2hex(random_bytes(16));
+        talk_meta_set($pdo, 'admin_ticket', json_encode(['hash' => hash('sha256', $ticket), 'exp' => time() + 60]));
+        talk_json(['ok' => true, 'url' => 'setup.php?ticket=' . $ticket]);
+
     case 'me/away':
         $need('POST');
         $pdo->prepare('UPDATE talk_devices SET active_at = NULL WHERE id = ?')->execute([$me['device_id']]);

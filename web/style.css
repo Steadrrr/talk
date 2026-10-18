@@ -39,7 +39,7 @@ label input { margin-top: 4px; }
 .icon { font-size: calc(26px * var(--fs)); line-height: 1; padding: 4px 10px; color: var(--fg); }
 
 /* 처음·로그인 */
-.splash, .auth { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; gap: 4px; overflow-y: auto; }
+.splash, .auth { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top) + 24px) 16px 24px; text-align: center; gap: 4px; overflow-y: auto; }
 .auth form { width: 100%; max-width: 360px; text-align: left; }
 .logo { border-radius: 20px; }
 h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
@@ -50,7 +50,7 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 /* 공통 화면 틀 */
 .home, .page { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .page { flex: 1; }
-.bar { display: flex; align-items: center; gap: 6px; padding: max(10px, env(safe-area-inset-top)) 10px 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); min-height: 52px; }
+.bar { display: flex; align-items: center; gap: 6px; padding: calc(env(safe-area-inset-top) + 14px) 10px 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); min-height: 52px; }
 .bar h2 { font-size: calc(19px * var(--fs)); margin: 0; }
 .offline { font-size: calc(12px * var(--fs)); color: var(--bad); border: 1px solid var(--bad); border-radius: 10px; padding: 1px 8px; }
 .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; padding-bottom: 12px; }
@@ -167,3 +167,4 @@ img.avatar { object-fit: cover; background: var(--line); }
 .fs-seg { margin: 4px 0 0; max-width: none; }
 .fs-seg button { white-space: nowrap; padding: 8px 2px; }
 .fs-preview { margin: 0; }
+.admin-link { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); margin: 8px 0; font-weight: 600; color: var(--acc); }

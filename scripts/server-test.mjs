@@ -488,6 +488,24 @@ try {
     assert.equal(r.body.groups.length, 3);
   });
 
+  await t('관리자 계정은 앱에서 관리 화면을 비밀번호 없이 연다 (한 번 쓰는 표)', async () => {
+    let r = await api('admin/ticket', {}, tok.mom);
+    assert.equal(r.status, 403, '관리자만');
+    r = await api('admin/ticket', {}, tok.me);
+    assert.match(r.body.url, /^setup\.php\?ticket=[a-f0-9]{32}$/);
+    const saved = jar;
+    jar = '';
+    let res = await req('/' + r.body.url);
+    assert.equal(res.status, 302);
+    res = await req('/setup.php');
+    assert.match(await res.text(), /그룹 저장/, '로그인된 관리 화면');
+    jar = '';
+    res = await req('/' + r.body.url);
+    res = await req('/setup.php');
+    assert.match(await res.text(), /관리 화면 로그인/, '같은 표는 두 번 못 씀');
+    jar = saved;
+  });
+
   await t('로그아웃하면 그 기기 토큰은 못 씀', async () => {
     let r = await api('auth/logout', {}, tok.dad);
     assert.equal(r.status, 200);
