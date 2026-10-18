@@ -180,7 +180,8 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
         'room' => $roomId,
         'tag' => "room-$roomId",
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $out = talk_push_send_many($pdo, $subs, $payload, "room$roomId");
+    // Topic 머리는 안 씀: 애플이 "room1" 같은 Topic 을 400 으로 거절함 (같은 방 알림 묶기는 기기의 tag 로)
+    $out = talk_push_send_many($pdo, $subs, $payload, '');
     talk_push_log($pdo, "방 $roomId 새 메시지", $out);
     return $out;
 }
@@ -226,7 +227,7 @@ function talk_push_test(PDO $pdo, int $deviceId): array {
     $st = $pdo->prepare('SELECT * FROM talk_push_subs WHERE device_id = ?');
     $st->execute([$deviceId]);
     $payload = json_encode(['title' => 'SAKi Talk', 'body' => '알림 시험이에요. 이게 보이면 알림이 잘 와요.', 'room' => 0, 'tag' => 'test'], JSON_UNESCAPED_UNICODE);
-    $out = talk_push_send_many($pdo, $st->fetchAll(), $payload, 'test');
+    $out = talk_push_send_many($pdo, $st->fetchAll(), $payload, '');
     talk_push_log($pdo, "기기 $deviceId 시험", $out);
     return $out;
 }
