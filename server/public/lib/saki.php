@@ -253,10 +253,29 @@ function talk_saki_status_text(array $n): string {
 }
 
 // 관리 화면 "상태 확인": lite/status
-function talk_saki_check(PDO $pdo, array $cfg): array {
-    $r = talk_saki_call($cfg, 'status', [], 15);
+function talk_saki_check(PDO $pdo, array $cfg, int $timeout = 15): array {
+    $r = talk_saki_call($cfg, 'status', [], $timeout);
     talk_saki_note($pdo, $cfg, 'status', $r);
-    return json_decode((string)talk_meta_get($pdo, 'saki_status'), true);
+    $n = json_decode((string)talk_meta_get($pdo, 'saki_status'), true);
+    // 사용량 칸에 보일 마지막 상태 확인 (대답 결과로 덮이지 않게 따로)
+    talk_meta_set($pdo, 'saki_usage', json_encode($n + ['day' => is_string($r[1]['day'] ?? null) ? $r[1]['day'] : talk_saki_day()], JSON_UNESCAPED_UNICODE));
+    return $n;
+}
+
+// 관리 화면 사용량: SAKI 서버의 오늘 사용량(2분 넘게 지났으면 새로 물어봄) + 이 서버에서 센 방별 사키 대답 수
+function talk_saki_usage(PDO $pdo, array $cfg): array {
+    $u = json_decode((string)talk_meta_get($pdo, 'saki_usage'), true);
+    if (!is_array($u) || strtotime($u['at'] . ' UTC') < time() - 120) {
+        talk_saki_check($pdo, $cfg, 5);
+        $u = json_decode((string)talk_meta_get($pdo, 'saki_usage'), true);
+    }
+    $bot = talk_saki_bot($pdo);
+    $dayStart = gmdate('Y-m-d H:i:s', strtotime(talk_saki_day() . ' 00:00:00 UTC') - 9 * 3600); // 한국 날짜 0시
+    $st = $pdo->prepare("SELECT r.id, COALESCE(r.name, '(이름 없는 방)') AS name, SUM(m.created_at >= ?) AS today, COUNT(*) AS week
+        FROM talk_messages m JOIN talk_rooms r ON r.id = m.room_id WHERE m.user_id = ? AND m.kind = 'text' AND m.created_at >= ?
+        GROUP BY r.id ORDER BY today DESC, week DESC");
+    $st->execute([$dayStart, $bot, gmdate('Y-m-d H:i:s', time() - 7 * 86400)]);
+    return ['lite' => $u, 'rooms' => $st->fetchAll()];
 }
 
 // 받은 링크: https 만, 4개까지, 제목은 일반 글로

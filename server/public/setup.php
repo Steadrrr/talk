@@ -423,7 +423,17 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <form method="post" autocomplete="off"><?= $hidden('saki_key') ?>
 <label><?= $sakiKey === '' ? '열쇠' : '새 열쇠 (SAKI 에서 열쇠를 새로 만들었을 때)' ?> <input name="key" type="password" required autocomplete="off" spellcheck="false"></label>
 <button type="submit">저장하고 확인</button></form>
-<?php if ($sakiKey !== ''): ?>
+<?php if ($sakiKey !== ''): $su = talk_saki_usage($pdo, $cfg); $sl = $su['lite']; $okUsage = (int)($sl['code'] ?? 0) === 200 && isset($sl['spent'], $sl['cap']); ?>
+<fieldset><legend>사키 사용량</legend>
+<?php if ($okUsage): $pct = (float)$sl['cap'] > 0 ? min(100, round((float)$sl['spent'] / (float)$sl['cap'] * 100)) : 0; ?>
+<p>오늘(<?= h((string)$sl['day']) ?>) <b><?= h(sprintf('$%.3f', (float)$sl['spent'])) ?></b> / <?= h(sprintf('$%.2f', (float)$sl['cap'])) ?> <span class="hint">(<?= $pct ?>%)<?= isset($sl['requests']) ? ' · 요청 ' . (int)$sl['requests'] . '번' : '' ?><?= !empty($sl['model']) ? ' · ' . h((string)$sl['model']) : '' ?></span></p>
+<div class="bar"><i style="width:<?= $pct ?>%"></i></div>
+<p class="hint">SAKI 서버가 센 오늘(한국 날짜) 사용량이에요. 상한에 닿으면 사키가 그날은 쉬어요. 상한은 SAKI 관리 화면에서 바꿔요. <?= h(kst($sl['at'])) ?> 기준</p>
+<?php else: ?><p class="err">사용량을 받아 오지 못했어요: <?= h(talk_saki_status_text($sl ?: [])) ?></p><?php endif; ?>
+<p class="hint">방별 사키 대답 수 (오늘 / 최근 7일)</p>
+<?php if (!$su['rooms']) echo '<p class="hint">└ 최근 7일 동안 사키가 대답한 방이 없어요.</p>'; ?>
+<?php foreach ($su['rooms'] as $sr): ?><p class="hint">└ <?= h($sr['name']) ?> · <?= (int)$sr['today'] ?>번 / <?= (int)$sr['week'] ?>번</p><?php endforeach; ?>
+</fieldset>
 <form method="post" class="row"><?= $hidden('saki_status') ?><span class="hint"><?= $sakiNote ? '마지막 ' . h($sakiNote['what'] === 'status' ? '상태 확인' : '대답') . ' ' . h(kst($sakiNote['at'])) . ' · ' . h(talk_saki_status_text($sakiNote)) : '아직 부른 적 없어요.' ?></span><button type="submit" class="sub">상태 확인</button></form>
 <form method="post" class="row"><?= $hidden('saki_key_clear') ?><span class="hint">열쇠를 지우면 사키가 모든 방에서 조용히 쉬어요.</span><button type="submit" class="sub">열쇠 지우기</button></form>
 <?php endif; ?>
@@ -456,7 +466,7 @@ button{font:inherit;cursor:pointer;color:#fff;background:var(--acc);border:0;bor
 .btns{display:flex;gap:6px} .checks{display:flex;flex-wrap:wrap;gap:4px 14px;flex:1} label.check{display:flex;align-items:center;gap:4px;margin:0;color:var(--fg)} label.check input{width:auto;margin:0} .ugroups{border-top:0;padding-top:0} .group{border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:8px 0} button.sub{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:5px 10px}
 .secret{border:2px solid var(--ok);border-radius:12px;padding:12px;margin:10px 0;font-size:16px;background:var(--card)} .secret code{font-size:17px}
 details.menu{margin:12px 0;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:0 10px} details.menu>summary{cursor:pointer;padding:12px 2px;font-weight:600;color:var(--acc)} details.menu.sub{background:var(--bg);margin:8px 0} details.menu fieldset{border:0;margin:0 0 8px;padding:0 2px}
-.hint{color:var(--dim);font-size:13px} .back{margin:calc(env(safe-area-inset-top) + 4px) 0 0} .back a{color:var(--acc);text-decoration:none;font-weight:600} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
+.hint{color:var(--dim);font-size:13px} .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden} .bar i{display:block;height:100%;background:var(--acc)} .back{margin:calc(env(safe-area-inset-top) + 4px) 0 0} .back a{color:var(--acc);text-decoration:none;font-weight:600} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
 </style></head><body><main><p class="back"><a href="./">← SAKi Talk 으로</a></p><h1>' . h($title) . '</h1>';
 }
 function page_foot(): void { echo '</main><script src="./setup.js"></script></body></html>'; }

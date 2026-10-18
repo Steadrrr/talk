@@ -685,6 +685,9 @@ try {
     assert.equal(lite.calls.at(-1).key, SAKI_KEY);
     html = await adminPost({ act: 'saki_status' });
     assert.match(html, /오늘 \$0\.012 \/ \$0\.20/);
+    assert.match(html, /사키 사용량/);
+    assert.match(html, /<b>\$0\.012<\/b> \/ \$0\.20/);
+    assert.match(html, /요청 3번/);
     room = await roomOf(tok.mom);
     assert.equal(room.saki.ready, true);
     assert.equal((await api('sync?since=0', undefined, tok.dad)).body.saki_ready, true, '동기화에도 열쇠가 들어갔는지');
@@ -750,6 +753,8 @@ try {
     assert.equal(replies().length, 3, '60초 지난 표시는 무효');
     const all = JSON.stringify([(await api('sync?since=0', undefined, tok.mom)).body, (await api('me', undefined, tok.me)).body]);
     assert.ok(!all.includes(SAKI_KEY) && !phpLog.includes(SAKI_KEY));
+    const usage = await (await req('/setup.php')).text();
+    assert.match(usage, /소풍방 · \d+번 \/ \d+번/, '방별 사키 대답 수');
   });
 
   await t('사키: 가끔 끼어들기는 간격이 지나고 사람 메시지가 3개 쌓이면 한 번, pass 면 아무것도 안 올림', async () => {
