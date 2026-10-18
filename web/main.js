@@ -12,8 +12,10 @@ import { PushPrompt } from './pushui.js';
 import { pushState, pushAsked, refreshPush, clearRoomNotifications } from './push.js';
 import './style.css';
 import { applyFontSize } from './fontsize.js';
+import { fitViewport } from './viewport.js';
 
 applyFontSize();
+fitViewport();
 
 function App() {
   const [, force] = useState(0);

@@ -37,6 +37,13 @@ export function Room({ id, onBack }) {
     }
   });
 
+  // 키보드가 올라오거나 내려가 화면 높이가 바뀌면: 맨 아래를 보고 있었으면 계속 맨 아래
+  useEffect(() => {
+    const keep = () => { const el = scroller.current; if (el && atBottom.current) el.scrollTop = el.scrollHeight; };
+    window.addEventListener('talk:fit', keep);
+    return () => window.removeEventListener('talk:fit', keep);
+  }, []);
+
   async function onScroll() {
     const el = scroller.current;
     atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
