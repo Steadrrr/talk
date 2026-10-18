@@ -121,7 +121,7 @@ if ($cfg === null) {
 $pdo = talk_db($cfg);
 talk_migrate_if_needed($pdo);
 talk_ensure_admin($pdo, $cfg);
-$invite = null; // [그룹 이름, 코드] — 만든 직후 한 번만 보여 줌
+$invite = null; // [그룹 이름, 코드] — 방금 만든 코드를 위에 크게 보여 줌 (아래 그룹 목록에도 계속 보임)
 $act = (string)($_POST['act'] ?? '');
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
     try {
@@ -223,7 +223,7 @@ $groups = $pdo->query('SELECT id, name, closed FROM talk_groups ORDER BY closed,
 $members = [];
 foreach ($pdo->query('SELECT m.group_id, u.id, u.name, u.is_admin FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id ORDER BY u.name')->fetchAll() as $r) $members[(int)$r['group_id']][] = $r;
 $invites = [];
-$st = $pdo->prepare('SELECT id, group_id, uses_left, expires_at FROM talk_invites WHERE revoked = 0 AND uses_left > 0 AND expires_at > ? ORDER BY id');
+$st = $pdo->prepare('SELECT id, group_id, code, uses_left, expires_at FROM talk_invites WHERE revoked = 0 AND uses_left > 0 AND expires_at > ? ORDER BY id');
 $st->execute([talk_now()]);
 foreach ($st->fetchAll() as $r) $invites[(int)$r['group_id']][] = $r;
 $users = $pdo->query('SELECT u.id, u.name, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
@@ -238,9 +238,9 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 </fieldset>
 
 <?php if ($invite): ?>
-<div class="secret"><b>지금만 보여요 — 복사해서 나눠 주세요</b><br>그룹 <?= h($invite[0]) ?> 초대 코드 <code><?= h($invite[1]) ?></code>
+<div class="secret"><b>초대 코드를 만들었어요 — 복사해서 나눠 주세요</b><br>그룹 <?= h($invite[0]) ?> 초대 코드 <code><?= h($invite[1]) ?></code>
 <br>초대 링크 <code><?= h($base . '#invite=' . $invite[1]) ?></code>
-<br><span class="hint">링크를 열면 가입 화면에 코드가 채워져 있어요. 이미 가입한 사람은 앱의 설정 → 초대 코드 넣기.</span></div>
+<br><span class="hint">링크를 열면 가입 화면에 코드가 채워져 있어요. 이미 가입한 사람은 앱의 설정 → 초대 코드 넣기. 아래 그룹 목록에서 언제든 다시 볼 수 있어요.</span></div>
 <?php endif; ?>
 
 <fieldset><legend>그룹 (같은 그룹 사람끼리만 서로 보여요)</legend>
@@ -257,7 +257,8 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php endforeach; ?>
 <?php foreach ($invites[$gid] ?? [] as $i): ?>
 <form method="post" class="row"><?= $hidden('invite_revoke', ['id' => (int)$i['id']]) ?>
-<span class="hint">└ 초대 코드 #<?= (int)$i['id'] ?> · 남은 횟수 <?= (int)$i['uses_left'] ?> · <?= h($i['expires_at']) ?> (UTC) 까지</span><button type="submit" class="sub">없애기</button></form>
+<span class="hint">└ 초대 코드 <?= $i['code'] ? '<code>' . h($i['code']) . '</code> · 링크 <code>' . h($base . '#invite=' . $i['code']) . '</code>' : '#' . (int)$i['id'] . ' (예전에 만든 코드라 다시 볼 수 없어요)' ?>
+<br>└ 남은 횟수 <?= (int)$i['uses_left'] ?> · <?= h($i['expires_at']) ?> (UTC) 까지</span><button type="submit" class="sub">없애기</button></form>
 <?php endforeach; ?>
 <?php if (!(int)$g['closed']): ?>
 <form method="post" class="row"><?= $hidden('invite', ['group' => $gid]) ?>

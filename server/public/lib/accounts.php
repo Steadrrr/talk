@@ -77,8 +77,8 @@ function talk_invite_hash(string $code): string {
 function talk_new_invite(PDO $pdo, int $groupId, int $uses, int $days): string {
     $code = '';
     for ($i = 0; $i < 8; $i++) $code .= TALK_INVITE_ALPHABET[random_int(0, strlen(TALK_INVITE_ALPHABET) - 1)];
-    $pdo->prepare('INSERT INTO talk_invites (group_id, code_hash, uses_left, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
-        ->execute([$groupId, talk_invite_hash($code), max(1, min(50, $uses)), gmdate('Y-m-d H:i:s', time() + max(1, min(90, $days)) * 86400), talk_now()]);
+    $pdo->prepare('INSERT INTO talk_invites (group_id, code_hash, code, uses_left, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([$groupId, talk_invite_hash($code), $code, max(1, min(50, $uses)), gmdate('Y-m-d H:i:s', time() + max(1, min(90, $days)) * 86400), talk_now()]);
     return $code;
 }
 

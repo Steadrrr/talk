@@ -134,6 +134,9 @@ try {
     inviteFamily = inviteOf(await adminPost({ act: 'invite', group: family, uses: '2', days: '7' }));
     inviteFriends = inviteOf(await adminPost({ act: 'invite', group: friends, uses: '1', days: '7' }));
     assert.ok(inviteFamily && inviteFriends);
+    html = await (await req('/setup.php')).text();
+    assert.ok(html.includes(`<code>${inviteFamily}</code>`), '만든 뒤에도 관리 화면에서 코드가 다시 보임');
+    assert.ok(html.includes(`#invite=${inviteFriends}`));
   });
 
   await t('가입: 틀린 초대 코드는 거절, 맞으면 토큰', async () => {

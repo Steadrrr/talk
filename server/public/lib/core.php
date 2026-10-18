@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 2;
+const TALK_SERVER_VERSION = 3;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -76,7 +76,7 @@ function talk_migrate(PDO $pdo): void {
             group_id INT NOT NULL, user_id INT NOT NULL, joined_at DATETIME NOT NULL, PRIMARY KEY (group_id, user_id), INDEX (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
         "CREATE TABLE IF NOT EXISTS talk_invites (
-            id INT AUTO_INCREMENT PRIMARY KEY, group_id INT NOT NULL, code_hash CHAR(64) NOT NULL UNIQUE, uses_left INT NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY, group_id INT NOT NULL, code_hash CHAR(64) NOT NULL UNIQUE, code VARCHAR(16) NULL, uses_left INT NOT NULL,
             expires_at DATETIME NOT NULL, revoked TINYINT NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, INDEX (group_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
         // 채팅방: dm(1:1, dm_key='작은ID:큰ID') 또는 group(여럿). 방은 한 그룹 안에 있다
@@ -99,6 +99,8 @@ function talk_migrate(PDO $pdo): void {
             created_at DATETIME NOT NULL, INDEX idx_room (room_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
+    // 3: 초대 코드를 관리 화면에서 언제든 다시 볼 수 있게 코드 자체도 저장 (그 전에 만든 코드는 비어 있음)
+    $q[] = "ALTER TABLE talk_invites ADD COLUMN IF NOT EXISTS code VARCHAR(16) NULL AFTER code_hash";
     foreach ($q as $sql) $pdo->exec($sql);
     talk_meta_set($pdo, 'schema', (string)TALK_SERVER_VERSION);
 }
