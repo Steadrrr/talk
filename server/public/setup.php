@@ -152,8 +152,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             if ($gname === '' || mb_strlen($gname) > 40) throw new RuntimeException('그룹 이름을 1~40자로 넣어 주세요.');
             $pdo->prepare('INSERT INTO talk_groups (name, created_at) VALUES (?, ?)')->execute([$gname, talk_now()]);
             $gid = (int)$pdo->lastInsertId();
-            // 관리자는 자기가 만든 그룹에 들어간다
-            $pdo->prepare('INSERT IGNORE INTO talk_group_members (group_id, user_id, joined_at) SELECT ?, id, ? FROM talk_users WHERE is_admin = 1')->execute([$gid, talk_now()]);
+            talk_admin_in_all_groups($pdo); // 관리자는 모든 그룹에
             $msg = "그룹 \"$gname\" 을 만들었어요. 아래에서 초대 코드를 만들어 나눠 주세요.";
         } elseif ($act === 'group_close' || $act === 'group_open') {
             $pdo->prepare('UPDATE talk_groups SET closed = ? WHERE id = ?')->execute([$act === 'group_close' ? 1 : 0, (int)($_POST['id'] ?? 0)]);
@@ -168,6 +167,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
         } elseif ($act === 'invite_revoke') {
             $pdo->prepare('UPDATE talk_invites SET revoked = 1 WHERE id = ?')->execute([(int)($_POST['id'] ?? 0)]);
             $msg = '초대 코드를 없앴어요.';
+        } elseif ($act === 'user_groups') {
+            talk_set_user_groups($pdo, (int)($_POST['id'] ?? 0), array_map('intval', (array)($_POST['groups'] ?? [])));
+            $msg = '그룹을 바꿨어요. (앱은 몇 초 안에 새 친구 목록을 받아요)';
         } elseif ($act === 'member_remove') {
             $pdo->prepare('DELETE m FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id WHERE m.group_id = ? AND m.user_id = ? AND u.is_admin = 0')
                 ->execute([(int)($_POST['group'] ?? 0), (int)($_POST['id'] ?? 0)]);
@@ -188,6 +190,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             $pdo->prepare('UPDATE talk_devices SET revoked = 1 WHERE id = ?')->execute([(int)($_POST['id'] ?? 0)]);
             $msg = '기기 로그인을 끊었어요.';
         }
+        if (in_array($act, ['group_new', 'group_close', 'group_open', 'member_remove', 'user_off', 'user_on', 'user_groups'], true)) talk_groups_changed($pdo);
     } catch (Throwable $e) {
         $err = $e->getMessage();
     }
@@ -226,6 +229,8 @@ $invites = [];
 $st = $pdo->prepare('SELECT id, group_id, code, uses_left, expires_at FROM talk_invites WHERE revoked = 0 AND uses_left > 0 AND expires_at > ? ORDER BY id');
 $st->execute([talk_now()]);
 foreach ($st->fetchAll() as $r) $invites[(int)$r['group_id']][] = $r;
+$userGroups = [];
+foreach ($pdo->query('SELECT user_id, group_id FROM talk_group_members')->fetchAll() as $r) $userGroups[(int)$r['user_id']][(int)$r['group_id']] = true;
 $users = $pdo->query('SELECT u.id, u.name, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
 $devs = $pdo->query('SELECT d.id, d.name, d.last_seen, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.id')->fetchAll();
 $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT(*) FROM talk_messages) m')->fetch();
@@ -271,13 +276,18 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <form method="post" class="row"><?= $hidden('group_new') ?><label>새 그룹 이름 <input name="name" required maxlength="40" placeholder="예: 가족"></label><button type="submit">그룹 만들기</button></form>
 </fieldset>
 
-<fieldset><legend>사람</legend>
+<fieldset><legend>사람 (그룹을 체크하고 저장하면 여러 그룹에 한꺼번에 넣고 빼요)</legend>
 <?php foreach ($users as $u): ?>
 <div class="row"><span><b><?= h($u['name']) ?></b> <span class="hint"><?= (int)$u['is_admin'] ? '관리자' : '사용자' ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr($u['created_at'], 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
 <?php if (!(int)$u['is_admin']): ?><span class="btns">
 <form method="post"><?= $hidden('user_pw', ['id' => (int)$u['id']]) ?><button type="submit" class="sub">새 비밀번호</button></form>
 <form method="post"><?= $hidden((int)$u['disabled'] ? 'user_on' : 'user_off', ['id' => (int)$u['id']]) ?><button type="submit" class="sub"><?= (int)$u['disabled'] ? '다시 켜기' : '멈추기' ?></button></form>
 </span><?php endif; ?></div>
+<?php if (!(int)$u['is_admin'] && $groups): ?>
+<form method="post" class="row ugroups"><?= $hidden('user_groups', ['id' => (int)$u['id']]) ?>
+<span class="checks"><?php foreach ($groups as $g): ?><label class="check"><input type="checkbox" name="groups[]" value="<?= (int)$g['id'] ?>"<?= isset($userGroups[(int)$u['id']][(int)$g['id']]) ? ' checked' : '' ?>> <?= h($g['name']) ?><?= (int)$g['closed'] ? ' (닫힘)' : '' ?></label><?php endforeach; ?></span>
+<button type="submit" class="sub">그룹 저장</button></form>
+<?php elseif ((int)$u['is_admin']): ?><p class="hint">└ 관리자는 모든 그룹에 들어가 있어요.</p><?php endif; ?>
 <?php endforeach; ?>
 </fieldset>
 
@@ -309,7 +319,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 page_foot();
 
 function page_head(string $title): void {
-    echo '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>' . h($title) . '</title><style>
+    echo '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><link rel="icon" href="./icon-192.png"><title>' . h($title) . '</title><style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1c1f24;--dim:#69707a;--ok:#1f8f4e;--bad:#c62828;--acc:#e8508e;--line:#e3e6ea}
 @media (prefers-color-scheme:dark){:root{--bg:#15171b;--card:#1f2228;--fg:#eceef1;--dim:#9aa1ab;--ok:#5fd18d;--bad:#ff8a80;--acc:#ff8fbd;--line:#2e333b}}
 body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
@@ -318,9 +328,9 @@ label{display:block;margin:8px 0;color:var(--dim)}
 input{display:block;width:100%;box-sizing:border-box;margin-top:3px;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 button{font:inherit;cursor:pointer;color:#fff;background:var(--acc);border:0;border-radius:8px;padding:8px 16px;font-weight:600;margin-top:6px}
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:6px 0;flex-wrap:wrap} .row label{flex:1;min-width:120px;margin:0}
-.btns{display:flex;gap:6px} .group{border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:8px 0} button.sub{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:5px 10px}
+.btns{display:flex;gap:6px} .checks{display:flex;flex-wrap:wrap;gap:4px 14px;flex:1} label.check{display:flex;align-items:center;gap:4px;margin:0;color:var(--fg)} label.check input{width:auto;margin:0} .ugroups{border-top:0;padding-top:0} .group{border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:8px 0} button.sub{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:5px 10px}
 .secret{border:2px solid var(--ok);border-radius:12px;padding:12px;margin:10px 0;font-size:16px;background:var(--card)} .secret code{font-size:17px}
-.hint{color:var(--dim);font-size:13px} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all}
+.hint{color:var(--dim);font-size:13px} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
 </style></head><body><main><h1>' . h($title) . '</h1>';
 }
 function page_foot(): void { echo '</main></body></html>'; }

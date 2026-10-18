@@ -11,6 +11,34 @@ function talk_ensure_admin(PDO $pdo, array $cfg): void {
     if ($pdo->query('SELECT COUNT(*) FROM talk_users WHERE is_admin = 1')->fetchColumn()) return;
     $pdo->prepare('INSERT IGNORE INTO talk_users (name, password_hash, is_admin, created_at) VALUES (?, ?, 1, ?)')
         ->execute([(string)$cfg['admin_name'], (string)$cfg['admin_hash'], talk_now()]);
+    talk_admin_in_all_groups($pdo);
+}
+
+// 관리자는 모든 그룹에 들어가 있다 (모든 그룹 사람에게 보이고, 모두와 대화할 수 있음)
+function talk_admin_in_all_groups(PDO $pdo): void {
+    $pdo->prepare('INSERT IGNORE INTO talk_group_members (group_id, user_id, joined_at) SELECT g.id, u.id, ? FROM talk_groups g CROSS JOIN talk_users u WHERE u.is_admin = 1')
+        ->execute([talk_now()]);
+    talk_groups_changed($pdo);
+}
+
+// 관리 화면에서 한 사람의 그룹을 한꺼번에 정한다 (체크한 그룹만 남김). 관리자는 바꾸지 않음
+function talk_set_user_groups(PDO $pdo, int $uid, array $groupIds): void {
+    $st = $pdo->prepare('SELECT is_admin FROM talk_users WHERE id = ?');
+    $st->execute([$uid]);
+    $isAdmin = $st->fetchColumn();
+    if ($isAdmin === false || (int)$isAdmin) return;
+    $valid = array_map('intval', $pdo->query('SELECT id FROM talk_groups')->fetchAll(PDO::FETCH_COLUMN));
+    $want = array_values(array_intersect($valid, array_map('intval', $groupIds)));
+    $pdo->beginTransaction();
+    if ($want) {
+        $in = implode(',', array_fill(0, count($want), '?'));
+        $pdo->prepare("DELETE FROM talk_group_members WHERE user_id = ? AND group_id NOT IN ($in)")->execute([$uid, ...$want]);
+    } else {
+        $pdo->prepare('DELETE FROM talk_group_members WHERE user_id = ?')->execute([$uid]);
+    }
+    foreach ($want as $g) talk_join_group($pdo, $uid, $g);
+    talk_groups_changed($pdo);
+    $pdo->commit();
 }
 
 function talk_clean_name(mixed $v): string {
@@ -99,6 +127,16 @@ function talk_invite_group(PDO $pdo, string $code, bool $use): ?int {
 
 function talk_join_group(PDO $pdo, int $uid, int $groupId): void {
     $pdo->prepare('INSERT IGNORE INTO talk_group_members (group_id, user_id, joined_at) VALUES (?, ?, ?)')->execute([$groupId, $uid, talk_now()]);
+    talk_groups_changed($pdo);
+}
+
+// 그룹·사람이 바뀌면 번호를 올린다. 앱은 동기화 때 이 번호가 바뀌었으면 친구 목록을 다시 받는다
+function talk_groups_changed(PDO $pdo): void {
+    $pdo->exec("INSERT INTO talk_meta (k, v) VALUES ('groups_rev', '1') ON DUPLICATE KEY UPDATE v = v + 1");
+}
+
+function talk_groups_rev(PDO $pdo): int {
+    return (int)(talk_meta_get($pdo, 'groups_rev') ?? 0);
 }
 
 // ───── 그룹 ─────

@@ -77,9 +77,9 @@ function talk_sync(PDO $pdo, int $uid, int $since): array {
     if ($since <= 0 || $since > $max) {
         $msgs = [];
         foreach ($myRooms as $rid) array_push($msgs, ...talk_messages_where($pdo, 'room_id = ?', [$rid], TALK_FIRST_MSGS));
-        return ['full' => true, 'cursor' => $max, 'more' => false, 'rooms' => talk_rooms_view($pdo, $uid, $myRooms), 'messages' => $msgs];
+        return ['full' => true, 'groups_rev' => talk_groups_rev($pdo), 'cursor' => $max, 'more' => false, 'rooms' => talk_rooms_view($pdo, $uid, $myRooms), 'messages' => $msgs];
     }
-    if (!$myRooms || $since === $max) return ['full' => false, 'cursor' => $max, 'more' => false, 'rooms' => [], 'messages' => []];
+    if (!$myRooms || $since === $max) return ['full' => false, 'groups_rev' => talk_groups_rev($pdo), 'cursor' => $max, 'more' => false, 'rooms' => [], 'messages' => []];
     $in = implode(',', array_fill(0, count($myRooms), '?'));
     $st = $pdo->prepare("SELECT id, room_id, kind, ref_id FROM talk_events WHERE id > ? AND id <= ? AND room_id IN ($in) ORDER BY id LIMIT " . TALK_SYNC_LIMIT);
     $st->execute([$since, $max, ...$myRooms]);
@@ -98,7 +98,7 @@ function talk_sync(PDO $pdo, int $uid, int $since): array {
         if ($e['kind'] === 'room') foreach (talk_messages_where($pdo, 'room_id = ? AND id NOT IN (' . ($msgIds ? implode(',', $msgIds) : '0') . ')', [(int)$e['room_id']], TALK_FIRST_MSGS) as $m) $msgs[] = $m;
     }
     usort($msgs, fn($a, $b) => $a['id'] <=> $b['id']);
-    return ['full' => false, 'cursor' => $cursor, 'more' => $more, 'rooms' => talk_rooms_view($pdo, $uid, $touched), 'messages' => $msgs];
+    return ['full' => false, 'groups_rev' => talk_groups_rev($pdo), 'cursor' => $cursor, 'more' => $more, 'rooms' => talk_rooms_view($pdo, $uid, $touched), 'messages' => $msgs];
 }
 
 // ───── 방 만들기 ─────

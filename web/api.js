@@ -5,18 +5,23 @@ const BASE = new URL('./api.php/', location.href).href;
 // 로그인이 끊겼을 때 (토큰이 없거나 관리자가 끊음)
 export class AuthError extends Error {}
 
+// 자동 로그인이면 localStorage(앱을 닫아도 남음), 아니면 sessionStorage(앱·탭을 닫으면 로그아웃)
 export function getToken() {
-  try { return localStorage.getItem('talk.token') || ''; } catch { return ''; }
+  try { return localStorage.getItem('talk.token') || sessionStorage.getItem('talk.token') || memToken; } catch { return memToken; }
 }
-export function setToken(t) {
-  try { localStorage.setItem('talk.token', t); } catch { /* 개인 정보 보호 모드: 이번 실행 동안만 */ }
+export function setToken(t, remember = true) {
   memToken = t;
+  try {
+    localStorage.removeItem('talk.token');
+    sessionStorage.removeItem('talk.token');
+    if (t) (remember ? localStorage : sessionStorage).setItem('talk.token', t);
+  } catch { /* 개인 정보 보호 모드: 이번 실행 동안만 */ }
 }
 let memToken = '';
 
 export async function api(route, body) {
   const opts = { headers: {} };
-  const token = getToken() || memToken;
+  const token = getToken();
   if (token) opts.headers['X-Talk-Token'] = token;
   if (body !== undefined) {
     opts.method = 'POST';

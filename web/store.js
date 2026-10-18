@@ -12,6 +12,7 @@ export const state = {
   rooms: {},       // id → { id, group_id, kind, name, members, last, unread, muted, pinned }
   messages: {},    // roomId → [메시지] (id 순서, 보내는 중인 것은 뒤에 pending: true)
   cursor: 0,
+  groupsRev: 0,    // 서버의 그룹 변경 번호. 동기화 때 달라지면 친구 목록을 다시 받는다
   openRoom: null,  // 지금 보고 있는 방 번호
   online: true,
 };
@@ -30,7 +31,7 @@ function save() {
   try {
     const messages = {};
     for (const [rid, list] of Object.entries(state.messages)) messages[rid] = list.filter((m) => !m.pending).slice(-KEEP_PER_ROOM);
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ me: state.me, groups: state.groups, rooms: state.rooms, messages, cursor: state.cursor }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ me: state.me, groups: state.groups, groupsRev: state.groupsRev, rooms: state.rooms, messages, cursor: state.cursor }));
   } catch { /* 저장 공간이 없거나 막혀도 앱은 그대로 동작 */ }
 }
 let saveTimer = 0;
@@ -39,7 +40,7 @@ function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(save, 500)
 export function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-    if (s && s.me) Object.assign(state, { me: s.me, groups: s.groups || [], rooms: s.rooms || {}, messages: s.messages || {}, cursor: s.cursor || 0 });
+    if (s && s.me) Object.assign(state, { me: s.me, groups: s.groups || [], groupsRev: s.groupsRev || 0, rooms: s.rooms || {}, messages: s.messages || {}, cursor: s.cursor || 0 });
   } catch { /* 망가진 저장은 무시하고 서버에서 새로 받음 */ }
 }
 
@@ -90,6 +91,7 @@ export async function syncNow() {
         mergeMessages(r.messages);
         state.cursor = r.cursor;
         more = r.more;
+        if (r.groups_rev !== undefined && r.groups_rev !== state.groupsRev) await loadMe();
       }
       state.online = true;
       markReadIfOpen();
@@ -130,6 +132,7 @@ export async function loadMe() {
   const r = await api('me');
   state.me = r.me;
   state.groups = r.groups;
+  state.groupsRev = r.groups_rev || 0;
   saveSoon();
   notify();
 }

@@ -277,6 +277,27 @@ try {
     assert.equal(r.status, 401);
   });
 
+  await t('관리: 사람별로 그룹을 여러 개 한꺼번에 정함, 관리자는 모든 그룹에', async () => {
+    let html = await adminPost({ act: 'group_new', name: '회사' });
+    html = await (await req('/setup.php')).text();
+    const ids = [...html.matchAll(/name="act" value="invite"><input type="hidden" name="group" value="(\d+)"/g)].map((m) => m[1]);
+    const company = ids[2];
+    const before = (await api('sync?since=0', undefined, tok.mom)).body.groups_rev;
+    const mom = html.split('<div class="row"><span><b>').find((x) => x.startsWith('엄마</b>')).match(/name="act" value="user_groups"><input type="hidden" name="id" value="(\d+)"/)[1];
+    // 엄마: 가족 빼고 친구·회사
+    const body = new URLSearchParams({ csrf: csrfOf(html), act: 'user_groups', id: mom });
+    body.append('groups[]', friends); body.append('groups[]', company);
+    const r0 = await req('/setup.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+    assert.match(await r0.text(), /그룹을 바꿨어요/);
+    let r = await api('me', undefined, tok.mom);
+    assert.deepEqual(r.body.groups.map((g) => g.name).sort(), ['친구', '회사'].sort());
+    assert.ok(r.body.groups.find((g) => g.name === '회사').members.some((m) => m.name === '일래'), '관리자는 새 그룹에도');
+    const after = (await api('sync?since=0', undefined, tok.mom)).body.groups_rev;
+    assert.notEqual(after, before, '동기화에서 그룹이 바뀐 걸 알 수 있음');
+    r = await api('me', undefined, tok.me);
+    assert.equal(r.body.groups.length, 3);
+  });
+
   await t('로그아웃하면 그 기기 토큰은 못 씀', async () => {
     let r = await api('auth/logout', {}, tok.dad);
     assert.equal(r.status, 200);

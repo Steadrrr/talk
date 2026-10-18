@@ -89,7 +89,7 @@ $uid = $me['id'];
 
 switch ($route) {
     case 'me':
-        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'is_admin' => $me['is_admin']], 'groups' => talk_my_groups($pdo, $uid)]);
+        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'is_admin' => $me['is_admin']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
 
     case 'auth/logout':
         $need('POST');
