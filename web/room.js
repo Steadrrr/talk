@@ -166,7 +166,7 @@ export function Room({ id, onBack }) {
   return html`
     <section class="page room-page">
       <header class="bar room-bar">
-        <button class="icon" onClick=${onBack} aria-label="뒤로">‹</button>
+        <button class="icon hicon" onClick=${onBack} aria-label="뒤로">${BACK_ICON}</button>
         <div class="room-title">
         <h2 class=${'ellipsis' + (room.kind === 'dm' && others[0] ? ' tap' : '')} onClick=${() => room.kind === 'dm' && others[0] && showProfile(others[0].id)}>${roomTitle(room)}</h2>
         ${room.kind === 'group' && html`<span class="hint">${room.members.length}</span>`}
@@ -174,8 +174,8 @@ export function Room({ id, onBack }) {
         ${room.muted > 0 && html`<span class="mark">🔕</span>`}
         </div>
         <div class="bar-right">
-          <button class="icon search-btn" onClick=${() => setSearching(true)} aria-label="대화 검색">${SEARCH_ICON}</button>
-          <button class="icon" onClick=${() => setSettings(true)} aria-label="방 설정">☰</button>
+          <button class="icon hicon" onClick=${() => setSearching(true)} aria-label="대화 검색">${SEARCH_ICON}</button>
+          <button class="icon hicon" onClick=${() => setSettings(true)} aria-label="방 설정">${MENU_ICON}</button>
         </div>
       </header>
       ${room.notice && html`<${NoticeBar} notice=${room.notice} roomId=${id} onGo=${() => goTo(room.notice.id)} />`}
@@ -246,7 +246,11 @@ function useLongPress(onLong, onTap) {
   };
 }
 
-const SEARCH_ICON = html`<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5 21 21" /></svg>`;
+// 위쪽 아이콘 셋: 같은 크기·같은 굵기 (크기는 방 이름 글씨에 맞춤, CSS .hicon)
+const hsvg = (d) => html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const BACK_ICON = hsvg(html`<path d="M15 4 7 12l8 8" />`);
+const SEARCH_ICON = hsvg(html`<circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5 21 21" />`);
+const MENU_ICON = hsvg(html`<path d="M4 6h16M4 12h16M4 18h16" />`);
 
 // 대화 검색: 글자를 넣으면 잠깐 뒤 서버에서 찾고, 누르면 그 메시지로
 function RoomSearch({ roomId, names, onClose, onPick }) {

@@ -53,7 +53,7 @@ function Chats({ onOpen }) {
   const rooms = sortedRooms();
   return html`
     <section class="page">
-      <${Header} title="채팅"><button class="icon" title="새 채팅방" onClick=${() => setMaking(true)}>＋</button><//>
+      <${Header} title="채팅"><button class="icon hicon" title="새 채팅방" aria-label="새 채팅방" onClick=${() => setMaking(true)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 4v16M4 12h16" /></svg></button><//>
       <div class="scroll">
         ${rooms.length === 0 && html`<p class="empty">아직 대화가 없어요. 친구 탭에서 이름을 누르거나 ＋ 로 방을 만들어 보세요.</p>`}
         ${rooms.map((r) => {

@@ -52,10 +52,13 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 /* 공통 화면 틀 */
 .home, .page { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .page { flex: 1; }
-.bar { display: flex; align-items: center; gap: 6px; padding: calc(env(safe-area-inset-top) + 24px) 10px 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); min-height: 52px; }
-.bar h2 { font-size: calc(19px * var(--fs)); margin: 0; }
+.bar { display: flex; align-items: center; gap: 6px; box-sizing: border-box; height: calc(env(safe-area-inset-top) + 24px + 56px); padding: calc(env(safe-area-inset-top) + 24px) 8px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); flex: none; }
+/* 모든 화면 위쪽 줄은 높이가 같고(위 여백 + 56px), 아이콘은 44px 칸 가운데 */
+.bar .icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; flex: none; }
+.bar h2 { font-size: calc(19px * var(--fs)); line-height: 1.25; margin: 0; }
 /* 채팅방 위: 뒤로·설정 버튼 사이 가운데에 방 이름 */
 .room-bar { display: grid; grid-template-columns: 92px minmax(0, 1fr) 92px; padding-left: 6px; padding-right: 6px; }
+.room-bar > .icon { justify-self: start; }
 .room-title { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
 .offline { font-size: calc(12px * var(--fs)); color: var(--bad); border: 1px solid var(--bad); border-radius: 10px; padding: 1px 8px; }
 .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; padding-bottom: 12px; }
@@ -94,7 +97,7 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 /* 새 채팅방 */
 .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
 .sheet { background: var(--bg); width: 100%; max-width: 640px; height: 85dvh; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
-.sheet .bar { padding-top: 10px; border-radius: 16px 16px 0 0; }
+.sheet .bar { height: 60px; padding: 0 8px 0 12px; border-radius: 16px 16px 0 0; }
 
 /* 채팅방 */
 .room-page { background: var(--chat-bg); }
@@ -236,7 +239,6 @@ img.avatar { object-fit: cover; background: var(--line); }
 
 /* 대화 검색 */
 .bar-right { display: flex; justify-content: flex-end; align-items: center; }
-.search-btn { font-size: calc(22px * var(--fs)); padding: 4px 6px; display: flex; }
 .search-input { margin: 0 8px 0 4px; border-radius: 18px; padding: 8px 14px; }
 .search-hit { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); background: none; color: var(--fg); }
 .hit-top { display: flex; gap: 8px; align-items: baseline; }
@@ -257,3 +259,6 @@ img.avatar { object-fit: cover; background: var(--line); }
 .typing .dots i:nth-child(2) { animation-delay: .15s; }
 .typing .dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes typing-dot { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+
+/* 채팅방 위 아이콘: 방 이름(19px)과 같은 높이, 누르는 자리는 넉넉히 */
+.hicon svg { width: calc(21px * var(--fs)); height: calc(21px * var(--fs)); }
