@@ -1,6 +1,6 @@
 // 프로필 창: 닉네임(본명), 같이 있는 그룹, 1:1 대화. 내 프로필이면 닉네임 바꾸기
 import { useState } from 'preact/hooks';
-import { html, Avatar, squareJpeg, PhotoConfirm } from './html.js';
+import { html, Avatar, openImage, PhotoCrop } from './html.js';
 import { nickOf, fullName } from './names.js';
 import { state, person, showProfile, openDm, setNick, setPhoto } from './store.js';
 
@@ -22,17 +22,17 @@ export function Profile({ onOpen }) {
     setErr('');
     try { const rid = await openDm(id); close(); onOpen(rid); } catch (e) { setErr(e.message); }
   }
-  // 사진 고르기 → 가운데를 정사각형으로 잘라 320px JPEG 로 줄임 (보통 20~40KB) → 미리 보고 확인하면 올림
+  // 사진 고르기 → 끌고 확대·축소해 맞춤 → 확인하면 320px 정사각형 JPEG (보통 20~40KB) 로 올림
   async function pickPhoto(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     setErr('');
-    try { setDraft(await squareJpeg(file, 320)); } catch (e2) { setErr(e2.message || '사진을 열지 못했어요.'); }
+    try { setDraft(await openImage(file)); } catch (e2) { setErr(e2.message || '사진을 열지 못했어요.'); }
   }
-  async function confirmPhoto() {
+  async function confirmPhoto(data) {
     setBusy(true);
-    try { await setPhoto(draft); setDraft(null); } catch (e2) { setErr(e2.message || '사진을 올리지 못했어요.'); setDraft(null); } finally { setBusy(false); }
+    try { await setPhoto(data); setDraft(null); } catch (e2) { setErr(e2.message || '사진을 올리지 못했어요.'); setDraft(null); } finally { setBusy(false); }
   }
   async function removePhoto() {
     if (!confirm('프로필 사진을 지울까요?')) return;
@@ -68,7 +68,7 @@ export function Profile({ onOpen }) {
           ${!isMe && html`<button class="primary" onClick=${talk}>1:1 대화</button>`}
         </div>
       </div>
-      ${draft && html`<${PhotoConfirm} data=${draft} title="프로필 사진으로 할까요?" busy=${busy} onCancel=${() => setDraft(null)} onOk=${confirmPhoto} />`}
+      ${draft && html`<${PhotoCrop} img=${draft} size=${320} title="프로필 사진으로 할까요?" busy=${busy} onCancel=${() => setDraft(null)} onOk=${confirmPhoto} />`}
     </div>
   `;
 }

@@ -226,7 +226,10 @@ img.avatar { object-fit: cover; background: var(--line); }
 .center-bg { align-items: center; z-index: 20; }
 .photo-confirm { background: var(--card); border-radius: 20px; padding: 20px; width: min(320px, calc(100% - 32px)); display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .pc-title { margin: 0; font-weight: 600; text-align: center; font-size: calc(16px * var(--fs)); }
-.photo-confirm img { width: 200px; height: 200px; border-radius: 28%; object-fit: cover; }
+.crop-box { position: relative; width: 240px; height: 240px; border-radius: 28%; overflow: hidden; background: #000; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.crop-box img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; -webkit-user-drag: none; }
+.crop-zoom { width: 100%; accent-color: var(--acc); }
+.photo-confirm .hint { margin: -6px 0 0; text-align: center; }
 .pc-btns { display: flex; gap: 12px; width: 100%; }
 .pc-btns button { flex: 1; min-height: 48px; border-radius: 14px; font-size: calc(16px * var(--fs)); font-weight: 600; border: 0; }
 .pc-cancel { background: var(--bg); color: var(--dim); }
