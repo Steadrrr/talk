@@ -197,6 +197,7 @@ switch ($route) {
     case 'me/away':
         $need('POST');
         $pdo->prepare('UPDATE talk_devices SET active_at = NULL WHERE id = ?')->execute([$me['device_id']]);
+        $pdo->prepare('UPDATE talk_room_members SET typing_at = NULL WHERE user_id = ? AND typing_at IS NOT NULL')->execute([$uid]);
         talk_json(['ok' => true]);
 
     case 'push/key':
@@ -242,9 +243,19 @@ switch ($route) {
         talk_json(['ok' => true, 'groups' => talk_my_groups($pdo, $uid)]);
 
     case 'sync':
-        if ($q('active', '0') === '1') talk_mark_active($pdo, $me, (int)$q('room', 0));
-        // room_ids: 지금 들어가 있는 방 전부 (나간 방·닫힌 그룹의 방을 앱에서 지우게)
-        talk_json(['ok' => true] + talk_sync($pdo, $uid, (int)$q('since', 0)) + ['room_ids' => talk_my_room_ids($pdo, $uid)]);
+        $openRoom = $q('active', '0') === '1' ? (int)$q('room', 0) : 0;
+        if ($q('active', '0') === '1') talk_mark_active($pdo, $me, $openRoom);
+        // room_ids: 지금 들어가 있는 방 전부 (나간 방·닫힌 그룹의 방을 앱에서 지우게), typing: 보고 있는 방에서 입력 중인 사람
+        $out = ['ok' => true] + talk_sync($pdo, $uid, (int)$q('since', 0));
+        $out['room_ids'] = talk_my_room_ids($pdo, $uid);
+        $out['typing'] = $openRoom > 0 && in_array($openRoom, $out['room_ids'], true) ? talk_typing($pdo, $uid, $openRoom) : [];
+        talk_json($out);
+
+    case 'rooms/typing':
+        $need('POST');
+        $b = talk_body();
+        talk_set_typing($pdo, $uid, (int)($b['room_id'] ?? 0), !empty($b['on']));
+        talk_json(['ok' => true]);
 
     case 'rooms/dm':
         $need('POST');

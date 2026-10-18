@@ -318,6 +318,24 @@ try {
     assert.equal(r.status, 403);
   });
 
+  await t('입력 중: 보고 있는 방에서만, 나는 빼고, 보내거나 끄면 사라짐, 방 밖 사람은 못 함', async () => {
+    const dadId = await idOf(tok.mom, '아빠');
+    const room = (await api('rooms/dm', { user_id: dadId }, tok.mom)).body.room.id;
+    assert.equal((await api('rooms/typing', { room_id: room, on: true }, tok.mom)).status, 200);
+    let s = (await api(`sync?since=0&active=1&room=${room}`, undefined, tok.dad)).body;
+    assert.deepEqual(s.typing, [await idOf(tok.dad, '엄마')]);
+    assert.deepEqual((await api(`sync?since=0&active=1&room=${room}`, undefined, tok.mom)).body.typing, [], '나는 빼고');
+    assert.deepEqual((await api('sync?since=0&active=1&room=0', undefined, tok.dad)).body.typing, [], '목록에서는 안 보냄');
+    await api('messages/send', { room_id: room, body: '다 쳤어요' }, tok.mom);
+    assert.deepEqual((await api(`sync?since=0&active=1&room=${room}`, undefined, tok.dad)).body.typing, [], '보내면 꺼짐');
+    await api('rooms/typing', { room_id: room, on: true }, tok.mom);
+    await api('rooms/typing', { room_id: room, on: false }, tok.mom);
+    assert.deepEqual((await api(`sync?since=0&active=1&room=${room}`, undefined, tok.dad)).body.typing, [], '끄면 꺼짐');
+    assert.equal((await api('rooms/typing', { room_id: room, on: true }, tok.f1)).status, 403);
+    assert.deepEqual((await api(`sync?since=0&active=1&room=${room}`, undefined, tok.f1)).body.typing, [], '남의 방은 안 보임');
+    await api('me/away', {}, tok.dad);
+  });
+
   await t('닉네임: 가입 때 정하고, 로그인은 본명, 바꾸면 같은 그룹·방에 보임', async () => {
     let r = await api('me', undefined, tok.mom);
     assert.equal(r.body.me.name, '엄마');

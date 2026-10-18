@@ -116,7 +116,7 @@ function talk_push_send_one(array $vapid, array $sub, string $payload, string $s
         'Content-Encoding: aes128gcm',
         'Content-Type: application/octet-stream',
         'TTL: 86400',
-        'Urgency: normal',
+        'Urgency: high', // 새 메시지는 바로 (안드로이드가 절전 중이어도 깨움)
     ];
     if ($topic !== '') $headers[] = 'Topic: ' . substr(preg_replace('/[^A-Za-z0-9_-]/', '', $topic), 0, 32);
     $ch = curl_init($sub['endpoint']);
@@ -161,6 +161,7 @@ const TALK_ACTIVE_SECONDS = 15;
 
 // 새 메시지 알림: 방 사람 중 보낸 사람·알림 끈 방·지금 이 방을 보고 있는 기기를 빼고
 function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): array {
+    $t0 = microtime(true);
     $out = ['sent' => 0, 'failed' => 0, 'total' => 0, 'results' => []];
     $st = $pdo->prepare('SELECT r.kind, r.name, COALESCE(u.nick, u.name) AS who FROM talk_rooms r JOIN talk_users u ON u.id = ? WHERE r.id = ?');
     $st->execute([$senderId, $roomId]);
@@ -182,6 +183,8 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     // Topic 머리는 안 씀: 애플이 "room1" 같은 Topic 을 400 으로 거절함 (같은 방 알림 묶기는 기기의 tag 로)
     $out = talk_push_send_many($pdo, $subs, $payload, '');
+    // 서버가 알림 서비스(애플·구글)에 넘기기까지 걸린 시간: 이게 짧은데 늦게 뜨면 알림 서비스 쪽에서 걸린 것
+    $out['ms'] = (int)round((microtime(true) - $t0) * 1000);
     talk_push_log($pdo, "방 $roomId 새 메시지", $out);
     return $out;
 }
@@ -217,7 +220,7 @@ function talk_push_send_many(PDO $pdo, array $subs, string $payload, string $top
 // 최근 알림 보낸 기록 30개 (관리 화면에서 봄)
 function talk_push_log(PDO $pdo, string $what, array $out): void {
     $log = json_decode((string)talk_meta_get($pdo, 'push_log'), true) ?: [];
-    array_unshift($log, ['at' => talk_now(), 'what' => $what, 'total' => $out['total'], 'sent' => $out['sent'],
+    array_unshift($log, ['at' => talk_now(), 'what' => $what, 'total' => $out['total'], 'sent' => $out['sent'], 'ms' => $out['ms'] ?? null,
         'results' => array_map(fn($r) => "{$r['host']} {$r['code']}" . ($r['error'] ? " {$r['error']}" : ''), $out['results'])]);
     talk_meta_set($pdo, 'push_log', json_encode(array_slice($log, 0, 30), JSON_UNESCAPED_UNICODE));
 }

@@ -243,7 +243,7 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     $pdo->prepare('INSERT INTO talk_messages (room_id, user_id, kind, body, client_id, created_at, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?)')
         ->execute([$roomId, $uid, 'text', $body, $clientId, talk_now(), $replyTo ?: null]);
     $id = (int)$pdo->lastInsertId();
-    $pdo->prepare('UPDATE talk_room_members SET last_read_id = ? WHERE room_id = ? AND user_id = ?')->execute([$id, $roomId, $uid]);
+    $pdo->prepare('UPDATE talk_room_members SET last_read_id = ?, typing_at = NULL WHERE room_id = ? AND user_id = ?')->execute([$id, $roomId, $uid]);
     talk_event($pdo, $roomId, 'msg', $id);
     $pdo->commit();
     if (function_exists('talk_push_message')) talk_after_response(fn() => talk_push_message($pdo, $roomId, $uid, $body));
@@ -251,6 +251,22 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$id]);
     return talk_decorate($pdo, [talk_msg_view($st->fetch())])[0];
+}
+
+// ───── 입력 중 ─────
+// 앱은 글자를 치는 동안 몇 초에 한 번 on=true, 지우거나 방을 나가면 on=false. 보내면 talk_send 가 끔
+const TALK_TYPING_SECONDS = 6;
+
+function talk_set_typing(PDO $pdo, int $uid, int $roomId, bool $on): void {
+    if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
+    $pdo->prepare('UPDATE talk_room_members SET typing_at = ? WHERE room_id = ? AND user_id = ?')->execute([$on ? talk_now() : null, $roomId, $uid]);
+}
+
+// 이 방에서 지금 입력 중인 다른 사람들 (나는 빼고)
+function talk_typing(PDO $pdo, int $uid, int $roomId): array {
+    $st = $pdo->prepare('SELECT user_id FROM talk_room_members WHERE room_id = ? AND user_id <> ? AND typing_at > ? ORDER BY typing_at');
+    $st->execute([$roomId, $uid, gmdate('Y-m-d H:i:s', time() - TALK_TYPING_SECONDS)]);
+    return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
 }
 
 function talk_mark_read(PDO $pdo, int $uid, int $roomId, int $lastId): void {

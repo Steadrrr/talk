@@ -248,3 +248,11 @@ img.avatar { object-fit: cover; background: var(--line); }
 .notice-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; word-break: break-word; font-size: calc(14px * var(--fs)); }
 .notice-fold { font-size: calc(20px * var(--fs)); color: var(--dim); }
 .notice-pill { align-self: flex-end; margin: 6px 10px 0; padding: 5px 12px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); color: var(--fg); font-size: calc(13px * var(--fs)); }
+
+/* 입력 중 표시: 상대 말풍선 자리에 점 세 개 */
+.typing { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px 62px; }
+.typing .dots { display: inline-flex; gap: 4px; padding: 10px 12px; border-radius: 16px; border-top-left-radius: 4px; background: var(--theirs); }
+.typing .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); animation: typing-dot 1.2s infinite ease-in-out; }
+.typing .dots i:nth-child(2) { animation-delay: .15s; }
+.typing .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing-dot { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }

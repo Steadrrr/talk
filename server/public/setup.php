@@ -332,7 +332,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <fieldset><legend>알림 기록 (최근 30개)</legend>
 <?php $plog = json_decode((string)talk_meta_get($pdo, 'push_log'), true) ?: []; if (!$plog) echo '<p class="hint">아직 보낸 알림이 없어요.</p>'; ?>
 <?php foreach ($plog as $l): ?>
-<div class="row"><span><?= h(kst($l['at'])) ?> · <?= h($l['what']) ?> <span class="hint">· <?= (int)$l['sent'] ?>/<?= (int)$l['total'] ?> 성공<?= $l['results'] ? ' · ' . h(implode(', ', $l['results'])) : '' ?></span></span></div>
+<div class="row"><span><?= h(kst($l['at'])) ?> · <?= h($l['what']) ?> <span class="hint">· <?= (int)$l['sent'] ?>/<?= (int)$l['total'] ?> 성공<?= isset($l['ms']) ? ' · 서버에서 넘기기까지 ' . number_format($l['ms'] / 1000, 1) . '초' : '' ?><?= $l['results'] ? ' · ' . h(implode(', ', $l['results'])) : '' ?></span></span></div>
 <?php endforeach; ?>
 </fieldset>
 

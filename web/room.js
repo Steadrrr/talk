@@ -1,7 +1,7 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice } from './store.js';
+import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
 import { mediaUrl, mediaInfo, saveMedia } from './media.js';
 import { nickOf } from './names.js';
 import { RoomSettings } from './roomsettings.js';
@@ -177,6 +177,8 @@ export function Room({ id, onBack }) {
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
         ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map(nickOf).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
         ${rows}
+        ${state.typing.length > 0 && html`<div class="typing" aria-live="polite"><span class="dots"><i></i><i></i><i></i></span>
+          <span class="hint small">${room.kind === 'dm' ? '입력 중' : `${state.typing.map((u) => names.get(u)).filter(Boolean).join(', ')}님이 입력 중`}</span></div>`}
       </div>
       ${replyTo && html`
         <div class="reply-bar">
@@ -185,7 +187,7 @@ export function Room({ id, onBack }) {
         </div>`}
       <form class="composer" onSubmit=${(e) => { e.preventDefault(); submit(); }}>
         <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
-        <textarea ref=${input} rows="1" value=${text} onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
+        <textarea ref=${input} rows="1" value=${text} onInput=${(e) => { setText(e.target.value); setTyping(id, e.target.value.trim() !== ''); }} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
         <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
       </form>
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}

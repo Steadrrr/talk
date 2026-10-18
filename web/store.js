@@ -18,6 +18,7 @@ export const state = {
   groupsRev: 0,    // 서버의 그룹 변경 번호. 동기화 때 달라지면 친구 목록을 다시 받는다
   openRoom: null,  // 지금 보고 있는 방 번호
   profile: null,   // 프로필 창으로 보고 있는 사람 번호
+  typing: [],      // 보고 있는 방에서 지금 입력 중인 다른 사람 번호
   online: true,
 };
 
@@ -117,7 +118,9 @@ export async function syncNow() {
     try {
       let more = true;
       while (more) {
-        const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1&room=' + (state.openRoom || 0)));
+        const asked = document.hidden ? 0 : state.openRoom || 0;
+        const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1&room=' + asked));
+        state.typing = asked && asked === state.openRoom ? r.typing || [] : [];
         if (r.full) state.messages = Object.fromEntries(Object.entries(state.messages).map(([k, v]) => [k, v.filter((m) => m.pending)]));
         mergeRooms(r.rooms, r.full);
         mergeMessages(r.messages);
@@ -140,11 +143,11 @@ export async function syncNow() {
   return syncing;
 }
 
-// 방을 보고 있으면 2초, 목록이면 5초, 앱이 뒤로 가면 멈춤 (그동안 새 메시지는 웹 푸시 알림으로)
+// 방을 보고 있으면 2초(누가 입력 중이면 곧 글이 오니 1초), 목록이면 5초, 앱이 뒤로 가면 멈춤 (그동안 새 메시지는 웹 푸시 알림으로)
 function schedule() {
   clearTimeout(timer);
   if (stopped || document.hidden) return;
-  timer = setTimeout(async () => { await syncNow(); schedule(); }, state.openRoom ? 2000 : 5000);
+  timer = setTimeout(async () => { await syncNow(); schedule(); }, state.openRoom ? (state.typing.length ? 1000 : 2000) : 5000);
 }
 
 export function startSync() {
@@ -157,6 +160,7 @@ document.addEventListener('visibilitychange', () => {
   if (stopped) return;
   if (document.hidden) {
     clearTimeout(timer);
+    typingSent = { room: 0, at: 0 };
     // 서버에 "앱을 안 보고 있음" → 이제부터 새 메시지는 알림으로 (앱이 닫혀도 보내지도록 keepalive)
     api('me/away', {}, { keepalive: true }).catch(() => {});
   } else syncNow().then(schedule);
@@ -248,6 +252,7 @@ export function sortedRooms() {
 
 export function openRoom(id) {
   state.openRoom = id;
+  state.typing = [];
   if (state.rooms[id]) state.rooms[id].unread = 0;
   notify();
   markReadIfOpen();
@@ -255,7 +260,9 @@ export function openRoom(id) {
 }
 
 export function closeRoom() {
+  if (state.openRoom) setTyping(state.openRoom, false);
   state.openRoom = null;
+  state.typing = [];
   notify();
   schedule();
 }
@@ -322,6 +329,15 @@ function newClientId() {
   return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// 입력 중: 글자를 치는 동안 3초에 한 번만 서버에 알림 (서버는 6초 지나면 저절로 끔), 다 지우거나 방을 나가면 바로 끔
+let typingSent = { room: 0, at: 0 };
+export function setTyping(roomId, on) {
+  const now = Date.now();
+  if (on ? typingSent.room === roomId && now - typingSent.at < 3000 : typingSent.room !== roomId) return;
+  typingSent = on ? { room: roomId, at: now } : { room: 0, at: 0 };
+  api('rooms/typing', { room_id: roomId, on }).catch(() => {});
+}
+
 // reply: 답장할 원래 메시지 (없으면 null)
 export async function send(roomId, body, retry, reply = null) {
   const msg = retry || { id: 0, room_id: roomId, user_id: state.me.id, kind: 'text', body, client_id: newClientId(), at: new Date().toISOString(), pending: true,
@@ -330,6 +346,7 @@ export async function send(roomId, body, retry, reply = null) {
   const arr = state.messages[roomId] || (state.messages[roomId] = []);
   if (!retry) arr.push(msg);
   notify();
+  typingSent = { room: 0, at: 0 }; // 보내면 서버가 입력 중을 끔
   try {
     const r = await api('messages/send', { room_id: roomId, body: msg.body, client_id: msg.client_id, reply_to: msg.reply_to || 0 });
     mergeMessages([r.message]);
