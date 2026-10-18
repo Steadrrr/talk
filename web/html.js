@@ -33,3 +33,29 @@ export function Avatar({ name, id, photo, size = 40 }) {
   const c = COLORS[Math.abs(id || 0) % COLORS.length];
   return html`<span class="avatar" style=${{ width: size + 'px', height: size + 'px', background: c, fontSize: Math.round(size * 0.42) + 'px' }}>${(name || '?').slice(0, 1)}</span>`;
 }
+
+// 사진 고르기 → 가운데를 정사각형으로 잘라 size px JPEG 로 줄여 base64 로
+export async function squareJpeg(file, size) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('사진을 열지 못했어요.')); i.src = url; });
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+    const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+// 사진 크게 보기 (누르면 닫힘)
+export function PhotoViewer({ photo, caption, onClose }) {
+  return html`
+    <div class="viewer" onClick=${onClose} role="dialog" aria-label="사진 크게 보기">
+      <img src=${photoUrl(photo)} alt="" />
+      ${caption && html`<p>${caption}</p>`}
+    </div>`;
+}

@@ -15,12 +15,12 @@ $route = trim((string)($_SERVER['PATH_INFO'] ?? ($_GET['r'] ?? '')), '/');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 $cfg = talk_config();
-// 프로필 사진 (로그인 없이: <img> 는 머리를 못 붙임. 주소의 열쇠가 무작위라 알아야만 봄)
+// 프로필·채팅방 사진 (로그인 없이: <img> 는 머리를 못 붙임. 주소의 열쇠가 무작위라 알아야만 봄)
 if (preg_match('#^photo/([a-f0-9]{24})$#', $route, $pm)) {
     $cfg0 = talk_config();
     if ($cfg0 === null) talk_fail('설정 전이에요.', 503);
-    $st = talk_db($cfg0)->prepare('SELECT photo FROM talk_users WHERE photo_key = ?');
-    $st->execute([$pm[1]]);
+    $st = talk_db($cfg0)->prepare('SELECT photo FROM talk_users WHERE photo_key = ? UNION ALL SELECT photo FROM talk_rooms WHERE photo_key = ? LIMIT 1');
+    $st->execute([$pm[1], $pm[1]]);
     $data = $st->fetchColumn();
     if (!$data) talk_fail('사진이 없어요.', 404);
     header('Content-Type: ' . (talk_photo_type($data) ?? 'application/octet-stream'));
@@ -122,6 +122,17 @@ switch ($route) {
             if ($data === false) talk_fail('사진을 읽지 못했어요.');
         }
         talk_set_photo($pdo, $uid, $data);
+        talk_json(['ok' => true]);
+
+    case 'rooms/photo':
+        $need('POST');
+        $b = talk_body(500_000);
+        $data = null;
+        if (!empty($b['data'])) {
+            $data = base64_decode((string)$b['data'], true);
+            if ($data === false) talk_fail('사진을 읽지 못했어요.');
+        }
+        talk_room_photo($pdo, $uid, (int)($b['room_id'] ?? 0), $data);
         talk_json(['ok' => true]);
 
     case 'rooms/prefs':

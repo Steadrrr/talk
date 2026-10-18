@@ -1,6 +1,6 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { html, Avatar, time, dateLine, dayKey } from './html.js';
+import { html, Avatar, PhotoViewer, time, dateLine, dayKey } from './html.js';
 import { state, roomTitle, loadOlder, send, discard, showProfile } from './store.js';
 import { nickOf } from './names.js';
 import { RoomSettings } from './roomsettings.js';
@@ -15,6 +15,7 @@ export function Room({ id, onBack }) {
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState('');
   const [settings, setSettings] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const input = useRef(null);
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
@@ -117,6 +118,7 @@ export function Room({ id, onBack }) {
     <section class="page room-page">
       <header class="bar">
         <button class="icon" onClick=${onBack} aria-label="뒤로">‹</button>
+        ${room.photo && html`<button class="tap" onClick=${() => setViewing(true)} aria-label="채팅방 사진"><${Avatar} photo=${room.photo} size=${34} /></button>`}
         <h2 class=${'ellipsis' + (room.kind === 'dm' && others[0] ? ' tap' : '')} onClick=${() => room.kind === 'dm' && others[0] && showProfile(others[0].id)}>${roomTitle(room)}</h2>
         ${room.kind === 'group' && html`<span class="hint">${room.members.length}</span>`}
         ${!state.online && html`<span class="offline">연결 끊김</span>`}
@@ -133,6 +135,7 @@ export function Room({ id, onBack }) {
         <textarea ref=${input} rows="1" value=${text} onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
         <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
       </form>
+      ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} />`}
     </section>
   `;

@@ -189,6 +189,12 @@ export async function leaveRoom(roomId) {
   syncNow();
 }
 
+// 채팅방 사진: 방 사람 누구나, 새로 올리면 예전 것은 지워짐
+export async function setRoomPhoto(roomId, data) {
+  await api('rooms/photo', { room_id: roomId, data: data || '' });
+  await syncNow();
+}
+
 // 프로필 사진: data = base64 (JPEG) 또는 null(지우기)
 export async function setPhoto(data) {
   await api('me/photo', { data: data || '' });

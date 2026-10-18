@@ -1,6 +1,6 @@
 // 프로필 창: 닉네임(본명), 같이 있는 그룹, 1:1 대화. 내 프로필이면 닉네임 바꾸기
 import { useState } from 'preact/hooks';
-import { html, Avatar } from './html.js';
+import { html, Avatar, squareJpeg } from './html.js';
 import { nickOf, fullName } from './names.js';
 import { state, person, showProfile, openDm, setNick, setPhoto } from './store.js';
 
@@ -67,18 +67,3 @@ export function Profile({ onOpen }) {
   `;
 }
 
-async function squareJpeg(file, size) {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('사진을 열지 못했어요.')); i.src = url; });
-    const side = Math.min(img.naturalWidth, img.naturalHeight);
-    const c = document.createElement('canvas');
-    c.width = c.height = size;
-    c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
-    const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return btoa(bin);
-  } finally { URL.revokeObjectURL(url); }
-}

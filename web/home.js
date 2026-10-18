@@ -56,7 +56,7 @@ function Chats({ onOpen }) {
           const other = r.kind === 'dm' ? r.members.find((m) => m.id !== state.me.id) : null;
           return html`
             <button class="room" onClick=${() => onOpen(r.id)}>
-              ${other ? html`<${Avatar} name=${nickOf(other)} id=${other.id} photo=${other.photo} size=${48} />` : html`<span class="avatar multi">${r.members.length}</span>`}
+              ${r.photo ? html`<${Avatar} photo=${r.photo} size=${48} />` : other ? html`<${Avatar} name=${nickOf(other)} id=${other.id} photo=${other.photo} size=${48} />` : html`<span class="avatar multi">${r.members.length}</span>`}
               <span class="room-main">
                 <span class="room-top"><b class="ellipsis">${roomTitle(r)}</b>${r.kind === 'group' && html`<span class="hint">${r.members.length}</span>`}${r.pinned > 0 && html`<span class="mark" title="위에 고정">📌</span>`}${r.muted > 0 && html`<span class="mark" title="알림 끔">🔕</span>`}</span>
                 <span class="ellipsis hint">${r.last ? r.last.body : '새 대화방'}</span>

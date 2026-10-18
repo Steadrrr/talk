@@ -407,7 +407,7 @@ try {
     assert.equal(v.rooms.find((x) => x.id === dm).unread, 1, '안 읽은 것은 새 메시지만');
   });
 
-  await t('프로필 사진: 올리면 모두에게 주소가 보이고, 로그인 없이 그 주소로 받음', async () => {
+  await t('프로필·채팅방 사진: 올리면 모두에게 주소가 보이고, 로그인 없이 그 주소로 받음, 방 사진은 누구나 바꿈', async () => {
     // 1x1 JPEG
     const jpg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
     let r = await api('me/photo', { data: Buffer.from('not image').toString('base64') }, tok.mom);
@@ -423,6 +423,24 @@ try {
     assert.equal(res.headers.get('content-type'), 'image/jpeg');
     assert.deepEqual(Buffer.from(await res.arrayBuffer()), jpg);
     assert.equal((await req('/api.php/photo/' + '0'.repeat(24))).status, 404);
+    // 채팅방 사진: 방 사람 누구나, 새로 올리면 바뀌고 예전 주소는 없어짐
+    const fam = (await api('sync?since=0', undefined, tok.mom)).body.rooms.find((x) => x.name === '우리 가족').id;
+    r = await api('rooms/photo', { room_id: fam, data: jpg.toString('base64') }, tok.mom);
+    assert.equal(r.status, 200);
+    let room = (await api('sync?since=0', undefined, tok.dad)).body.rooms.find((x) => x.id === fam);
+    assert.equal(room.photo_by, '엄마곰');
+    const first = room.photo;
+    assert.equal((await req('/api.php/photo/' + first)).status, 200);
+    r = await api('rooms/photo', { room_id: fam, data: jpg.toString('base64') }, tok.dad);
+    const s3 = (await api('sync?since=0', undefined, tok.mom)).body;
+    room = s3.rooms.find((x) => x.id === fam);
+    assert.equal(room.photo_by, '아빠');
+    assert.notEqual(room.photo, first);
+    assert.equal((await req('/api.php/photo/' + first)).status, 404, '예전 사진은 지워짐');
+    assert.ok(s3.messages.some((m) => m.room_id === fam && m.body === '아빠님이 채팅방 사진을 바꿨어요.'));
+    r = await api('rooms/photo', { room_id: fam, data: jpg.toString('base64') }, tok.f1);
+    assert.equal(r.status, 403, '방 밖 사람은 못 바꿈');
+
     r = await api('me/photo', { data: '' }, tok.mom);
     assert.equal((await api('me', undefined, tok.mom)).body.me.photo, null, '지우기');
     assert.equal((await req('/api.php/photo/' + me.photo)).status, 404);

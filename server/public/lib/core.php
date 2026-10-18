@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 8;
+const TALK_SERVER_VERSION = 9;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -113,6 +113,8 @@ function talk_migrate(PDO $pdo): void {
     $q[] = "ALTER TABLE talk_devices ADD COLUMN IF NOT EXISTS active_room INT NOT NULL DEFAULT 0";
     // 8: 프로필 사진 (휴대폰에서 줄인 작은 사진을 DB 에, 주소는 바꿀 때마다 새 무작위 열쇠)
     $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS photo MEDIUMBLOB NULL, ADD COLUMN IF NOT EXISTS photo_key VARCHAR(24) NULL";
+    // 9: 채팅방 대표 사진 (방 사람 누구나 바꿈, 하나만: 새로 올리면 예전 것은 지워짐)
+    $q[] = "ALTER TABLE talk_rooms ADD COLUMN IF NOT EXISTS photo MEDIUMBLOB NULL, ADD COLUMN IF NOT EXISTS photo_key VARCHAR(24) NULL, ADD COLUMN IF NOT EXISTS photo_by INT NULL";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);
