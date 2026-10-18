@@ -41,7 +41,10 @@ a.text { text-decoration: none; }
 .icon { font-size: calc(26px * var(--fs)); line-height: 1; padding: 4px 10px; color: var(--fg); }
 
 /* 처음·로그인 */
-.splash, .auth { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top) + 24px) 16px 24px; text-align: center; gap: 4px; overflow-y: auto; }
+.splash, .auth { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; padding: calc(env(safe-area-inset-top) + 24px) 16px 24px; text-align: center; gap: 4px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+/* 앱 틀(#app)이 화면 높이로 고정돼 있어 이 안에서 스크롤해야 함. 가운데 맞춤은 위아래 auto 여백으로 → 넘치면 위가 잘리지 않고 스크롤 */
+.splash > :first-child, .auth > :first-child { margin-top: auto; }
+.splash > :last-child, .auth > :last-child { margin-bottom: auto; }
 .auth form { width: 100%; max-width: 360px; text-align: left; }
 .logo { border-radius: 20px; }
 h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
