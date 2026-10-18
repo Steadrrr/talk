@@ -50,19 +50,27 @@ export async function prepPhoto(file) {
 function videoEl(url) {
   const v = document.createElement('video');
   v.playsInline = true;
+  v.muted = true;            // 아이폰: 소리 켠 채로는 손가락 누름 없이 재생·장면 읽기를 안 해 줘서 멈춰 있었음
   v.preload = 'auto';
   v.src = url;
+  // 아이폰은 화면(문서)에 붙어 있지 않은 영상은 장면을 안 읽어 주기도 해서, 안 보이게 붙여 둔다
+  v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+  document.body.appendChild(v);
+  v.load();
   return v;
 }
-const once = (el, ev) => new Promise((ok, no) => {
-  el.addEventListener(ev, ok, { once: true });
-  el.addEventListener('error', () => no(new Error('영상을 열지 못했어요.')), { once: true });
+// 이벤트 기다리기. ms 가 있으면 그 시간 안에 안 오면 실패 (아이폰이 이벤트를 안 주고 멈추는 일이 있어서)
+const once = (el, ev, ms = 0) => new Promise((ok, no) => {
+  const t = ms ? setTimeout(() => no(new Error('timeout')), ms) : 0;
+  el.addEventListener(ev, () => { clearTimeout(t); ok(); }, { once: true });
+  el.addEventListener('error', () => { clearTimeout(t); no(new Error('영상을 열지 못했어요.')); }, { once: true });
 });
 
 // 미리보기 그림 (첫 장면, 긴 쪽 480px JPEG)
 async function poster(v) {
+  if (v.readyState < 2) await once(v, 'loadeddata', 8000);
   v.currentTime = Math.min(0.1, (v.duration || 1) / 2);
-  await once(v, 'seeked');
+  await once(v, 'seeked', 5000);
   const scale = Math.min(1, 480 / Math.max(v.videoWidth, v.videoHeight));
   const c = document.createElement('canvas');
   c.width = Math.round(v.videoWidth * scale); c.height = Math.round(v.videoHeight * scale);
@@ -105,8 +113,7 @@ async function reencode(v, onProgress) {
   const parts = [];
   rec.ondataavailable = (e) => { if (e.data.size) parts.push(e.data); };
   const stopped = new Promise((ok) => { rec.onstop = ok; });
-  v.currentTime = 0;
-  await once(v, 'seeked');
+  if (v.currentTime > 0) { v.currentTime = 0; await once(v, 'seeked', 5000).catch(() => {}); }
   let raf = 0;
   const draw = () => {
     g.drawImage(v, 0, 0, c.width, c.height);
@@ -115,8 +122,9 @@ async function reencode(v, onProgress) {
   };
   rec.start(1000);
   draw();
+  v.muted = false;                         // 소리도 같이 녹화하려고 켜 봄
   try { await v.play(); } catch {
-    v.muted = true;                        // 소리 있는 재생을 막는 브라우저: 소리 없이
+    v.muted = true;                        // 소리 있는 재생을 막는 브라우저(아이폰): 소리 없이
     await v.play();
   }
   // 화면을 떠나면(사진 고르는 창 등) 휴대폰이 재생을 멈춘다: 녹화도 쉬었다가 돌아오면 이어서
@@ -126,8 +134,22 @@ async function reencode(v, onProgress) {
     if (v.paused && !v.ended) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
   };
   document.addEventListener('visibilitychange', onVis);
-  try { await once(v, 'ended'); } finally { document.removeEventListener('visibilitychange', onVis); }
-  cancelAnimationFrame(raf);
+  // 재생이 안 끝나고 멈춰 버리면(시간이 안 흐름) 포기하고 원본으로
+  let last = -1, still = 0;
+  const watch = setInterval(() => {
+    if (document.hidden) return;
+    still = v.currentTime === last ? still + 1 : 0;
+    last = v.currentTime;
+    if (still >= 8) v.dispatchEvent(new Event('error'));
+  }, 1000);
+  try { await once(v, 'ended'); } catch (e) {
+    rec.stop(); ac?.close(); v.pause();
+    throw e;
+  } finally {
+    clearInterval(watch);
+    document.removeEventListener('visibilitychange', onVis);
+    cancelAnimationFrame(raf);
+  }
   rec.stop();
   await stopped;
   ac?.close();
@@ -137,9 +159,9 @@ async function reencode(v, onProgress) {
 
 export async function prepVideo(file, onProgress) {
   const url = URL.createObjectURL(file);
+  const v = videoEl(url);
   try {
-    const v = videoEl(url);
-    await once(v, 'loadedmetadata');
+    if (v.readyState < 1) await once(v, 'loadedmetadata', 15000).catch(() => { throw new Error('영상을 열지 못했어요. 다른 영상으로 해 보세요.'); });
     if (v.duration > VIDEO_MAX_SEC + 1) throw new Error(`${VIDEO_MAX_SEC}초 이하 영상만 보낼 수 있어요.`);
     const thumb = await poster(v).catch(() => null);
     const base = { kind: 'video', dur: Math.round(v.duration), thumb };
@@ -149,7 +171,7 @@ export async function prepVideo(file, onProgress) {
     if (re && re.blob.size > 0 && re.blob.size <= SEND_MAX) return { ...base, ...re };
     if (plainOk && file.size <= SEND_MAX) return { ...base, blob: file, mime: file.type, w: v.videoWidth, h: v.videoHeight };
     throw new Error('영상이 너무 커서 보낼 수 없어요. 더 짧게 잘라서 보내 주세요.');
-  } finally { URL.revokeObjectURL(url); }
+  } finally { v.pause(); v.remove(); URL.revokeObjectURL(url); }
 }
 
 async function putChunk(key, offset, blob) {
