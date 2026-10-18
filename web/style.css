@@ -111,3 +111,15 @@ h1 { font-size: 24px; margin: 12px 0; }
 .opts { display: flex; gap: 18px; margin: 4px 0 2px; }
 .opt { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--fg); font-size: 15px; }
 .opt input { width: 20px; height: 20px; margin: 0; accent-color: var(--acc); }
+
+/* 프로필 */
+.sheet.profile { height: auto; min-height: 50dvh; }
+.profile-body { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 24px 28px; text-align: center; }
+.profile-body .avatar { border-radius: 38%; }
+.profile-name { font-size: 22px; margin: 10px 0 0; word-break: break-word; }
+.profile-body .primary { max-width: 320px; margin-top: 14px; }
+.nick-form { width: 100%; max-width: 320px; margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.nick-form .inline { justify-content: flex-end; }
+.nick-form .primary { margin-top: 0; }
+.tap { cursor: pointer; }
+button.me-row { width: 100%; text-align: left; font-size: 18px; }

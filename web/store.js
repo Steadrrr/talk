@@ -2,18 +2,20 @@
 // 서버에 "변경 번호(cursor)"가 있어서, 앱은 sync?since=<번호> 로 그 뒤에 바뀐 방·새 메시지만 받는다.
 // 받은 것은 이 기기(localStorage)에 남겨서, 다음에 열 때 서버를 기다리지 않고 바로 보여 준다.
 import { api, AuthError, setToken } from './api.js';
+import { nickOf } from './names.js';
 
 const SAVE_KEY = 'talk.state.v1';
 const KEEP_PER_ROOM = 100; // 기기에 남기는 방별 최근 메시지 수
 
 export const state = {
-  me: null,        // { id, name, is_admin }
-  groups: [],      // [{ id, name, members: [{ id, name }] }]
+  me: null,        // { id, name(본명·로그인 아이디), nick(채팅에 보이는 이름, 없으면 본명), is_admin }
+  groups: [],      // [{ id, name, members: [{ id, name, nick }] }]
   rooms: {},       // id → { id, group_id, kind, name, members, last, unread, muted, pinned }
   messages: {},    // roomId → [메시지] (id 순서, 보내는 중인 것은 뒤에 pending: true)
   cursor: 0,
   groupsRev: 0,    // 서버의 그룹 변경 번호. 동기화 때 달라지면 친구 목록을 다시 받는다
   openRoom: null,  // 지금 보고 있는 방 번호
+  profile: null,   // 프로필 창으로 보고 있는 사람 번호
   online: true,
 };
 
@@ -48,7 +50,7 @@ export function clearAll() {
   stopSync();
   setToken('');
   try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('talk.token'); } catch { /* 무시 */ }
-  Object.assign(state, { me: null, groups: [], rooms: {}, messages: {}, cursor: 0, openRoom: null });
+  Object.assign(state, { me: null, groups: [], rooms: {}, messages: {}, cursor: 0, openRoom: null, profile: null });
   notify();
 }
 
@@ -137,17 +139,28 @@ export async function loadMe() {
   notify();
 }
 
-export function people() {
-  const map = new Map();
-  for (const g of state.groups) for (const m of g.members) map.set(m.id, m.name);
-  return map;
+// 사람 찾기: 같은 그룹 친구 목록에서, 없으면 방 사람 목록에서 (그룹에서 빠진 사람도 방에는 남아 있을 수 있음)
+export function person(id) {
+  if (state.me?.id === id) return state.me;
+  for (const g of state.groups) { const m = g.members.find((x) => x.id === id); if (m) return m; }
+  for (const r of Object.values(state.rooms)) { const m = r.members.find((x) => x.id === id); if (m) return m; }
+  return null;
+}
+
+// 프로필 창 (사람 번호, 없으면 닫힘)
+export function showProfile(id) { state.profile = id; notify(); }
+
+export async function setNick(nick) {
+  await api('me/nick', { nick });
+  await loadMe();
+  await syncNow();
 }
 
 // ───── 방 ─────
 export function roomTitle(room) {
   if (!room) return '';
   if (room.name) return room.name;
-  const others = room.members.filter((m) => m.id !== state.me?.id).map((m) => m.name);
+  const others = room.members.filter((m) => m.id !== state.me?.id).map(nickOf);
   return others.join(', ') || '나';
 }
 

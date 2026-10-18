@@ -68,6 +68,7 @@ if ($route === 'auth/register') {
     $b = talk_body();
     talk_login_locked($pdo);
     $name = talk_clean_name($b['name'] ?? '');
+    $nick = talk_clean_nick($b['nick'] ?? '');
     $pw = talk_check_new_password($b['password'] ?? '');
     if (talk_invite_group($pdo, (string)($b['invite'] ?? ''), false) === null) talk_login_fail($pdo, '초대 코드가 맞지 않거나 이미 다 썼어요.');
     $st = $pdo->prepare('SELECT 1 FROM talk_users WHERE name = ?');
@@ -76,7 +77,7 @@ if ($route === 'auth/register') {
     $pdo->beginTransaction();
     $gid = talk_invite_group($pdo, (string)$b['invite'], true);
     if ($gid === null) { $pdo->rollBack(); talk_fail('초대 코드가 맞지 않거나 이미 다 썼어요.', 401); }
-    $pdo->prepare('INSERT INTO talk_users (name, password_hash, created_at) VALUES (?, ?, ?)')->execute([$name, password_hash($pw, PASSWORD_DEFAULT), talk_now()]);
+    $pdo->prepare('INSERT INTO talk_users (name, nick, password_hash, created_at) VALUES (?, ?, ?, ?)')->execute([$name, $nick, password_hash($pw, PASSWORD_DEFAULT), talk_now()]);
     $uid = (int)$pdo->lastInsertId();
     talk_join_group($pdo, $uid, $gid);
     $pdo->commit();
@@ -89,7 +90,12 @@ $uid = $me['id'];
 
 switch ($route) {
     case 'me':
-        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'is_admin' => $me['is_admin']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
+        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'is_admin' => $me['is_admin']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
+
+    case 'me/nick':
+        $need('POST');
+        talk_set_nick($pdo, $uid, talk_clean_nick(talk_body()['nick'] ?? ''));
+        talk_json(['ok' => true]);
 
     case 'auth/logout':
         $need('POST');

@@ -144,7 +144,7 @@ try {
     assert.equal(r.status, 401);
     r = await api('auth/invite', { invite: inviteFamily.toLowerCase() });
     assert.equal(r.body.group, '가족');
-    r = await api('auth/register', { invite: inviteFamily, name: '엄마', password: 'pass1234', device: '엄마 폰' });
+    r = await api('auth/register', { invite: inviteFamily, name: '엄마', nick: ' 엄마곰 ', password: 'pass1234', device: '엄마 폰' });
     assert.equal(r.status, 200);
     tok.mom = r.body.token;
     r = await api('auth/register', { invite: inviteFamily, name: '엄마', password: 'pass1234' });
@@ -254,6 +254,32 @@ try {
     assert.equal(r.body.messages.length, 5);
     r = await api('messages/history?room_id=' + dm, undefined, tok.f1);
     assert.equal(r.status, 403);
+  });
+
+  await t('닉네임: 가입 때 정하고, 로그인은 본명, 바꾸면 같은 그룹·방에 보임', async () => {
+    let r = await api('me', undefined, tok.mom);
+    assert.equal(r.body.me.name, '엄마');
+    assert.equal(r.body.me.nick, '엄마곰');
+    r = await api('me', undefined, tok.dad);
+    assert.equal(r.body.me.nick, null, '비우면 본명');
+    const mom = r.body.groups[0].members.find((m) => m.name === '엄마');
+    assert.equal(mom.nick, '엄마곰');
+    r = await api('auth/login', { name: '엄마곰', password: 'pass1234' });
+    assert.equal(r.status, 401, '닉네임으로는 로그인 안 됨');
+    r = await api('auth/login', { name: '엄마', password: 'pass1234' });
+    assert.equal(r.status, 200);
+    r = await api('me/nick', { nick: 'x'.repeat(21) }, tok.dad);
+    assert.equal(r.status, 400);
+    const before = (await api('sync?since=0', undefined, tok.mom)).body;
+    r = await api('me/nick', { nick: '아빠곰' }, tok.dad);
+    assert.equal(r.status, 200);
+    r = await api('sync?since=' + before.cursor, undefined, tok.mom);
+    assert.notEqual(r.body.groups_rev, before.groups_rev, '친구 목록 다시 받기');
+    const dadInRoom = r.body.rooms.flatMap((x) => x.members).find((m) => m.name === '아빠');
+    assert.equal(dadInRoom?.nick, '아빠곰', '방 사람 목록에도');
+    r = await api('me/nick', { nick: '' }, tok.dad);
+    r = await api('me', undefined, tok.dad);
+    assert.equal(r.body.me.nick, null);
   });
 
   await t('이미 가입한 사람이 초대 코드로 다른 그룹에 들어감', async () => {

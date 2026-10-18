@@ -224,14 +224,14 @@ $base = ($https ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? '') . rtri
 $deploy = json_decode((string)@file_get_contents(__DIR__ . '/deploy.json'), true);
 $groups = $pdo->query('SELECT id, name, closed FROM talk_groups ORDER BY closed, id')->fetchAll();
 $members = [];
-foreach ($pdo->query('SELECT m.group_id, u.id, u.name, u.is_admin FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id ORDER BY u.name')->fetchAll() as $r) $members[(int)$r['group_id']][] = $r;
+foreach ($pdo->query('SELECT m.group_id, u.id, u.name, u.nick, u.is_admin FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id ORDER BY u.name')->fetchAll() as $r) $members[(int)$r['group_id']][] = $r;
 $invites = [];
 $st = $pdo->prepare('SELECT id, group_id, code, uses_left, expires_at FROM talk_invites WHERE revoked = 0 AND uses_left > 0 AND expires_at > ? ORDER BY id');
 $st->execute([talk_now()]);
 foreach ($st->fetchAll() as $r) $invites[(int)$r['group_id']][] = $r;
 $userGroups = [];
 foreach ($pdo->query('SELECT user_id, group_id FROM talk_group_members')->fetchAll() as $r) $userGroups[(int)$r['user_id']][(int)$r['group_id']] = true;
-$users = $pdo->query('SELECT u.id, u.name, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
+$users = $pdo->query('SELECT u.id, u.name, u.nick, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
 $devs = $pdo->query('SELECT d.id, d.name, d.last_seen, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.id')->fetchAll();
 $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT(*) FROM talk_messages) m')->fetch();
 $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf" value="' . h(csrf()) . '"><input type="hidden" name="act" value="' . h($act) . '">'
@@ -257,7 +257,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <button type="submit" class="sub"><?= (int)$g['closed'] ? '다시 열기' : '닫기' ?></button></form>
 <?php foreach ($members[$gid] ?? [] as $m): ?>
 <form method="post" class="row"><?= $hidden('member_remove', ['group' => $gid, 'id' => (int)$m['id']]) ?>
-<span class="hint">└ <?= h($m['name']) ?><?= (int)$m['is_admin'] ? ' (관리자)' : '' ?></span>
+<span class="hint">└ <?= h($m['name']) ?><?= $m['nick'] ? ' · ' . h($m['nick']) : '' ?><?= (int)$m['is_admin'] ? ' (관리자)' : '' ?></span>
 <?php if (!(int)$m['is_admin']): ?><button type="submit" class="sub">그룹에서 빼기</button><?php endif; ?></form>
 <?php endforeach; ?>
 <?php foreach ($invites[$gid] ?? [] as $i): ?>
@@ -278,7 +278,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 
 <fieldset><legend>사람 (그룹을 체크하고 저장하면 여러 그룹에 한꺼번에 넣고 빼요)</legend>
 <?php foreach ($users as $u): ?>
-<div class="row"><span><b><?= h($u['name']) ?></b> <span class="hint"><?= (int)$u['is_admin'] ? '관리자' : '사용자' ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr($u['created_at'], 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
+<div class="row"><span><b><?= h($u['name']) ?></b><?= $u['nick'] ? ' · ' . h($u['nick']) : '' ?> <span class="hint"><?= (int)$u['is_admin'] ? '관리자' : '사용자' ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr($u['created_at'], 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
 <?php if (!(int)$u['is_admin']): ?><span class="btns">
 <form method="post"><?= $hidden('user_pw', ['id' => (int)$u['id']]) ?><button type="submit" class="sub">새 비밀번호</button></form>
 <form method="post"><?= $hidden((int)$u['disabled'] ? 'user_on' : 'user_off', ['id' => (int)$u['id']]) ?><button type="submit" class="sub"><?= (int)$u['disabled'] ? '다시 켜기' : '멈추기' ?></button></form>

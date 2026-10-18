@@ -40,12 +40,12 @@ function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
         $rooms[(int)$r['id']] = ['id' => (int)$r['id'], 'group_id' => (int)$r['group_id'], 'kind' => $r['kind'], 'name' => $r['name'],
             'created_at' => $r['created_at'] . 'Z', 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0];
     }
-    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
+    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name, u.nick FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id IN ($in) ORDER BY m.joined_at, m.user_id");
     $st->execute($roomIds);
     foreach ($st->fetchAll() as $m) {
         $rid = (int)$m['room_id'];
-        $rooms[$rid]['members'][] = ['id' => (int)$m['user_id'], 'name' => $m['name'], 'last_read_id' => (int)$m['last_read_id']];
+        $rooms[$rid]['members'][] = ['id' => (int)$m['user_id'], 'name' => $m['name'], 'nick' => $m['nick'], 'last_read_id' => (int)$m['last_read_id']];
         if ((int)$m['user_id'] === $uid) { $rooms[$rid]['muted'] = (int)$m['muted']; $rooms[$rid]['pinned'] = (int)$m['pinned']; }
     }
     $st = $pdo->prepare("SELECT m.* FROM talk_messages m JOIN (SELECT room_id, MAX(id) mid FROM talk_messages WHERE room_id IN ($in) GROUP BY room_id) x ON m.id = x.mid");

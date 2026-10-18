@@ -7,6 +7,7 @@ import { state, subscribe, loadSaved, loadMe, startSync, openRoom, closeRoom, cl
 import { Auth, inviteFromHash } from './auth.js';
 import { Home } from './home.js';
 import { Room } from './room.js';
+import { Profile } from './profile.js';
 import './style.css';
 
 function App() {
@@ -64,8 +65,9 @@ function App() {
     return html`<main class="splash"><p class="err">서버에 연결하지 못했어요 (${problem})</p>
       <button class="primary" onClick=${start}>다시 시도</button><button class="text" onClick=${clearAll}>로그아웃</button></main>`;
   }
-  if (state.openRoom) return html`<${Room} id=${state.openRoom} onBack=${back} />`;
-  return html`<${Home} tab=${tab} setTab=${setTab} onOpen=${open} />`;
+  const profile = state.profile && html`<${Profile} key=${state.profile} onOpen=${open} />`;
+  if (state.openRoom) return html`<${Room} id=${state.openRoom} onBack=${back} />${profile}`;
+  return html`<${Home} tab=${tab} setTab=${setTab} onOpen=${open} />${profile}`;
 }
 
 render(html`<${App} />`, document.getElementById('app'));

@@ -28,6 +28,7 @@ export function Auth({ onDone }) {
   const [saveId, setSaveId] = useState(pref('talk.saveId', '1') === '1');
   const [auto, setAuto] = useState(pref('talk.autoLogin', '1') === '1');
   const [name, setName] = useState(saveId ? pref('talk.savedId', '') : '');
+  const [nick, setNick] = useState('');
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [group, setGroup] = useState('');
@@ -47,7 +48,7 @@ export function Auth({ onDone }) {
     setBusy(true);
     try {
       const body = { name: name.trim(), password: pw, device: deviceName() };
-      const r = mode === 'login' ? await api('auth/login', body) : await api('auth/register', { ...body, invite });
+      const r = mode === 'login' ? await api('auth/login', body) : await api('auth/register', { ...body, nick: nick.trim(), invite });
       setToken(r.token, auto);
       setPref('talk.saveId', saveId ? '1' : '0');
       setPref('talk.autoLogin', auto ? '1' : '0');
@@ -75,9 +76,13 @@ export function Auth({ onDone }) {
             <input value=${invite} onInput=${(e) => setInvite(e.target.value.toUpperCase())} required autocomplete="off" autocapitalize="characters" placeholder="8자리" />
           </label>
           ${group && html`<p class="ok">"${group}" 그룹에 들어가요.</p>`}`}
-        <label>이름 ${mode === 'register' && html`<span class="hint">(로그인할 때 쓰고, 그룹 사람들에게 보여요)</span>`}
+        <label>${mode === 'register' ? html`본명 <span class="hint">(로그인할 때 써요)</span>` : '본명'}
           <input value=${name} onInput=${(e) => setName(e.target.value)} required maxlength="20" autocomplete="username" />
         </label>
+        ${mode === 'register' && html`
+          <label>닉네임 <span class="hint">(채팅에 보이는 이름, 비우면 본명)</span>
+            <input value=${nick} onInput=${(e) => setNick(e.target.value)} maxlength="20" autocomplete="nickname" />
+          </label>`}
         <label>비밀번호
           <input type="password" value=${pw} onInput=${(e) => setPw(e.target.value)} required minlength=${mode === 'register' ? 6 : 1} autocomplete=${mode === 'login' ? 'current-password' : 'new-password'} />
         </label>

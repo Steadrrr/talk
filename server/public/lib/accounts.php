@@ -48,6 +48,24 @@ function talk_clean_name(mixed $v): string {
     return $n;
 }
 
+// 닉네임: 비우면 본명을 쓴다 (null)
+function talk_clean_nick(mixed $v): ?string {
+    $n = trim(preg_replace('/\s+/u', ' ', (string)$v));
+    if ($n === '') return null;
+    if (mb_strlen($n) > TALK_NAME_MAX) talk_fail('닉네임은 ' . TALK_NAME_MAX . '자까지 쓸 수 있어요.');
+    if (preg_match('/[\x00-\x1F<>]/u', $n)) talk_fail('닉네임에 쓸 수 없는 글자가 있어요.');
+    return $n;
+}
+
+// 닉네임 바꾸기: 같은 그룹 사람들의 앱이 친구 목록(groups_rev)과 방 목록(방마다 'room' 변경)을 다시 받게 한다
+function talk_set_nick(PDO $pdo, int $uid, ?string $nick): void {
+    $pdo->prepare('UPDATE talk_users SET nick = ? WHERE id = ?')->execute([$nick, $uid]);
+    $st = $pdo->prepare('SELECT room_id FROM talk_room_members WHERE user_id = ?');
+    $st->execute([$uid]);
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $rid) talk_event($pdo, (int)$rid, 'room');
+    talk_groups_changed($pdo);
+}
+
 function talk_check_new_password(mixed $v): string {
     $pw = (string)$v;
     if (mb_strlen($pw) < 6) talk_fail('비밀번호는 6자 이상으로 해 주세요.');
@@ -81,11 +99,11 @@ function talk_token_from_request(): string {
     return (string)($_SERVER['HTTP_X_TALK_TOKEN'] ?? '');
 }
 
-// 로그인한 사람 → ['id', 'name', 'is_admin', 'device_id']
+// 로그인한 사람 → ['id', 'name', 'nick', 'is_admin', 'device_id']
 function talk_auth(PDO $pdo): array {
     $t = talk_token_from_request();
     if (!preg_match('/^[a-f0-9]{64}$/', $t)) talk_fail('로그인이 필요해요.', 401);
-    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, u.id, u.name, u.is_admin FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
+    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, u.id, u.name, u.nick, u.is_admin FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
         WHERE d.token_hash = ? AND d.revoked = 0 AND u.disabled = 0');
     $st->execute([hash('sha256', $t)]);
     $me = $st->fetch();
@@ -94,7 +112,7 @@ function talk_auth(PDO $pdo): array {
     if (strtotime($me['last_seen'] . ' UTC') < time() - 300) {
         $pdo->prepare('UPDATE talk_devices SET last_seen = ? WHERE id = ?')->execute([talk_now(), $me['device_id']]);
     }
-    return ['id' => (int)$me['id'], 'name' => $me['name'], 'is_admin' => (int)$me['is_admin'], 'device_id' => (int)$me['device_id']];
+    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'is_admin' => (int)$me['is_admin'], 'device_id' => (int)$me['device_id']];
 }
 
 // ───── 초대 코드 ─────
@@ -148,11 +166,11 @@ function talk_my_groups(PDO $pdo, int $uid): array {
     if (!$groups) return [];
     $ids = array_column($groups, 'id');
     $in = implode(',', array_fill(0, count($ids), '?'));
-    $st = $pdo->prepare("SELECT m.group_id, u.id, u.name FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id
-        WHERE m.group_id IN ($in) AND u.disabled = 0 ORDER BY u.name");
+    $st = $pdo->prepare("SELECT m.group_id, u.id, u.name, u.nick FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id
+        WHERE m.group_id IN ($in) AND u.disabled = 0 ORDER BY COALESCE(u.nick, u.name)");
     $st->execute($ids);
     $members = [];
-    foreach ($st->fetchAll() as $r) $members[(int)$r['group_id']][] = ['id' => (int)$r['id'], 'name' => $r['name']];
+    foreach ($st->fetchAll() as $r) $members[(int)$r['group_id']][] = ['id' => (int)$r['id'], 'name' => $r['name'], 'nick' => $r['nick']];
     return array_map(fn($g) => ['id' => (int)$g['id'], 'name' => $g['name'], 'members' => $members[(int)$g['id']] ?? []], $groups);
 }
 

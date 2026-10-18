@@ -1,7 +1,8 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, discard } from './store.js';
+import { state, roomTitle, loadOlder, send, discard, showProfile } from './store.js';
+import { nickOf } from './names.js';
 
 export function Room({ id, onBack }) {
   const room = state.rooms[id];
@@ -69,7 +70,7 @@ export function Room({ id, onBack }) {
   if (!room) return html`<section class="page"><header class="bar"><button class="icon" onClick=${onBack}>‹</button></header><p class="empty">방을 찾지 못했어요.</p></section>`;
 
   const others = room.members.filter((m) => m.id !== state.me.id);
-  const names = new Map(room.members.map((m) => [m.id, m.name]));
+  const names = new Map(room.members.map((m) => [m.id, nickOf(m)]));
   // 안 읽은 사람 수: 그 메시지 번호까지 아직 안 읽은 사람 (보낸 사람은 읽은 것으로)
   const unreadCount = (m) => room.members.filter((p) => p.id !== m.user_id && p.last_read_id < m.id).length;
 
@@ -89,9 +90,9 @@ export function Room({ id, onBack }) {
     const n = m.pending ? 0 : unreadCount(m);
     rows.push(html`
       <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (first ? ' first' : '')} key=${m.id || m.client_id}>
-        ${!mine && (first ? html`<${Avatar} name=${names.get(m.user_id)} id=${m.user_id} size=${36} />` : html`<span class="avatar-gap"></span>`)}
+        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} size=${36} /></button>` : html`<span class="avatar-gap"></span>`)}
         <div class="msg-col">
-          ${!mine && first && html`<div class="who">${names.get(m.user_id) || '나간 사람'}</div>`}
+          ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">
             <div class="bubble">${m.body}</div>
             <div class="meta">
@@ -108,13 +109,13 @@ export function Room({ id, onBack }) {
     <section class="page room-page">
       <header class="bar">
         <button class="icon" onClick=${onBack} aria-label="뒤로">‹</button>
-        <h2 class="ellipsis">${roomTitle(room)}</h2>
+        <h2 class=${'ellipsis' + (room.kind === 'dm' && others[0] ? ' tap' : '')} onClick=${() => room.kind === 'dm' && others[0] && showProfile(others[0].id)}>${roomTitle(room)}</h2>
         ${room.kind === 'group' && html`<span class="hint">${room.members.length}</span>`}
         ${!state.online && html`<span class="offline">연결 끊김</span>`}
       </header>
       <div class="messages" ref=${scroller} onScroll=${onScroll}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
-        ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map((o) => o.name).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
+        ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map(nickOf).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
         ${rows}
       </div>
       <form class="composer" onSubmit=${(e) => { e.preventDefault(); submit(); }}>
