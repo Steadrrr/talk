@@ -83,6 +83,9 @@ export function Room({ id, onBack }) {
     }
   }
 
+  // 다른 방으로 바로 넘어가거나 화면이 닫히면 이 방의 입력 중은 끔
+  useEffect(() => () => setTyping(id, false), [id]);
+
   // 입력칸에 글자가 남아 있으면 계속 입력 중 (3초마다 다시 알림, 앱을 숨기면 서버가 끔)
   const hasText = text.trim() !== '';
   useEffect(() => {

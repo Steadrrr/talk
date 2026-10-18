@@ -38,7 +38,14 @@ function busy(state) {
   return Object.values(state.messages).some((l) => l.some((m) => m.pending && !m.failed));
 }
 
+// 같은 새 판으로 새로고침을 이미 해 봤는데도 옛 판이 떴으면(캐시 등) 10분 동안은 다시 안 함: 계속 새로고침되는 것 막기
+const TRIED = 'talk_update_tried';
+function triedRecently(build) {
+  try { const t = JSON.parse(sessionStorage.getItem(TRIED) || 'null'); return t && t.build === build && Date.now() - t.at < 600000; } catch { return false; }
+}
+
 async function reload(state) {
+  try { sessionStorage.setItem(TRIED, JSON.stringify({ build: target, at: Date.now() })); } catch {}
   try { sessionStorage.setItem(RESUME, JSON.stringify({ room: state.openRoom || 0, tab: getTab(), notices: state.notices })); } catch {}
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
@@ -49,7 +56,7 @@ async function reload(state) {
 
 // 동기화 때마다 부른다 (store.js)
 export async function checkUpdate(build, state) {
-  if (!build || MINE === 'dev' || build === MINE) return;
+  if (!build || MINE === 'dev' || build === MINE || triedRecently(build)) return;
   if (build !== target) { target = build; ready = ''; checkedAt = 0; }
   if (ready !== build) {
     if (Date.now() - checkedAt < 20000) return;
