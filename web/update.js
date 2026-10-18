@@ -33,7 +33,8 @@ async function arrived(build) {
 function busy(state) {
   if (Date.now() < pickingUntil) return true;
   const el = document.activeElement;
-  if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type !== 'checkbox'))) return true;
+  if (el && (el.tagName === 'TEXTAREA' || el.isContentEditable || (el.tagName === 'INPUT' && el.type !== 'checkbox'))) return true;
+  if (document.querySelector('.msg-input:not(.blank)')) return true;   // 메시지 입력칸에 쓰다 만 글 (새로고침하면 사라짐)
   if (Date.now() - lastTouch < 3000) return true;
   return Object.values(state.messages).some((l) => l.some((m) => m.pending && !m.failed));
 }
