@@ -49,7 +49,7 @@ export function loadSaved() {
   restorePending();
 }
 
-// 앱이 새로 열리면서 끊긴 사진·영상: "다시 보내기" 로 되살림
+// 앱이 새로 열리면서 끊긴 사진·영상: "재전송" 로 되살림
 async function restorePending() {
   for (const p of await listPending()) {
     if (!p.file || !state.rooms[p.room_id]) { dropPending(p.client_id); continue; }

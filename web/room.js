@@ -115,11 +115,12 @@ export function Room({ id, onBack }) {
           <div class="msg-line">
             ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig(m)} />` : html`<div class="bubble">${m.body}</div>`}
             <div class="meta">
-              ${m.failed ? html`<span class="fail"><button onClick=${() => m.kind === 'text' ? send(id, null, m) : sendMedia(id, null, m)}>다시 보내기</button><button onClick=${() => discard(id, m)}>지우기</button></span>`
+              ${m.failed ? html`<span class="small bad">못 보냄</span>`
                 : m.pending ? html`<span class="hint small">보내는 중</span>`
                 : html`${n > 0 && html`<span class="unread">${n}</span>`}${showTime && html`<span class="hint small">${minute}</span>`}`}
             </div>
           </div>
+          ${m.failed && html`<div class="fail"><button class="del" onClick=${() => confirm('보내지 못한 것을 지울까요?') && discard(id, m)}>지우기</button><button class="retry" onClick=${() => m.kind === 'text' ? send(id, null, m) : sendMedia(id, null, m)}>재전송</button></div>`}
         </div>
       </div>`);
   });
