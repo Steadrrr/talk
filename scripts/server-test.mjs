@@ -148,6 +148,8 @@ try {
     assert.ok(inviteFamily && inviteFriends);
     html = await (await req('/setup.php')).text();
     assert.ok(html.includes(`<code>${inviteFamily}</code>`), '만든 뒤에도 관리 화면에서 코드가 다시 보임');
+    assert.ok(html.includes(`data-copy="${inviteFamily}"`) && html.includes('#invite=' + inviteFamily + '">링크 복사'), '코드·링크 복사 단추');
+    assert.equal((await req('/setup-copy.js')).status, 200);
     assert.ok(html.includes(`#invite=${inviteFriends}`));
   });
 

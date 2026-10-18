@@ -259,6 +259,7 @@ foreach ($pdo->query('SELECT user_id, group_id FROM talk_group_members')->fetchA
 $users = $pdo->query('SELECT u.id, u.name, u.nick, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
 $devs = $pdo->query('SELECT d.id, d.name, d.last_seen, d.active_at, d.active_room, (SELECT COUNT(*) FROM talk_push_subs s WHERE s.device_id = d.id) subs, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.last_seen DESC')->fetchAll();
 $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT(*) FROM talk_messages) m')->fetch();
+$copy = fn(string $text, string $label) => '<button type="button" class="sub" data-copy="' . h($text) . '">' . h($label) . '</button>';
 $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf" value="' . h(csrf()) . '"><input type="hidden" name="act" value="' . h($act) . '">'
     . implode('', array_map(fn($k, $v) => '<input type="hidden" name="' . h($k) . '" value="' . h((string)$v) . '">', array_keys($extra), $extra));
 ?>
@@ -270,7 +271,8 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php if ($invite): ?>
 <div class="secret"><b>초대 코드를 만들었어요 — 복사해서 나눠 주세요</b><br>그룹 <?= h($invite[0]) ?> 초대 코드 <code><?= h($invite[1]) ?></code>
 <br>초대 링크 <code><?= h($base . '#invite=' . $invite[1]) ?></code>
-<br><span class="hint">링크를 열면 가입 화면에 코드가 채워져 있어요. 이미 가입한 사람은 앱의 설정 → 초대 코드 넣기. 아래 그룹 목록에서 언제든 다시 볼 수 있어요.</span></div>
+<div class="btns"><?= $copy($invite[1], '코드 복사') ?><?= $copy($base . '#invite=' . $invite[1], '링크 복사') ?></div>
+<span class="hint">링크를 열면 가입 화면에 코드가 채워져 있어요. 이미 가입한 사람은 앱의 설정 → 초대 코드 넣기. 아래 그룹 목록에서 언제든 다시 볼 수 있어요.</span></div>
 <?php endif; ?>
 
 <fieldset><legend>그룹 (같은 그룹 사람끼리만 서로 보여요)</legend>
@@ -288,7 +290,8 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php foreach ($invites[$gid] ?? [] as $i): ?>
 <form method="post" class="row"><?= $hidden('invite_revoke', ['id' => (int)$i['id']]) ?>
 <span class="hint">└ 초대 코드 <?= $i['code'] ? '<code>' . h($i['code']) . '</code> · 링크 <code>' . h($base . '#invite=' . $i['code']) . '</code>' : '#' . (int)$i['id'] . ' (예전에 만든 코드라 다시 볼 수 없어요)' ?>
-<br>└ 남은 횟수 <?= (int)$i['uses_left'] ?> · <?= h(kst($i['expires_at'])) ?> 까지</span><button type="submit" class="sub">없애기</button></form>
+<br>└ 남은 횟수 <?= (int)$i['uses_left'] ?> · <?= h(kst($i['expires_at'])) ?> 까지</span>
+<span class="btns"><?php if ($i['code']): ?><?= $copy($i['code'], '코드 복사') ?><?= $copy($base . '#invite=' . $i['code'], '링크 복사') ?><?php endif; ?><button type="submit" class="sub">없애기</button></span></form>
 <?php endforeach; ?>
 <?php if (!(int)$g['closed']): ?>
 <form method="post" class="row"><?= $hidden('invite', ['group' => $gid]) ?>
@@ -375,4 +378,4 @@ button{font:inherit;cursor:pointer;color:#fff;background:var(--acc);border:0;bor
 .hint{color:var(--dim);font-size:13px} .back{margin:calc(env(safe-area-inset-top) + 4px) 0 0} .back a{color:var(--acc);text-decoration:none;font-weight:600} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
 </style></head><body><main><p class="back"><a href="./">← SAKi Talk 으로</a></p><h1>' . h($title) . '</h1>';
 }
-function page_foot(): void { echo '</main></body></html>'; }
+function page_foot(): void { echo '</main><script src="./setup-copy.js"></script></body></html>'; }
