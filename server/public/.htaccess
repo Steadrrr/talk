@@ -1,0 +1,16 @@
+# S.A.K.I Talk: 폴더 목록 숨기기, 내부 파일 직접 접근 막기
+Options -Indexes
+DirectoryIndex index.html
+<FilesMatch "^(config-path)\.php$">
+  Require all denied
+</FilesMatch>
+# 자동 배포(GitHub Actions)가 남기는 목록 파일
+<FilesMatch "^(\.ftp-deploy-sync-state|deploy)\.json$">
+  Require all denied
+</FilesMatch>
+# 웹앱 화면: 캐시는 짧게 (업데이트가 바로 보이도록). assets/ 의 파일은 이름에 해시가 붙어 오래 캐시해도 됨
+<IfModule mod_headers.c>
+  <FilesMatch "(\.(html|webmanifest)|^sw\.js)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

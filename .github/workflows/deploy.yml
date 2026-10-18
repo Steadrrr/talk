@@ -1,0 +1,67 @@
+# S.A.K.I Talk 자동 배포: main 에 올라오면 웹앱을 빌드하고 서버 시험을 돌린 뒤 server/public 을 카페24 /www/talk/ 로 올린다.
+# 바뀐 파일만 올리고, 서버에서 직접 만든 파일(config-path.php, 설정 파일)은 건드리지 않는다.
+# 저장소 Settings → Secrets and variables → Actions 에 TALK_FTP_HOST / TALK_FTP_USER / TALK_FTP_PASSWORD 를 넣으면 켜진다.
+name: S.A.K.I Talk 배포 (카페24)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HAS_FTP: ${{ secrets.TALK_FTP_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 부품 설치
+        run: npm install --no-audit --no-fund
+
+      - name: 웹앱 빌드
+        run: npx vite build
+
+      - name: PHP 문법 확인
+        run: find server/public -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: 서버 시험 (php + MariaDB)
+        run: |
+          sudo apt-get install -y -q mariadb-server >/dev/null
+          sudo service mariadb start
+          sudo mariadb -e "CREATE DATABASE IF NOT EXISTS talktest CHARACTER SET utf8mb4; CREATE USER IF NOT EXISTS 'talk'@'localhost' IDENTIFIED BY 'talkpass'; GRANT ALL ON talktest.* TO 'talk'@'localhost';"
+          node scripts/server-test.mjs
+
+      - name: 배포 정보
+        run: |
+          node -e "require('fs').writeFileSync('server/public/deploy.json', JSON.stringify({ sha: process.argv[1], title: process.argv[2], at: new Date().toISOString() }))" "$(git rev-parse HEAD)" "$(git log -1 --format=%s)"
+
+      - name: FTP 정보가 없으면 건너뜀
+        if: env.HAS_FTP != 'true'
+        run: echo "::notice::TALK_FTP_HOST / TALK_FTP_USER / TALK_FTP_PASSWORD 시크릿을 넣으면 카페24로 자동 배포돼요."
+
+      - name: 카페24로 올리기
+        if: env.HAS_FTP == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.TALK_FTP_HOST }}
+          username: ${{ secrets.TALK_FTP_USER }}
+          password: ${{ secrets.TALK_FTP_PASSWORD }}
+          local-dir: ./server/public/
+          server-dir: /www/talk/
+
+      - name: 올라간 서버 확인
+        if: env.HAS_FTP == 'true'
+        continue-on-error: true
+        run: curl -fsS -m 30 "${SERVER_URL:-https://mysaki.mycafe24.com/talk}/api.php/health"
+        env:
+          SERVER_URL: ${{ vars.TALK_SERVER_URL }}

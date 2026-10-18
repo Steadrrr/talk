@@ -1,0 +1,19 @@
+{
+  "name": "saki-talk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "S.A.K.I Talk - 가족·친구끼리 쓰는 가벼운 메신저 (웹앱 + 카페24 PHP 서버)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node scripts/server-test.mjs"
+  },
+  "dependencies": {
+    "htm": "^3.1.1",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  }
+}

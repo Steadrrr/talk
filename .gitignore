@@ -1,0 +1,12 @@
+node_modules/
+.claude/settings.local.json
+# 웹앱 빌드 결과 (배포 때 GitHub Actions 가 만든다)
+/server/public/index.html
+/server/public/assets/
+/server/public/sw.js
+/server/public/manifest.webmanifest
+/server/public/icon-*.png
+/server/public/apple-touch-icon.png
+/server/public/deploy.json
+/server/public/config-path.php
+/server/public/private/
