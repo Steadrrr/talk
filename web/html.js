@@ -115,7 +115,7 @@ export function PhotoCrop({ img, size, title, busy, onCancel, onOk }) {
         <div class="crop-box" onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onWheel=${wheel}>
           <img src=${img.src} alt="" draggable="false" style=${{ width: w * v.s + 'px', height: hgt * v.s + 'px', transform: `translate(${v.x}px, ${v.y}px)` }} />
         </div>
-        <input class="crop-zoom" type="range" min="0" max="100" step="any" value=${ratio} onInput=${slide} aria-label="확대·축소" />
+        <input class="crop-zoom" type="range" min="0" max="100" step="any" value=${ratio} style=${{ '--p': ratio / 100 }} onInput=${slide} aria-label="확대·축소" />
         <p class="hint">끌어서 옮기고, 두 손가락으로 벌리거나 모아 크기를 바꿔요.</p>
         <div class="pc-btns">
           <button class="pc-cancel" onClick=${onCancel} disabled=${busy}>취소</button>

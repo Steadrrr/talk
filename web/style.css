@@ -228,7 +228,11 @@ img.avatar { object-fit: cover; background: var(--line); }
 .pc-title { margin: 0; font-weight: 600; text-align: center; font-size: calc(16px * var(--fs)); }
 .crop-box { position: relative; width: 240px; height: 240px; border-radius: 28%; overflow: hidden; background: #000; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 .crop-box img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; -webkit-user-drag: none; }
-.crop-zoom { width: 100%; accent-color: var(--acc); }
+/* 막대는 직접 그림: 기본 모양은 동그라미가 막대 끝까지 안 가 보여서 (막대 길이 = 동그라미가 움직이는 길이) */
+.crop-zoom { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin: 9px 0; padding: 0; border-radius: 3px; outline: none; background: linear-gradient(to right, var(--acc) 0 calc(11px + (100% - 22px) * var(--p, 0)), var(--line) 0); }
+.crop-zoom::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--acc); border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.crop-zoom::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--acc); border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.crop-zoom::-moz-range-track { background: transparent; }
 .photo-confirm .hint { margin: -6px 0 0; text-align: center; }
 .pc-btns { display: flex; gap: 12px; width: 100%; }
 .pc-btns button { flex: 1; min-height: 48px; border-radius: 14px; font-size: calc(16px * var(--fs)); font-weight: 600; border: 0; }
