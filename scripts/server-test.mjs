@@ -500,7 +500,7 @@ try {
     assert.equal(res.status, 200);
 
     // 보관 기간: 영상 3일 지난 것으로 바꾸고 다른 것을 올리면 정리됨
-    execFileSync('mariadb', ['-uroot', dbName, '-e', `UPDATE talk_media SET created_at = NOW() - INTERVAL 4 DAY WHERE mkey = '${vkey}'`]);
+    execFileSync('mariadb', ['-h', dbHost, '-u', dbUser, `-p${dbPass}`, dbName, '-e', `UPDATE talk_media SET created_at = NOW() - INTERVAL 4 DAY WHERE mkey = '${vkey}'`]);
     r = await api('media/start', { room_id: room, kind: 'photo', mime: 'image/jpeg', size: 4 }, tok.mom);
     await req(`/api.php/media/chunk?key=${r.body.key}&offset=0`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom }, body: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) });
     await api('media/finish', { key: r.body.key }, tok.mom);
