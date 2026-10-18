@@ -1,7 +1,7 @@
 // SAKi Talk 서비스 워커: 화면 파일을 캐시해서 두 번째부터는 바로 열리게 한다.
 // 화면(html)은 먼저 서버에 물어보고(새 버전 바로 반영), 안 되면 캐시. assets/ 는 이름에 해시가 붙어 캐시 먼저.
 // API(api.php)는 절대 캐시하지 않는다.
-const CACHE = 'talk-v1';
+const CACHE = 'talk-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
@@ -29,4 +29,34 @@ self.addEventListener('fetch', (e) => {
     if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()));
     return res;
   }).catch(() => caches.match(req)));
+});
+
+// 새 메시지 알림 (서버가 보낸 웹 푸시). 같은 방 알림은 하나로 묶어서 바꿔 끼운다
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() || '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'SAKi Talk', {
+    body: d.body || '새 메시지',
+    tag: d.tag || 'talk',
+    renotify: true,
+    icon: './icon-192.png',
+    data: { room: d.room || 0 },
+  }));
+});
+
+// 알림을 누르면: 열린 앱이 있으면 그 방으로, 없으면 앱을 그 방으로 연다
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const room = e.notification.data?.room || 0;
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of wins) {
+      if (new URL(w.url).pathname.startsWith(new URL('./', self.registration.scope).pathname)) {
+        await w.focus();
+        if (room) w.postMessage({ type: 'open-room', room });
+        return;
+      }
+    }
+    await self.clients.openWindow('./' + (room ? '#room=' + room : ''));
+  })());
 });

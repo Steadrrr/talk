@@ -4,6 +4,7 @@ import { html, Avatar, listTime } from './html.js';
 import { api } from './api.js';
 import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile } from './store.js';
 import { nickOf, fullName } from './names.js';
+import { PushCard } from './pushui.js';
 
 export function Home({ tab, setTab, onOpen }) {
   const unread = Object.values(state.rooms).reduce((n, r) => n + (r.unread || 0), 0);
@@ -147,6 +148,7 @@ function Settings() {
           <button class="me-row" onClick=${() => showProfile(state.me.id)}><${Avatar} name=${nickOf(state.me)} id=${state.me.id} size=${52} /><div class="grow ellipsis" style="text-align:left"><b>${fullName(state.me)}</b><div class="hint">${state.groups.map((g) => g.name).join(' · ') || '그룹 없음'}</div></div><span class="hint">›</span></button>
           <p class="hint">눌러서 닉네임을 바꿀 수 있어요. 로그인은 본명(${state.me.name})으로 해요. 프로필 사진은 다음 업데이트에서 생겨요.</p>
         </div>
+        <${PushCard} />
         ${!standalone && html`<div class="card"><b>홈 화면에 추가하기</b><p class="hint">아이폰: 사파리 아래 공유 버튼 → "홈 화면에 추가". 안드로이드: 크롬 메뉴 ⋮ → "홈 화면에 추가". 앱처럼 바로 열려요.</p></div>`}
         <form class="card" onSubmit=${join}>
           <b>초대 코드 넣기</b>

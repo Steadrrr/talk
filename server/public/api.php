@@ -7,6 +7,7 @@ define('TALK', true);
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/accounts.php';
 require __DIR__ . '/lib/chat.php';
+require __DIR__ . '/lib/push.php';
 
 header('X-Robots-Tag: noindex');
 
@@ -97,9 +98,28 @@ switch ($route) {
         talk_set_nick($pdo, $uid, talk_clean_nick(talk_body()['nick'] ?? ''));
         talk_json(['ok' => true]);
 
+    case 'me/away':
+        $need('POST');
+        $pdo->prepare('UPDATE talk_devices SET active_at = NULL WHERE id = ?')->execute([$me['device_id']]);
+        talk_json(['ok' => true]);
+
+    case 'push/key':
+        talk_json(['ok' => true, 'key' => talk_vapid($pdo)['public']]);
+
+    case 'push/subscribe':
+        $need('POST');
+        talk_push_subscribe($pdo, $me['device_id'], talk_body());
+        talk_json(['ok' => true]);
+
+    case 'push/unsubscribe':
+        $need('POST');
+        talk_push_unsubscribe($pdo, $me['device_id'], (string)(talk_body()['endpoint'] ?? ''));
+        talk_json(['ok' => true]);
+
     case 'auth/logout':
         $need('POST');
         $pdo->prepare('UPDATE talk_devices SET revoked = 1 WHERE id = ?')->execute([$me['device_id']]);
+        talk_push_unsubscribe($pdo, $me['device_id'], '');
         talk_json(['ok' => true]);
 
     case 'auth/password':
@@ -123,6 +143,7 @@ switch ($route) {
         talk_json(['ok' => true, 'groups' => talk_my_groups($pdo, $uid)]);
 
     case 'sync':
+        if ($q('active', '0') === '1') talk_mark_active($pdo, $me);
         talk_json(['ok' => true] + talk_sync($pdo, $uid, (int)$q('since', 0)));
 
     case 'rooms/dm':

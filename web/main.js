@@ -3,11 +3,13 @@ import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { html } from './html.js';
 import { getToken, api } from './api.js';
-import { state, subscribe, loadSaved, loadMe, startSync, openRoom, closeRoom, clearAll } from './store.js';
+import { state, subscribe, loadSaved, loadMe, startSync, syncNow, openRoom, closeRoom, clearAll } from './store.js';
 import { Auth, inviteFromHash } from './auth.js';
 import { Home } from './home.js';
 import { Room } from './room.js';
 import { Profile } from './profile.js';
+import { PushPrompt } from './pushui.js';
+import { pushState, pushAsked, refreshPush, clearRoomNotifications } from './push.js';
 import './style.css';
 
 function App() {
@@ -15,6 +17,7 @@ function App() {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState('chats');
   const [problem, setProblem] = useState('');
+  const [ask, setAsk] = useState('');   // 알림 팝업에 보일 상태 ('' = 안 띄움)
 
   useEffect(() => subscribe(() => force((n) => n + 1)), []);
 
@@ -28,7 +31,14 @@ function App() {
     } catch (e) {
       if (!state.me) setProblem(e.message);
     }
-    if (state.me) startSync();
+    if (!state.me) return;
+    startSync();
+    // 알림: 켜 둔 기기면 서버에 다시 알리고, 로그인 뒤 처음이면 "알림 받을까요?" 창
+    refreshPush();
+    if (!pushAsked()) pushState().then((st) => { if (st !== 'on' && st !== 'unsupported') setAsk(st); }).catch(() => {});
+    // 알림을 눌러 열었으면 그 방으로 (#room=번호)
+    const m = location.hash.match(/room=(\d+)/);
+    if (m) { history.replaceState(null, '', location.pathname + location.search); syncNow().then(() => open(Number(m[1]))); }
   }
   useEffect(() => { start(); }, []);
 
@@ -39,9 +49,17 @@ function App() {
     return () => removeEventListener('popstate', onPop);
   }, []);
   function open(id) {
+    if (!state.rooms[id]) return;
     if (!state.openRoom) history.pushState({ room: id }, '');
     openRoom(id);
+    clearRoomNotifications(id);
   }
+  // 앱이 열려 있을 때 알림을 누르면 서비스 워커가 알려 준다
+  useEffect(() => {
+    const onMsg = (e) => { if (e.data?.type === 'open-room') syncNow().then(() => open(Number(e.data.room))); };
+    navigator.serviceWorker?.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
+  }, []);
   function back() {
     if (history.state?.room) history.back();
     else closeRoom();
@@ -65,7 +83,7 @@ function App() {
     return html`<main class="splash"><p class="err">서버에 연결하지 못했어요 (${problem})</p>
       <button class="primary" onClick=${start}>다시 시도</button><button class="text" onClick=${clearAll}>로그아웃</button></main>`;
   }
-  const profile = state.profile && html`<${Profile} key=${state.profile} onOpen=${open} />`;
+  const profile = html`${state.profile && html`<${Profile} key=${state.profile} onOpen=${open} />`}${ask && html`<${PushPrompt} state=${ask} onClose=${() => setAsk('')} />`}`;
   if (state.openRoom) return html`<${Room} id=${state.openRoom} onBack=${back} />${profile}`;
   return html`<${Home} tab=${tab} setTab=${setTab} onOpen=${open} />${profile}`;
 }

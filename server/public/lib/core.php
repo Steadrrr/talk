@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 5;
+const TALK_SERVER_VERSION = 6;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -103,6 +103,12 @@ function talk_migrate(PDO $pdo): void {
     $q[] = "ALTER TABLE talk_invites ADD COLUMN IF NOT EXISTS code VARCHAR(16) NULL AFTER code_hash";
     // 5: 이름(name)은 본명이자 로그인 아이디, 채팅에 보이는 이름은 닉네임 (비어 있으면 본명)
     $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS nick VARCHAR(40) NULL AFTER name";
+    // 6: 웹 푸시 알림. 기기마다 알림 주소, 앱을 보고 있는 기기(active_at 이 최근)에는 알림을 안 보냄
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_push_subs (
+        id INT AUTO_INCREMENT PRIMARY KEY, device_id INT NOT NULL, endpoint TEXT NOT NULL, endpoint_hash CHAR(64) NOT NULL UNIQUE,
+        p256dh VARCHAR(200) NOT NULL, auth VARCHAR(100) NOT NULL, created_at DATETIME NOT NULL, INDEX (device_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    $q[] = "ALTER TABLE talk_devices ADD COLUMN IF NOT EXISTS active_at DATETIME NULL";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);

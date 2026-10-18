@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import http from 'node:http';
+import crypto from 'node:crypto';
 
 const [dbHost, dbName, dbUser, dbPass] = (process.env.TALK_TEST_DB || 'localhost:talktest:talk:talkpass').split(':');
 const PORT = 18000 + Math.floor(Math.random() * 1000);
@@ -27,7 +29,17 @@ fs.cpSync(path.resolve('server/public'), path.join(www, 'talk'), { recursive: tr
 for (const f of ['config-path.php']) fs.rmSync(path.join(www, 'talk', f), { force: true });
 fs.rmSync(path.join(www, 'talk', 'private'), { recursive: true, force: true });
 
-const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'] });
+// 가짜 알림 서비스: 서버가 보낸 웹 푸시를 받아 둔다 (TALK_PUSH_TEST_PREFIX 로 이 주소만 허용)
+const pushes = [];
+const pushServer = http.createServer((rq, rs) => {
+  const chunks = [];
+  rq.on('data', (c) => chunks.push(c));
+  rq.on('end', () => { pushes.push({ path: rq.url, headers: rq.headers, body: Buffer.concat(chunks) }); rs.writeHead(201); rs.end(); });
+});
+await new Promise((r) => pushServer.listen(0, '127.0.0.1', r));
+const PUSH_PREFIX = `http://127.0.0.1:${pushServer.address().port}/push/`;
+
+const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX } });
 let phpLog = '';
 php.stderr.on('data', (d) => { phpLog += d; });
 
@@ -282,6 +294,58 @@ try {
     assert.equal(r.body.me.nick, null);
   });
 
+  await t('알림: 받는 사람 기기로 암호화해 보냄, 앱을 보고 있거나 끄면 안 보냄', async () => {
+    const ecdh = crypto.createECDH('prime256v1');
+    ecdh.generateKeys();
+    const authSecret = crypto.randomBytes(16);
+    const b64u = (b) => b.toString('base64url');
+    const sub = { endpoint: PUSH_PREFIX + 'dad', keys: { p256dh: b64u(ecdh.getPublicKey()), auth: b64u(authSecret) } };
+    // RFC 8291 풀기 (기기가 하는 일)
+    const open = (buf) => {
+      const salt = buf.subarray(0, 16), idlen = buf[20], asPub = buf.subarray(21, 21 + idlen), ct = buf.subarray(21 + idlen);
+      const ikm = Buffer.from(crypto.hkdfSync('sha256', ecdh.computeSecret(asPub), authSecret, Buffer.concat([Buffer.from('WebPush: info\0'), ecdh.getPublicKey(), asPub]), 32));
+      const cek = Buffer.from(crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16));
+      const nonce = Buffer.from(crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12));
+      const d = crypto.createDecipheriv('aes-128-gcm', cek, nonce);
+      d.setAuthTag(ct.subarray(ct.length - 16));
+      const plain = Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]);
+      return JSON.parse(plain.subarray(0, plain.lastIndexOf(2)).toString());
+    };
+    const waitPush = async (ms) => { for (let i = 0; i < ms / 50 && !pushes.length; i++) await new Promise((r) => setTimeout(r, 50)); return pushes.splice(0); };
+
+    let r = await api('push/key', undefined, tok.dad);
+    assert.equal(r.body.key.length, 87);
+    r = await api('push/subscribe', { ...sub, endpoint: 'https://evil.example.com/x' }, tok.dad);
+    assert.equal(r.status, 400, '모르는 알림 서비스 주소는 거절');
+    r = await api('push/subscribe', sub, tok.dad);
+    assert.equal(r.status, 200);
+    const dadId = await idOf(tok.mom, '아빠');
+    const room = (await api('rooms/dm', { user_id: dadId }, tok.mom)).body.room.id;
+    pushes.length = 0;
+
+    await api('messages/send', { room_id: room, body: '알림 시험\n둘째 줄' }, tok.mom);
+    let got = await waitPush(3000);
+    assert.equal(got.length, 1, '아빠 기기로 하나');
+    assert.equal(got[0].path, '/push/dad');
+    assert.match(got[0].headers.authorization, /^vapid t=.+, k=/);
+    const msg = open(got[0].body);
+    assert.equal(msg.title, '엄마곰');
+    assert.equal(msg.body, '알림 시험 둘째 줄');
+    assert.equal(msg.room, room);
+
+    await api('sync?since=0&active=1', undefined, tok.dad);
+    await api('messages/send', { room_id: room, body: '보고 있을 때' }, tok.mom);
+    assert.equal((await waitPush(800)).length, 0, '앱을 보고 있으면 안 보냄');
+
+    await api('me/away', {}, tok.dad);
+    await api('messages/send', { room_id: room, body: '앱을 닫은 뒤' }, tok.mom);
+    assert.equal((await waitPush(3000)).length, 1, '앱을 숨기면 다시 보냄');
+
+    await api('push/unsubscribe', { endpoint: sub.endpoint }, tok.dad);
+    await api('messages/send', { room_id: room, body: '알림 끈 뒤' }, tok.mom);
+    assert.equal((await waitPush(800)).length, 0, '알림을 끄면 안 보냄');
+  });
+
   await t('이미 가입한 사람이 초대 코드로 다른 그룹에 들어감', async () => {
     const inv = inviteOf(await adminPost({ act: 'invite', group: friends, uses: '1', days: '1' }));
     let r = await api('groups/join', { invite: inv }, tok.mom);
@@ -348,5 +412,6 @@ try {
   process.exitCode = 1;
 } finally {
   php.kill();
+  pushServer.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 }

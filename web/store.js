@@ -49,7 +49,7 @@ export function loadSaved() {
 export function clearAll() {
   stopSync();
   setToken('');
-  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('talk.token'); } catch { /* 무시 */ }
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('talk.token'); localStorage.removeItem('talk.pushAsked'); } catch { /* 무시 */ }
   Object.assign(state, { me: null, groups: [], rooms: {}, messages: {}, cursor: 0, openRoom: null, profile: null });
   notify();
 }
@@ -87,7 +87,7 @@ export async function syncNow() {
     try {
       let more = true;
       while (more) {
-        const r = await api('sync?since=' + state.cursor);
+        const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1'));
         if (r.full) state.messages = Object.fromEntries(Object.entries(state.messages).map(([k, v]) => [k, v.filter((m) => m.pending)]));
         mergeRooms(r.rooms, r.full);
         mergeMessages(r.messages);
@@ -109,7 +109,7 @@ export async function syncNow() {
   return syncing;
 }
 
-// 방을 보고 있으면 2초, 목록이면 5초, 앱이 뒤로 가면 멈춤 (알림은 2단계의 웹 푸시)
+// 방을 보고 있으면 2초, 목록이면 5초, 앱이 뒤로 가면 멈춤 (그동안 새 메시지는 웹 푸시 알림으로)
 function schedule() {
   clearTimeout(timer);
   if (stopped || document.hidden) return;
@@ -124,8 +124,11 @@ export function stopSync() { stopped = true; clearTimeout(timer); }
 
 document.addEventListener('visibilitychange', () => {
   if (stopped) return;
-  if (document.hidden) clearTimeout(timer);
-  else syncNow().then(schedule);
+  if (document.hidden) {
+    clearTimeout(timer);
+    // 서버에 "앱을 안 보고 있음" → 이제부터 새 메시지는 알림으로 (앱이 닫혀도 보내지도록 keepalive)
+    api('me/away', {}, { keepalive: true }).catch(() => {});
+  } else syncNow().then(schedule);
 });
 window.addEventListener('online', () => { if (!stopped) syncNow().then(schedule); });
 

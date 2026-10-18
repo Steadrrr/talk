@@ -19,8 +19,8 @@ export function setToken(t, remember = true) {
 }
 let memToken = '';
 
-export async function api(route, body) {
-  const opts = { headers: {} };
+export async function api(route, body, extra = {}) {
+  const opts = { headers: {}, ...extra };
   const token = getToken();
   if (token) opts.headers['X-Talk-Token'] = token;
   if (body !== undefined) {

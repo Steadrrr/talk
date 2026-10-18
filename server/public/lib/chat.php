@@ -175,6 +175,7 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     $pdo->prepare('UPDATE talk_room_members SET last_read_id = ? WHERE room_id = ? AND user_id = ?')->execute([$id, $roomId, $uid]);
     talk_event($pdo, $roomId, 'msg', $id);
     $pdo->commit();
+    if (function_exists('talk_push_message')) talk_after_response(fn() => talk_push_message($pdo, $roomId, $uid, $body));
     if (random_int(1, 200) === 1) talk_cleanup_events($pdo);
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$id]);
