@@ -17,7 +17,7 @@ body {
   font: calc(16px * var(--fs))/1.45 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
 }
-#app { position: fixed; top: 0; left: 0; right: 0; height: var(--app-h, 100dvh); max-width: 640px; margin: 0 auto; background: var(--bg); }
+#app { position: fixed; top: var(--app-top, 0px); left: 0; right: 0; height: var(--app-h, 100dvh); max-width: 640px; margin: 0 auto; background: var(--bg); }
 .kb .composer { padding-bottom: 8px; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
 button:disabled { opacity: .45; cursor: default; }
