@@ -68,7 +68,7 @@ if ($route === 'auth/login') {
     $st->execute([trim((string)($b['name'] ?? ''))]);
     $u = $st->fetch();
     if (!$u || !password_verify((string)($b['password'] ?? ''), $u['password_hash'])) talk_login_fail($pdo, '이름이나 비밀번호가 맞지 않아요.');
-    talk_json(['ok' => true, 'token' => talk_new_device($pdo, (int)$u['id'], (string)($b['device'] ?? ''))]);
+    talk_json(['ok' => true, 'token' => talk_new_device($pdo, (int)$u['id'], (string)($b['device'] ?? ''), (string)($b['device_key'] ?? ''))]);
 }
 
 // 초대 코드 확인 (가입 화면에서 그룹 이름을 보여 주려고). 틀린 코드는 로그인 실패처럼 센다
@@ -101,7 +101,7 @@ if ($route === 'auth/register') {
     $uid = (int)$pdo->lastInsertId();
     talk_join_group($pdo, $uid, $gid);
     $pdo->commit();
-    talk_json(['ok' => true, 'token' => talk_new_device($pdo, $uid, (string)($b['device'] ?? ''))]);
+    talk_json(['ok' => true, 'token' => talk_new_device($pdo, $uid, (string)($b['device'] ?? ''), (string)($b['device_key'] ?? ''))]);
 }
 
 // ───── 로그인 필요 ─────
@@ -207,8 +207,7 @@ switch ($route) {
 
     case 'auth/logout':
         $need('POST');
-        $pdo->prepare('UPDATE talk_devices SET revoked = 1 WHERE id = ?')->execute([$me['device_id']]);
-        talk_push_unsubscribe($pdo, $me['device_id'], '');
+        talk_revoke_device($pdo, $me['device_id']);
         talk_json(['ok' => true]);
 
     case 'auth/password':

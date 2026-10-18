@@ -177,6 +177,16 @@ try {
     tok.me = r.body.token;
   });
 
+  await t('같은 기기로 다시 로그인하면 예전 기기 줄을 바꿔 씀 (관리 화면에 쌓이지 않게)', async () => {
+    const key = 'ab'.repeat(16);
+    const a = await api('auth/login', { name: '일래', password: 'test-password-1', device: '아이폰', device_key: key });
+    const b = await api('auth/login', { name: '일래', password: 'test-password-1', device: '아이폰', device_key: key });
+    assert.equal(b.status, 200);
+    assert.equal((await api('me', undefined, a.body.token)).status, 401, '예전 토큰은 끊김');
+    assert.equal((await api('me', undefined, b.body.token)).status, 200);
+    assert.equal((await api('me', undefined, tok.me)).status, 200, '다른 기기는 그대로');
+  });
+
   await t('그룹: 같은 그룹 사람만 보임', async () => {
     let r = await api('me', undefined, tok.mom);
     assert.deepEqual(r.body.groups.map((g) => g.name), ['가족']);

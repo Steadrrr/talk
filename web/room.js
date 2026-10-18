@@ -61,7 +61,7 @@ export function Room({ id, onBack }) {
     const files = [...(e.target.files || [])].slice(0, 10);
     e.target.value = '';
     atBottom.current = true;
-    (async () => { for (const f of files) await sendMedia(id, f); })();
+    for (const f of files) sendMedia(id, f); // 모두 바로 화면에 올리고, 차례로 보냄
   }
 
   function onKey(e) {
@@ -168,7 +168,7 @@ function MediaBubble({ m, onOpen }) {
     <button class=${'media ' + m.kind} style=${style} onClick=${() => !m.pending && onOpen()} aria-label=${m.kind === 'photo' ? '사진 크게 보기' : '동영상 재생'}>
       ${src ? html`<img src=${src} alt="" loading="lazy" onError=${() => !m.pending && setBroken(true)} />` : html`<span class="media-blank"></span>`}
       ${m.kind === 'video' && !m.pending && html`<span class="play">▶</span><span class="dur">${durText(info.dur || 0)}</span>`}
-      ${m.pending && !m.failed && html`<span class="media-progress"><span>${m.stage} ${Math.round((m.progress || 0) * 100)}%</span><i style=${{ width: Math.round((m.progress || 0) * 100) + '%' }}></i></span>`}
+      ${m.pending && !m.failed && html`<span class="media-progress"><span>${m.stage}${m.stage === '기다리는 중' ? '' : ` ${Math.round((m.progress || 0) * 100)}%`}</span><i style=${{ width: Math.round((m.progress || 0) * 100) + '%' }}></i></span>`}
       ${m.failed && html`<span class="media-progress err-box"><span>${m.error || '보내지 못했어요'}</span></span>`}
     </button>`;
 }

@@ -203,7 +203,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             $pdo->prepare('UPDATE talk_devices SET revoked = 1 WHERE user_id = ?')->execute([$uid]);
             $msg = "새 비밀번호: $pw — 이 화면을 나가면 다시 볼 수 없어요. 그 사람에게 알려 주고, 로그인 후 바꾸라고 해 주세요.";
         } elseif ($act === 'device_revoke') {
-            $pdo->prepare('UPDATE talk_devices SET revoked = 1 WHERE id = ?')->execute([(int)($_POST['id'] ?? 0)]);
+            talk_revoke_device($pdo, (int)($_POST['id'] ?? 0));
+        } elseif ($act === 'devices_prune') {
+            $st = $pdo->prepare('SELECT id FROM talk_devices WHERE revoked = 0 AND last_seen < ?');
+            $st->execute([gmdate('Y-m-d H:i:s', time() - 7 * 86400)]);
+            $ids = $st->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($ids as $id) talk_revoke_device($pdo, (int)$id);
+            $msg = count($ids) . '개 기기를 끊었어요.';
             $msg = '기기 로그인을 끊었어요.';
         }
         if (in_array($act, ['group_new', 'group_close', 'group_open', 'member_remove', 'user_off', 'user_on', 'user_groups'], true)) talk_groups_changed($pdo);
@@ -248,7 +254,7 @@ foreach ($st->fetchAll() as $r) $invites[(int)$r['group_id']][] = $r;
 $userGroups = [];
 foreach ($pdo->query('SELECT user_id, group_id FROM talk_group_members')->fetchAll() as $r) $userGroups[(int)$r['user_id']][(int)$r['group_id']] = true;
 $users = $pdo->query('SELECT u.id, u.name, u.nick, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
-$devs = $pdo->query('SELECT d.id, d.name, d.last_seen, d.active_at, d.active_room, (SELECT COUNT(*) FROM talk_push_subs s WHERE s.device_id = d.id) subs, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.id')->fetchAll();
+$devs = $pdo->query('SELECT d.id, d.name, d.last_seen, d.active_at, d.active_room, (SELECT COUNT(*) FROM talk_push_subs s WHERE s.device_id = d.id) subs, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.last_seen DESC')->fetchAll();
 $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT(*) FROM talk_messages) m')->fetch();
 $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf" value="' . h(csrf()) . '"><input type="hidden" name="act" value="' . h($act) . '">'
     . implode('', array_map(fn($k, $v) => '<input type="hidden" name="' . h($k) . '" value="' . h((string)$v) . '">', array_keys($extra), $extra));
@@ -307,7 +313,9 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php endforeach; ?>
 </fieldset>
 
-<fieldset><legend>로그인한 기기</legend>
+<fieldset><legend>로그인한 기기 (<?= count($devs) ?>개)</legend>
+<p class="hint">같은 휴대폰에서 다시 로그인하면 예전 줄은 저절로 끊기고, 60일 넘게 안 쓴 기기도 저절로 끊겨요.</p>
+<form method="post"><?= $hidden('devices_prune') ?><button type="submit" class="sub">7일 넘게 안 쓴 기기 모두 끊기</button></form>
 <?php if (!$devs) echo '<p class="hint">아직 없어요.</p>'; ?>
 <?php foreach ($devs as $d): ?>
 <form method="post" class="row"><?= $hidden('device_revoke', ['id' => (int)$d['id']]) ?>

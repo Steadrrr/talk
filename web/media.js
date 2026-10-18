@@ -119,7 +119,14 @@ async function reencode(v, onProgress) {
     v.muted = true;                        // 소리 있는 재생을 막는 브라우저: 소리 없이
     await v.play();
   }
-  await once(v, 'ended');
+  // 화면을 떠나면(사진 고르는 창 등) 휴대폰이 재생을 멈춘다: 녹화도 쉬었다가 돌아오면 이어서
+  const onVis = () => {
+    if (document.hidden) { if (rec.state === 'recording') rec.pause(); return; }
+    if (rec.state === 'paused') rec.resume();
+    if (v.paused && !v.ended) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+  };
+  document.addEventListener('visibilitychange', onVis);
+  try { await once(v, 'ended'); } finally { document.removeEventListener('visibilitychange', onVis); }
   cancelAnimationFrame(raf);
   rec.stop();
   await stopped;

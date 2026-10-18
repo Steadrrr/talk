@@ -110,12 +110,35 @@ function talk_login_fail(PDO $pdo, string $msg): never {
 }
 
 // ───── 기기 토큰 ─────
-function talk_new_device(PDO $pdo, int $uid, string $name): string {
+// 로그인: 새 토큰. 같은 기기 열쇠로 예전에 로그인한 줄은 끊는다 (다시 로그인할 때마다 기기가 쌓이지 않게)
+function talk_new_device(PDO $pdo, int $uid, string $name, string $key = ''): string {
+    $key = preg_match('/^[a-f0-9]{32}$/', $key) ? $key : null;
+    if ($key !== null) {
+        $st = $pdo->prepare('SELECT id FROM talk_devices WHERE user_id = ? AND device_key = ? AND revoked = 0');
+        $st->execute([$uid, $key]);
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $old) talk_revoke_device($pdo, (int)$old);
+    }
+    talk_prune_devices($pdo);
     $token = bin2hex(random_bytes(32));
     $now = talk_now();
-    $pdo->prepare('INSERT INTO talk_devices (user_id, name, token_hash, created_at, last_seen) VALUES (?, ?, ?, ?, ?)')
-        ->execute([$uid, mb_substr(trim($name) ?: '이름 없는 기기', 0, 100), hash('sha256', $token), $now, $now]);
+    $pdo->prepare('INSERT INTO talk_devices (user_id, name, token_hash, device_key, created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([$uid, mb_substr(trim($name) ?: '이름 없는 기기', 0, 100), hash('sha256', $token), $key, $now, $now]);
     return $token;
+}
+
+// 기기 끊기: 토큰을 못 쓰게 하고 알림 주소도 지움
+function talk_revoke_device(PDO $pdo, int $deviceId): void {
+    $pdo->prepare('UPDATE talk_devices SET revoked = 1 WHERE id = ?')->execute([$deviceId]);
+    $pdo->prepare('DELETE FROM talk_push_subs WHERE device_id = ?')->execute([$deviceId]);
+}
+
+// 60일 넘게 안 쓴 기기는 끊음 (로그인할 때마다 한 번 정리)
+function talk_prune_devices(PDO $pdo): int {
+    $st = $pdo->prepare('SELECT id FROM talk_devices WHERE revoked = 0 AND last_seen < ?');
+    $st->execute([gmdate('Y-m-d H:i:s', time() - 60 * 86400)]);
+    $ids = $st->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($ids as $id) talk_revoke_device($pdo, (int)$id);
+    return count($ids);
 }
 
 function talk_token_from_request(): string {

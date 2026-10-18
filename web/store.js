@@ -4,6 +4,7 @@
 import { api, AuthError, setToken } from './api.js';
 import { nickOf } from './names.js';
 import { prepPhoto, prepVideo, upload } from './media.js';
+import { keepPending, dropPending, listPending, clearPending } from './pending.js';
 
 const SAVE_KEY = 'talk.state.v1';
 const KEEP_PER_ROOM = 100; // 기기에 남기는 방별 최근 메시지 수
@@ -45,12 +46,26 @@ export function loadSaved() {
     const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
     if (s && s.me) Object.assign(state, { me: s.me, groups: s.groups || [], groupsRev: s.groupsRev || 0, rooms: s.rooms || {}, messages: s.messages || {}, cursor: s.cursor || 0 });
   } catch { /* 망가진 저장은 무시하고 서버에서 새로 받음 */ }
+  restorePending();
+}
+
+// 앱이 새로 열리면서 끊긴 사진·영상: "다시 보내기" 로 되살림
+async function restorePending() {
+  for (const p of await listPending()) {
+    if (!p.file || !state.rooms[p.room_id]) { dropPending(p.client_id); continue; }
+    const arr = state.messages[p.room_id] || (state.messages[p.room_id] = []);
+    if (arr.some((m) => m.client_id === p.client_id)) continue;
+    arr.push({ id: 0, room_id: p.room_id, user_id: state.me?.id, kind: p.kind, body: '{}', client_id: p.client_id, at: p.at, pending: true,
+      file: p.file, local: p.kind === 'photo' ? URL.createObjectURL(p.file) : '', failed: true, error: '보내다가 멈췄어요', progress: 0, stage: '' });
+  }
+  notify();
 }
 
 export function clearAll() {
   stopSync();
   setToken('');
   try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('talk.token'); localStorage.removeItem('talk.pushAsked'); } catch { /* 무시 */ }
+  clearPending();
   Object.assign(state, { me: null, groups: [], rooms: {}, messages: {}, cursor: 0, openRoom: null, profile: null });
   notify();
 }
@@ -307,13 +322,24 @@ export async function send(roomId, body, retry) {
 }
 
 // 사진·영상 보내기: 보내는 중 메시지(휴대폰의 미리보기 + 진행률)를 먼저 보이고, 줄이기 → 올리기
-export async function sendMedia(roomId, file, retry) {
+// 사진·영상은 한 번에 하나씩 준비·전송 (영상 줄이기 중에 다른 것을 같이 하면 휴대폰이 버거워함)
+let mediaQueue = Promise.resolve();
+
+export function sendMedia(roomId, file, retry) {
   const isVideo = retry ? retry.kind === 'video' : file.type.startsWith('video/');
   const msg = retry || { id: 0, room_id: roomId, user_id: state.me.id, kind: isVideo ? 'video' : 'photo', body: '{}',
     client_id: newClientId(), at: new Date().toISOString(), pending: true, file, local: isVideo ? '' : URL.createObjectURL(file) };
-  Object.assign(msg, { failed: false, error: '', progress: 0, stage: isVideo ? '영상 준비 중' : '사진 줄이는 중' });
+  Object.assign(msg, { failed: false, error: '', progress: 0, stage: '기다리는 중' });
   const arr = state.messages[roomId] || (state.messages[roomId] = []);
-  if (!retry) arr.push(msg);
+  if (!retry) { arr.push(msg); keepPending(msg); }
+  notify();
+  mediaQueue = mediaQueue.then(() => sendMediaNow(roomId, msg, isVideo));
+  return mediaQueue;
+}
+
+async function sendMediaNow(roomId, msg, isVideo) {
+  if (!state.me || !(state.messages[roomId] || []).includes(msg)) return; // 그 사이 지웠거나 로그아웃
+  msg.stage = isVideo ? '영상 준비 중' : '사진 줄이는 중';
   notify();
   try {
     const p = isVideo
@@ -326,6 +352,7 @@ export async function sendMedia(roomId, file, retry) {
     notify();
     const m = await upload(roomId, p, msg.client_id, (f) => { msg.progress = f; notify(); });
     if (msg.local.startsWith('blob:')) URL.revokeObjectURL(msg.local);
+    dropPending(msg.client_id);
     mergeMessages([m]);
     const room = state.rooms[roomId];
     if (room) {
@@ -344,6 +371,7 @@ export async function sendMedia(roomId, file, retry) {
 
 export function discard(roomId, msg) {
   if (msg.local?.startsWith('blob:')) URL.revokeObjectURL(msg.local);
+  if (msg.file) dropPending(msg.client_id);
   state.messages[roomId] = (state.messages[roomId] || []).filter((m) => m !== msg);
   notify();
 }

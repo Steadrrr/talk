@@ -13,6 +13,18 @@ function deviceName() {
   return '브라우저';
 }
 
+// 이 기기의 고정 번호: 다시 로그인해도 관리 화면에 기기가 쌓이지 않고 예전 줄을 바꿔 쓴다
+function deviceKey() {
+  try {
+    let k = localStorage.getItem('talk.deviceKey');
+    if (!/^[0-9a-f]{32}$/.test(k || '')) {
+      k = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem('talk.deviceKey', k);
+    }
+    return k;
+  } catch { return ''; }
+}
+
 export function inviteFromHash() {
   const m = location.hash.match(/invite=([A-Za-z0-9-]+)/);
   return m ? m[1].toUpperCase() : '';
@@ -47,7 +59,7 @@ export function Auth({ onDone }) {
     if (mode === 'register' && pw !== pw2) { setErr('비밀번호 두 칸이 서로 달라요.'); return; }
     setBusy(true);
     try {
-      const body = { name: name.trim(), password: pw, device: deviceName() };
+      const body = { name: name.trim(), password: pw, device: deviceName(), device_key: deviceKey() };
       const r = mode === 'login' ? await api('auth/login', body) : await api('auth/register', { ...body, nick: nick.trim(), invite });
       setToken(r.token, auto);
       setPref('talk.saveId', saveId ? '1' : '0');
