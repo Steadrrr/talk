@@ -167,7 +167,7 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
     $st->execute([$senderId, $roomId]);
     $room = $st->fetch();
     if (!$room) return $out;
-    $st = $pdo->prepare('SELECT s.* FROM talk_push_subs s JOIN talk_devices d ON d.id = s.device_id
+    $st = $pdo->prepare('SELECT s.*, d.user_id FROM talk_push_subs s JOIN talk_devices d ON d.id = s.device_id
         JOIN talk_room_members m ON m.user_id = d.user_id AND m.room_id = ? JOIN talk_users u ON u.id = d.user_id
         WHERE d.revoked = 0 AND u.disabled = 0 AND m.muted = 0 AND d.user_id <> ?
           AND (d.active_at IS NULL OR d.active_room <> ? OR d.active_at < ?)');
@@ -175,18 +175,35 @@ function talk_push_message(PDO $pdo, int $roomId, int $senderId, string $text): 
     $subs = $st->fetchAll();
     if (!$subs) { talk_push_log($pdo, "방 $roomId 새 메시지 (받을 기기 없음: 알림 켠 기기가 없거나 모두 이 방을 보는 중)", $out); return $out; }
     $text = preg_replace('/\s+/u', ' ', $text);
-    $payload = json_encode([
+    $base = [
         'title' => mb_substr($room['kind'] === 'dm' ? $room['who'] : ($room['name'] ?: $room['who']), 0, 60),
         'body' => mb_substr($room['kind'] === 'dm' || !$room['name'] ? $text : "{$room['who']}: $text", 0, 200),
         'room' => $roomId,
         'tag' => "room-$roomId",
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    // Topic 머리는 안 씀: 애플이 "room1" 같은 Topic 을 400 으로 거절함 (같은 방 알림 묶기는 기기의 tag 로)
-    $out = talk_push_send_many($pdo, $subs, $payload, '');
+    ];
+    // 받는 사람마다 내용이 다르다: 홈 화면 아이콘 뱃지에 달 그 사람의 안 읽은 메시지 합계
+    $byUser = [];
+    foreach ($subs as $s) $byUser[(int)$s['user_id']][] = $s;
+    foreach ($byUser as $u => $list) {
+        $payload = json_encode($base + ['badge' => talk_unread_total($pdo, $u)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        // Topic 머리는 안 씀: 애플이 "room1" 같은 Topic 을 400 으로 거절함 (같은 방 알림 묶기는 기기의 tag 로)
+        $r = talk_push_send_many($pdo, $list, $payload, '');
+        foreach (['sent', 'failed', 'total'] as $k) $out[$k] += $r[$k];
+        array_push($out['results'], ...$r['results']);
+    }
     // 서버가 알림 서비스(애플·구글)에 넘기기까지 걸린 시간: 이게 짧은데 늦게 뜨면 알림 서비스 쪽에서 걸린 것
     $out['ms'] = (int)round((microtime(true) - $t0) * 1000);
     talk_push_log($pdo, "방 $roomId 새 메시지", $out);
     return $out;
+}
+
+// 내 안 읽은 메시지 합계 (닫힌 그룹의 방은 뺌, 앱의 채팅 탭 숫자와 같은 셈)
+function talk_unread_total(PDO $pdo, int $uid): int {
+    $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages m JOIN talk_room_members rm ON rm.room_id = m.room_id AND rm.user_id = ?
+        JOIN talk_rooms r ON r.id = m.room_id JOIN talk_groups g ON g.id = r.group_id
+        WHERE g.closed = 0 AND m.id > rm.last_read_id AND m.user_id <> ? AND m.kind <> 'system'");
+    $st->execute([$uid, $uid]);
+    return (int)$st->fetchColumn();
 }
 
 // 여러 기기에 보내기. 알림 서비스가 "없는 구독"(404/410)이라고 하면 지운다

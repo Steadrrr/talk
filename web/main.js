@@ -16,6 +16,7 @@ import './style.css';
 import { applyFontSize } from './fontsize.js';
 import { fitViewport } from './viewport.js';
 import './saki-splash.js';
+import './badge.js';
 
 applyFontSize();
 fitViewport();

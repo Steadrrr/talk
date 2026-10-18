@@ -35,13 +35,16 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() || '' }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'SAKi Talk', {
+  // 홈 화면 아이콘 뱃지: 서버가 넣어 준 내 안 읽은 메시지 합계 (공지·시험 알림에는 없음 → 그대로 둠)
+  const badge = typeof d.badge === 'number' && 'setAppBadge' in self.navigator
+    ? (d.badge > 0 ? self.navigator.setAppBadge(d.badge) : self.navigator.clearAppBadge()).catch(() => {}) : null;
+  e.waitUntil(Promise.all([badge, self.registration.showNotification(d.title || 'SAKi Talk', {
     body: d.body || '새 메시지',
     tag: d.tag || 'talk',
     renotify: true,
     icon: './icon-192.png',
     data: { room: d.room || 0, notice: d.notice || 0 },
-  }));
+  })]));
 });
 
 // 알림을 누르면: 열린 앱이 있으면 그 방(공지면 공지사항)으로, 없으면 앱을 그렇게 연다

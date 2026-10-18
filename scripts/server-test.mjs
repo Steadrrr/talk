@@ -434,10 +434,14 @@ try {
     assert.equal(msg.title, '엄마곰');
     assert.equal(msg.body, '알림 시험 둘째 줄');
     assert.equal(msg.room, room);
+    const dadUnread = (await api('sync?since=0', undefined, tok.dad)).body.rooms.reduce((n, x) => n + x.unread, 0);
+    assert.equal(msg.badge, dadUnread, '아이콘 뱃지: 아빠의 안 읽은 수 합계 (채팅 탭 숫자와 같음)');
 
     await api('sync?since=0&active=1&room=0', undefined, tok.dad);
     await api('messages/send', { room_id: room, body: '목록을 보고 있을 때' }, tok.mom);
-    assert.equal((await waitPush(3000)).length, 1, '목록 화면이면 보냄');
+    got = await waitPush(3000);
+    assert.equal(got.length, 1, '목록 화면이면 보냄');
+    assert.equal(open(got[0].body).badge, dadUnread + 1, '안 읽은 수가 늘면 뱃지도');
     await api(`sync?since=0&active=1&room=${room}`, undefined, tok.dad);
     await api('messages/send', { room_id: room, body: '그 방을 보고 있을 때' }, tok.mom);
     assert.equal((await waitPush(800)).length, 0, '그 방을 보고 있으면 안 보냄');
