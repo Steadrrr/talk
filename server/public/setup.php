@@ -275,6 +275,7 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <span class="hint">링크를 열면 가입 화면에 코드가 채워져 있어요. 안내+초대 링크는 가입·앱 설치 방법 페이지가 먼저 열려요. 이미 가입한 사람은 앱의 설정 → 초대 코드 넣기. 아래 그룹 목록에서 언제든 다시 볼 수 있어요.</span></div>
 <?php endif; ?>
 
+<details class="menu" id="m-groups"<?= $invite ? ' open' : '' ?>><summary>그룹 <span class="hint">그룹 <?= count($groups) ?>개 · 사람 <?= count($users) ?>명</span></summary>
 <fieldset><legend>그룹 (같은 그룹 사람끼리만 서로 보여요)</legend>
 <?php if (!$groups) echo '<p class="hint">아직 없어요. 먼저 그룹을 만들어 주세요 (예: 가족, 친구).</p>'; ?>
 <?php foreach ($groups as $g): $gid = (int)$g['id']; ?>
@@ -318,8 +319,11 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php elseif ((int)$u['is_admin']): ?><p class="hint">└ 관리자는 모든 그룹에 들어가 있어요.</p><?php endif; ?>
 <?php endforeach; ?>
 </fieldset>
+</details>
 
-<fieldset><legend>로그인한 기기 (<?= count($devs) ?>개)</legend>
+<details class="menu" id="m-logs"><summary>접속 로그 <span class="hint">기기 <?= count($devs) ?>개</span></summary>
+<details class="menu sub" id="m-devices"><summary>기기 접속 기록 (<?= count($devs) ?>개)</summary>
+<fieldset><legend>로그인한 기기</legend>
 <p class="hint">같은 휴대폰에서 다시 로그인하면 예전 줄은 저절로 끊기고, 60일 넘게 안 쓴 기기도 저절로 끊겨요.</p>
 <form method="post"><?= $hidden('devices_prune') ?><button type="submit" class="sub">7일 넘게 안 쓴 기기 모두 끊기</button></form>
 <?php if (!$devs) echo '<p class="hint">아직 없어요.</p>'; ?>
@@ -328,14 +332,19 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <span><?= h($d['owner']) ?> · <?= h($d['name']) ?> <span class="hint">#<?= (int)$d['id'] ?> · 알림 <?= (int)$d['subs'] ? '<b class="ok">켬</b>' : '꺼짐' ?> · 마지막 <?= h(kst($d['last_seen'])) ?><?= $d['active_at'] ? ' · 앱 봄 ' . h(kst($d['active_at'])) . ($d['active_room'] ? " (방 {$d['active_room']})" : ' (목록)') : '' ?></span></span><button type="submit" class="sub">로그인 끊기</button></form>
 <?php endforeach; ?>
 </fieldset>
+</details>
 
-<fieldset><legend>알림 기록 (최근 30개)</legend>
+<details class="menu sub" id="m-push"><summary>알림 기록 (최근 30개)</summary>
+<fieldset><legend>알림 기록</legend>
 <?php $plog = json_decode((string)talk_meta_get($pdo, 'push_log'), true) ?: []; if (!$plog) echo '<p class="hint">아직 보낸 알림이 없어요.</p>'; ?>
 <?php foreach ($plog as $l): ?>
 <div class="row"><span><?= h(kst($l['at'])) ?> · <?= h($l['what']) ?> <span class="hint">· <?= (int)$l['sent'] ?>/<?= (int)$l['total'] ?> 성공<?= isset($l['ms']) ? ' · 서버에서 넘기기까지 ' . number_format($l['ms'] / 1000, 1) . '초' : '' ?><?= $l['results'] ? ' · ' . h(implode(', ', $l['results'])) : '' ?></span></span></div>
 <?php endforeach; ?>
 </fieldset>
+</details>
+</details>
 
+<details class="menu" id="m-data"><summary>사진·영상·백업</summary>
 <fieldset><legend>사진·영상 보관</legend>
 <?php talk_media_cleanup($pdo, $cfg); $mu = talk_media_usage($pdo); $mc = $pdo->query("SELECT kind, COUNT(*) n, COALESCE(SUM(size), 0) s FROM talk_media WHERE deleted = 0 AND done = 1 GROUP BY kind")->fetchAll(PDO::FETCH_UNIQUE); ?>
 <p>지금 <b><?= number_format($mu / 1048576, 1) ?>MB</b> / <?= (int)$cfg['media_limit_mb'] ?>MB 사용 <span class="hint">· 사진 <?= (int)($mc['photo']['n'] ?? 0) ?>장 <?= number_format(($mc['photo']['s'] ?? 0) / 1048576, 1) ?>MB · 영상 <?= (int)($mc['video']['n'] ?? 0) ?>개 <?= number_format(($mc['video']['s'] ?? 0) / 1048576, 1) ?>MB</span></p>
@@ -351,13 +360,16 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <form method="post" class="row"><?= $hidden('backup_txt') ?><button type="submit">대화 기록 (.txt, 읽기용)</button></form>
 <form method="post" class="row"><?= $hidden('backup_json') ?><button type="submit" class="sub">전체 자료 (.json, 옮기기용)</button></form>
 </fieldset>
+</details>
 
+<details class="menu" id="m-admin"><summary>관리자</summary>
 <fieldset><legend>관리자 비밀번호 바꾸기</legend>
 <form method="post" autocomplete="off"><input type="hidden" name="csrf" value="<?= h(csrf()) ?>"><input type="hidden" name="act" value="password">
 <label>새 비밀번호 <input name="pw" type="password" required minlength="8"></label>
 <label>한 번 더 <input name="pw2" type="password" required minlength="8"></label>
 <button type="submit">바꾸기</button></form>
 </fieldset>
+</details>
 
 <form method="post"><input type="hidden" name="csrf" value="<?= h(csrf()) ?>"><input type="hidden" name="act" value="logout"><button type="submit">관리 화면 나가기</button></form>
 <?php
@@ -375,7 +387,8 @@ button{font:inherit;cursor:pointer;color:#fff;background:var(--acc);border:0;bor
 .row{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:6px 0;flex-wrap:wrap} .row label{flex:1;min-width:120px;margin:0}
 .btns{display:flex;gap:6px} .checks{display:flex;flex-wrap:wrap;gap:4px 14px;flex:1} label.check{display:flex;align-items:center;gap:4px;margin:0;color:var(--fg)} label.check input{width:auto;margin:0} .ugroups{border-top:0;padding-top:0} .group{border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:8px 0} button.sub{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:5px 10px}
 .secret{border:2px solid var(--ok);border-radius:12px;padding:12px;margin:10px 0;font-size:16px;background:var(--card)} .secret code{font-size:17px}
+details.menu{margin:12px 0;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:0 10px} details.menu>summary{cursor:pointer;padding:12px 2px;font-weight:600;color:var(--acc)} details.menu.sub{background:var(--bg);margin:8px 0} details.menu fieldset{border:0;margin:0 0 8px;padding:0 2px}
 .hint{color:var(--dim);font-size:13px} .back{margin:calc(env(safe-area-inset-top) + 4px) 0 0} .back a{color:var(--acc);text-decoration:none;font-weight:600} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
 </style></head><body><main><p class="back"><a href="./">← SAKi Talk 으로</a></p><h1>' . h($title) . '</h1>';
 }
-function page_foot(): void { echo '</main><script src="./setup-copy.js"></script></body></html>'; }
+function page_foot(): void { echo '</main><script src="./setup.js"></script></body></html>'; }
