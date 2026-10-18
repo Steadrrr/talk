@@ -58,6 +58,19 @@ try {
 
 $need = function (string $m) use ($method) { if ($method !== $m) talk_fail('지원하지 않는 방식이에요.', 405); };
 $q = fn(string $k, mixed $d = null) => $_GET[$k] ?? $d;
+// 프로필·방 사진 받기: 앱은 사진을 그대로(octet-stream) 보낸다. JSON 안의 base64 는 카페24 웹 방화벽이
+// 사진 내용에 따라 공격 글로 잘못 보고 404 로 막아서. 예전 앱의 JSON(base64)·지우기({data:''})도 받는다
+$photoBody = function (): array {
+    if (str_starts_with((string)($_SERVER['CONTENT_TYPE'] ?? ''), 'application/octet-stream')) {
+        $raw = file_get_contents('php://input', false, null, 0, TALK_PHOTO_MAX + 1);
+        if ($raw === false || $raw === '') talk_fail('사진이 비었어요.');
+        return ['data' => $raw];
+    }
+    $b = talk_body(500_000);
+    $b['data'] = empty($b['data']) ? null : base64_decode((string)$b['data'], true);
+    if ($b['data'] === false) talk_fail('사진을 읽지 못했어요.');
+    return $b;
+};
 
 // 사진·영상 내려 주기 (로그인 없이 무작위 열쇠로: <img>·<video> 는 머리를 못 붙임)
 if (preg_match('#^media/([a-f0-9]{32})(/thumb)?$#', $route, $mm)) talk_media_serve($pdo, $cfg, $mm[1], !empty($mm[2]));
@@ -122,13 +135,7 @@ switch ($route) {
 
     case 'me/photo':
         $need('POST');
-        $b = talk_body(500_000);
-        $data = null;
-        if (!empty($b['data'])) {
-            $data = base64_decode((string)$b['data'], true);
-            if ($data === false) talk_fail('사진을 읽지 못했어요.');
-        }
-        talk_set_photo($pdo, $uid, $data);
+        talk_set_photo($pdo, $uid, $photoBody()['data']);
         talk_json(['ok' => true]);
 
     case 'media/start':
@@ -138,6 +145,11 @@ switch ($route) {
     case 'media/chunk':
         $need('POST');
         talk_json(['ok' => true] + talk_media_chunk($pdo, $cfg, $uid, (string)$q('key', ''), (int)$q('offset', -1)));
+
+    case 'media/thumb':
+        $need('POST');
+        talk_media_thumb($pdo, $uid, (string)$q('key', ''), (string)file_get_contents('php://input', false, null, 0, 200_001));
+        talk_json(['ok' => true]);
 
     case 'media/finish':
         $need('POST');
@@ -151,13 +163,8 @@ switch ($route) {
 
     case 'rooms/photo':
         $need('POST');
-        $b = talk_body(500_000);
-        $data = null;
-        if (!empty($b['data'])) {
-            $data = base64_decode((string)$b['data'], true);
-            if ($data === false) talk_fail('사진을 읽지 못했어요.');
-        }
-        talk_room_photo($pdo, $uid, (int)($b['room_id'] ?? 0), $data);
+        $b = $photoBody();
+        talk_room_photo($pdo, $uid, (int)($b['room_id'] ?? $q('room_id', 0)), $b['data']);
         talk_json(['ok' => true]);
 
     case 'rooms/prefs':

@@ -510,7 +510,9 @@ try {
     assert.equal(room.photo_by, '엄마곰');
     const first = room.photo;
     assert.equal((await req('/api.php/photo/' + first)).status, 200);
-    r = await api('rooms/photo', { room_id: fam, data: jpg.toString('base64') }, tok.dad);
+    // 새 앱은 사진을 그대로(octet-stream) 보냄 (JSON 안 base64 는 카페24 웹 방화벽이 막아서)
+    r = await req(`/api.php/rooms/photo?room_id=${fam}`, { method: 'POST', headers: { 'X-Talk-Token': tok.dad, 'Content-Type': 'application/octet-stream' }, body: jpg });
+    assert.equal(r.status, 200);
     const s3 = (await api('sync?since=0', undefined, tok.mom)).body;
     room = s3.rooms.find((x) => x.id === fam);
     assert.equal(room.photo_by, '아빠');
@@ -581,7 +583,9 @@ try {
 
     // 영상: Range
     const mp4 = crypto.randomBytes(5000);
-    r = await api('media/start', { room_id: room, kind: 'video', mime: 'video/mp4', size: mp4.length, dur: 12, thumb: jpg.subarray(0, 1000).toString('base64') }, tok.mom);
+    r = await api('media/start', { room_id: room, kind: 'video', mime: 'video/mp4', size: mp4.length, dur: 12 }, tok.mom);
+    assert.equal((await req(`/api.php/media/thumb?key=${r.body.key}`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom, 'Content-Type': 'application/octet-stream' }, body: Buffer.from('nope') })).status, 400);
+    assert.equal((await req(`/api.php/media/thumb?key=${r.body.key}`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom, 'Content-Type': 'application/octet-stream' }, body: jpg.subarray(0, 1000) })).status, 200);
     const vkey = r.body.key;
     await req(`/api.php/media/chunk?key=${vkey}&offset=0`, { method: 'POST', headers: { 'X-Talk-Token': tok.mom }, body: mp4 });
     r = await api('media/finish', { key: vkey }, tok.mom);

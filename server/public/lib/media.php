@@ -54,6 +54,14 @@ function talk_media_start(PDO $pdo, array $cfg, int $uid, array $b): array {
     return ['key' => $key];
 }
 
+// 미리보기 그림 (영상 첫 장면 JPEG). 올리기 시작 뒤 그대로(octet-stream) 따로 받는다
+function talk_media_thumb(PDO $pdo, int $uid, string $key, string $data): void {
+    $m = talk_media_row($pdo, $key);
+    if (!$m || (int)$m['user_id'] !== $uid || (int)$m['done'] || (int)$m['deleted']) talk_fail('올리던 파일을 찾지 못했어요.', 404);
+    if ($data === '' || strlen($data) > 200_000 || talk_photo_type($data) === null) talk_fail('미리보기 그림이 아니에요.');
+    $pdo->prepare('UPDATE talk_media SET thumb = ? WHERE id = ?')->execute([$data, (int)$m['id']]);
+}
+
 // 조각 이어 붙이기: offset 이 지금까지 받은 크기와 같을 때만 (끊겼다 다시 보내도 겹치지 않게)
 function talk_media_chunk(PDO $pdo, array $cfg, int $uid, string $key, int $offset): array {
     $m = talk_media_row($pdo, $key);

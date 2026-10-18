@@ -23,7 +23,12 @@ export async function api(route, body, extra = {}) {
   const opts = { headers: {}, ...extra };
   const token = getToken();
   if (token) opts.headers['X-Talk-Token'] = token;
-  if (body !== undefined) {
+  if (body instanceof Blob) {
+    // 사진은 그대로 보낸다 (JSON 안 base64 는 카페24 웹 방화벽이 내용에 따라 막음)
+    opts.method = 'POST';
+    opts.headers['Content-Type'] = 'application/octet-stream';
+    opts.body = body;
+  } else if (body !== undefined) {
     opts.method = 'POST';
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -34,4 +39,12 @@ export async function api(route, body, extra = {}) {
   if (res.status === 401 && token && !route.startsWith('auth/')) throw new AuthError(data.error || '로그인이 필요해요.');
   if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+
+// base64 → 그대로의 사진 (서버에 octet-stream 으로)
+export function b64Blob(b64) {
+  const bin = atob(b64);
+  const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return new Blob([u], { type: 'application/octet-stream' });
 }

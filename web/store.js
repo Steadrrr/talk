@@ -1,7 +1,7 @@
 // 앱 상태 + 서버와 맞추기(동기화).
 // 서버에 "변경 번호(cursor)"가 있어서, 앱은 sync?since=<번호> 로 그 뒤에 바뀐 방·새 메시지만 받는다.
 // 받은 것은 이 기기(localStorage)에 남겨서, 다음에 열 때 서버를 기다리지 않고 바로 보여 준다.
-import { api, AuthError, setToken } from './api.js';
+import { api, b64Blob, AuthError, setToken } from './api.js';
 import { nickOf } from './names.js';
 import { prepPhoto, prepVideo, upload } from './media.js';
 import { keepPending, dropPending, listPending, clearPending } from './pending.js';
@@ -223,7 +223,7 @@ export async function leaveRoom(roomId) {
 
 // 채팅방 사진: 방 사람 누구나, 새로 올리면 예전 것은 지워짐
 export async function setRoomPhoto(roomId, data) {
-  await api('rooms/photo', { room_id: roomId, data: data || '' });
+  await api(data ? `rooms/photo?room_id=${roomId}` : 'rooms/photo', data ? b64Blob(data) : { room_id: roomId, data: '' });
   await syncNow();
 }
 
@@ -235,7 +235,7 @@ export async function setNotice(roomId, msgId) {
 
 // 프로필 사진: data = base64 (JPEG) 또는 null(지우기)
 export async function setPhoto(data) {
-  await api('me/photo', { data: data || '' });
+  await api('me/photo', data ? b64Blob(data) : { data: '' });
   await loadMe();
   await syncNow();
 }

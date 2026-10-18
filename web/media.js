@@ -1,7 +1,7 @@
 // 사진·영상 보내기: 휴대폰에서 줄인 뒤 2MB 조각으로 올린다 (서버 용량이 작아서)
 //  - 사진: 긴 쪽 1600px, WebP(안 되면 JPEG). 위치 정보 같은 EXIF 는 다시 그리면서 빠진다
 //  - 영상: 60초까지. 8MB 이하 mp4·mov 는 그대로, 크면 480p·약 1Mbps 로 다시 만듦 (재생하면서 녹화라 영상 길이만큼 걸림)
-import { api, getToken } from './api.js';
+import { api, getToken, b64Blob } from './api.js';
 
 const BASE = new URL('./api.php/', location.href).href;
 const CHUNK = 2 * 1024 * 1024;
@@ -187,7 +187,9 @@ async function putChunk(key, offset, blob) {
 
 // 올리기 → 메시지. onProgress(0~1). 끊기면 조각마다 3번까지 다시
 export async function upload(roomId, p, clientId, onProgress) {
-  const { key } = await api('media/start', { room_id: roomId, kind: p.kind, mime: p.mime, size: p.blob.size, w: p.w, h: p.h, dur: p.dur, thumb: p.thumb || '' });
+  const { key } = await api('media/start', { room_id: roomId, kind: p.kind, mime: p.mime, size: p.blob.size, w: p.w, h: p.h, dur: p.dur });
+  // 미리보기는 따로 그대로 보낸다 (JSON 안 base64 는 카페24 웹 방화벽이 막을 수 있어서). 실패해도 영상은 보냄
+  if (p.thumb) await api(`media/thumb?key=${key}`, b64Blob(p.thumb)).catch(() => {});
   let off = 0;
   while (off < p.blob.size) {
     let tries = 0;
