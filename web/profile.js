@@ -2,7 +2,7 @@
 import { useState } from 'preact/hooks';
 import { html, Avatar } from './html.js';
 import { nickOf, fullName } from './names.js';
-import { state, person, showProfile, openDm, setNick } from './store.js';
+import { state, person, showProfile, openDm, setNick, setPhoto } from './store.js';
 
 export function Profile({ onOpen }) {
   const id = state.profile;
@@ -21,6 +21,19 @@ export function Profile({ onOpen }) {
     setErr('');
     try { const rid = await openDm(id); close(); onOpen(rid); } catch (e) { setErr(e.message); }
   }
+  // 사진 고르기 → 가운데를 정사각형으로 잘라 320px JPEG 로 줄여서 올림 (보통 20~40KB)
+  async function pickPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setErr(''); setBusy(true);
+    try { await setPhoto(await squareJpeg(file, 320)); } catch (e2) { setErr(e2.message || '사진을 올리지 못했어요.'); } finally { setBusy(false); }
+  }
+  async function removePhoto() {
+    if (!confirm('프로필 사진을 지울까요?')) return;
+    setErr(''); setBusy(true);
+    try { await setPhoto(null); } catch (e2) { setErr(e2.message); } finally { setBusy(false); }
+  }
   async function save(e) {
     e.preventDefault();
     setErr(''); setBusy(true);
@@ -32,11 +45,16 @@ export function Profile({ onOpen }) {
       <div class="sheet profile">
         <header class="bar"><button class="icon" onClick=${close} aria-label="닫기">✕</button><span class="grow"></span></header>
         <div class="profile-body">
-          <${Avatar} name=${nickOf(p)} id=${p.id} size=${96} />
+          <${Avatar} name=${nickOf(p)} id=${p.id} photo=${p.photo} size=${96} />
           <h2 class="profile-name">${fullName(p)}</h2>
           ${groups.length > 0 && html`<p class="hint">${groups.join(' · ')}</p>`}
           ${err && html`<p class="err">${err}</p>`}
-          ${isMe && !editing && html`<button class="primary" onClick=${() => { setNickText(p.nick || ''); setEditing(true); }}>닉네임 바꾸기</button>`}
+          ${isMe && !editing && html`
+            <div class="photo-btns">
+              <label class="text tap">${busy ? '올리는 중…' : p.photo ? '사진 바꾸기' : '사진 넣기'}<input type="file" accept="image/*" hidden onChange=${pickPhoto} disabled=${busy} /></label>
+              ${p.photo && html`<button class="text dim" onClick=${removePhoto} disabled=${busy}>사진 지우기</button>`}
+            </div>
+            <button class="primary" onClick=${() => { setNickText(p.nick || ''); setEditing(true); }}>닉네임 바꾸기</button>`}
           ${isMe && editing && html`
             <form class="nick-form" onSubmit=${save}>
               <input value=${nick} onInput=${(e) => setNickText(e.target.value)} maxlength="20" placeholder=${`비우면 본명(${p.name})으로 보여요`} autofocus />
@@ -47,4 +65,20 @@ export function Profile({ onOpen }) {
       </div>
     </div>
   `;
+}
+
+async function squareJpeg(file, size) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('사진을 열지 못했어요.')); i.src = url; });
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    c.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+    const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  } finally { URL.revokeObjectURL(url); }
 }

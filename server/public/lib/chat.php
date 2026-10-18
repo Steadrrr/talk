@@ -43,19 +43,19 @@ function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
         $rooms[(int)$r['id']] = ['id' => (int)$r['id'], 'group_id' => (int)$r['group_id'], 'kind' => $r['kind'], 'name' => $r['name'],
             'created_at' => talk_iso($r['created_at']), 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0];
     }
-    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name, u.nick FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
+    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name, u.nick, u.photo_key FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id IN ($in) ORDER BY m.joined_at, m.user_id");
     $st->execute($roomIds);
     foreach ($st->fetchAll() as $m) {
         $rid = (int)$m['room_id'];
-        $rooms[$rid]['members'][] = ['id' => (int)$m['user_id'], 'name' => $m['name'], 'nick' => $m['nick'], 'last_read_id' => (int)$m['last_read_id']];
+        $rooms[$rid]['members'][] = ['id' => (int)$m['user_id'], 'name' => $m['name'], 'nick' => $m['nick'], 'photo' => $m['photo_key'], 'last_read_id' => (int)$m['last_read_id']];
         if ((int)$m['user_id'] === $uid) { $rooms[$rid]['muted'] = (int)$m['muted']; $rooms[$rid]['pinned'] = (int)$m['pinned']; }
     }
     $st = $pdo->prepare("SELECT m.* FROM talk_messages m JOIN (SELECT room_id, MAX(id) mid FROM talk_messages WHERE room_id IN ($in) GROUP BY room_id) x ON m.id = x.mid");
     $st->execute($roomIds);
     foreach ($st->fetchAll() as $m) $rooms[(int)$m['room_id']]['last'] = talk_msg_view($m);
     $st = $pdo->prepare("SELECT m.room_id, COUNT(*) n FROM talk_messages m JOIN talk_room_members rm ON rm.room_id = m.room_id AND rm.user_id = ?
-        WHERE m.room_id IN ($in) AND m.id > rm.last_read_id AND m.user_id <> ? GROUP BY m.room_id");
+        WHERE m.room_id IN ($in) AND m.id > rm.last_read_id AND m.user_id <> ? AND m.kind <> 'system' GROUP BY m.room_id");
     $st->execute([$uid, ...$roomIds, $uid]);
     foreach ($st->fetchAll() as $r) $rooms[(int)$r['room_id']]['unread'] = (int)$r['n'];
     return array_values($rooms);
@@ -117,7 +117,7 @@ function talk_open_dm(PDO $pdo, int $uid, int $otherId): int {
     $st = $pdo->prepare('SELECT id FROM talk_rooms WHERE dm_key = ?');
     $st->execute([$key]);
     $rid = $st->fetchColumn();
-    if ($rid !== false) return (int)$rid;
+    if ($rid !== false) { talk_dm_rejoin($pdo, (int)$rid, [$uid]); return (int)$rid; }
     $pdo->beginTransaction();
     try {
         $pdo->prepare('INSERT INTO talk_rooms (group_id, kind, dm_key, created_by, created_at) VALUES (?, ?, ?, ?, ?)')->execute([(int)$gid, 'dm', $key, $uid, talk_now()]);
@@ -136,6 +136,17 @@ function talk_open_dm(PDO $pdo, int $uid, int $otherId): int {
         return (int)$rid;
     }
     return $rid;
+}
+
+// 1:1 방에서 나갔던 사람을 다시 넣음 (안 읽은 수는 지금부터)
+function talk_dm_rejoin(PDO $pdo, int $roomId, array $userIds): void {
+    $st = $pdo->prepare('SELECT COALESCE(MAX(id), 0) FROM talk_messages WHERE room_id = ?');
+    $st->execute([$roomId]);
+    $last = (int)$st->fetchColumn();
+    $add = $pdo->prepare('INSERT IGNORE INTO talk_room_members (room_id, user_id, last_read_id, joined_at) VALUES (?, ?, ?, ?)');
+    $n = 0;
+    foreach ($userIds as $u) { $add->execute([$roomId, $u, $last, talk_now()]); $n += $add->rowCount(); }
+    if ($n) talk_event($pdo, $roomId, 'room');
 }
 
 // 여럿 방: 같은 그룹 사람들로
@@ -171,6 +182,9 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
         $st->execute([$uid, $clientId]);
         if ($m = $st->fetch()) return talk_msg_view($m);
     }
+    $st = $pdo->prepare("SELECT dm_key FROM talk_rooms WHERE id = ? AND kind = 'dm'");
+    $st->execute([$roomId]);
+    if ($key = $st->fetchColumn()) talk_dm_rejoin($pdo, $roomId, array_map('intval', explode(':', $key)));
     $pdo->beginTransaction();
     $pdo->prepare('INSERT INTO talk_messages (room_id, user_id, kind, body, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         ->execute([$roomId, $uid, 'text', $body, $clientId, talk_now()]);
@@ -203,4 +217,78 @@ function talk_history(PDO $pdo, int $uid, int $roomId, int $before): array {
 // 변경 기록은 30일만 둔다 (그보다 오래 앱을 안 연 기기는 처음부터 다시 받음)
 function talk_cleanup_events(PDO $pdo): void {
     $pdo->prepare('DELETE FROM talk_events WHERE created_at < ?')->execute([gmdate('Y-m-d H:i:s', time() - 30 * 86400)]);
+}
+
+// ───── 방 설정 ─────
+// 방 안내 글 ("○○님이 나갔어요" 같은 것). 보낸 사람은 actor, 안 읽은 수·알림에는 안 셈
+function talk_system_msg(PDO $pdo, int $roomId, int $actor, string $text): void {
+    $pdo->prepare('INSERT INTO talk_messages (room_id, user_id, kind, body, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$roomId, $actor, 'system', $text, talk_now()]);
+    talk_event($pdo, $roomId, 'msg', (int)$pdo->lastInsertId());
+}
+
+function talk_display_name(PDO $pdo, int $uid): string {
+    $st = $pdo->prepare('SELECT COALESCE(nick, name) FROM talk_users WHERE id = ?');
+    $st->execute([$uid]);
+    return (string)$st->fetchColumn();
+}
+
+function talk_room_row(PDO $pdo, int $uid, int $roomId): array {
+    if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
+    $st = $pdo->prepare('SELECT * FROM talk_rooms WHERE id = ?');
+    $st->execute([$roomId]);
+    return $st->fetch();
+}
+
+// 나에게만: 알림 끄기·위에 고정
+function talk_room_prefs(PDO $pdo, int $uid, int $roomId, array $b): void {
+    talk_room_row($pdo, $uid, $roomId);
+    foreach (['muted', 'pinned'] as $k) {
+        if (array_key_exists($k, $b)) $pdo->prepare("UPDATE talk_room_members SET $k = ? WHERE room_id = ? AND user_id = ?")->execute([$b[$k] ? 1 : 0, $roomId, $uid]);
+    }
+    talk_event($pdo, $roomId, 'room');
+}
+
+// 여럿 방 이름 (모두에게 보임, 비우면 사람 이름으로)
+function talk_room_rename(PDO $pdo, int $uid, int $roomId, string $name): void {
+    $room = talk_room_row($pdo, $uid, $roomId);
+    if ($room['kind'] !== 'group') talk_fail('1:1 방 이름은 상대 이름으로 보여요.');
+    $name = trim(preg_replace('/\s+/u', ' ', $name));
+    if (mb_strlen($name) > 40) talk_fail('방 이름은 40자까지예요.');
+    if (preg_match('/[\x00-\x1F<>]/u', $name)) talk_fail('방 이름에 쓸 수 없는 글자가 있어요.');
+    if ($name === (string)$room['name']) return;
+    $pdo->prepare('UPDATE talk_rooms SET name = ? WHERE id = ?')->execute([$name === '' ? null : $name, $roomId]);
+    talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . ($name === '' ? '님이 방 이름을 지웠어요.' : "님이 방 이름을 \"$name\"(으)로 바꿨어요."));
+    talk_event($pdo, $roomId, 'room');
+}
+
+// 여럿 방에 같은 그룹 사람 초대
+function talk_room_invite(PDO $pdo, int $uid, int $roomId, array $userIds): void {
+    $room = talk_room_row($pdo, $uid, $roomId);
+    if ($room['kind'] !== 'group') talk_fail('1:1 방에는 초대할 수 없어요. 새 채팅방을 만들어 주세요.');
+    $st = $pdo->prepare('SELECT user_id FROM talk_room_members WHERE room_id = ?');
+    $st->execute([$roomId]);
+    $inRoom = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    $ids = array_values(array_diff(array_unique(array_filter(array_map('intval', $userIds), fn($i) => $i > 0)), $inRoom));
+    if (!$ids) talk_fail('초대할 사람을 골라 주세요.');
+    foreach ($ids as $i) if (!talk_in_group($pdo, $i, (int)$room['group_id'])) talk_fail('같은 그룹 사람만 초대할 수 있어요.', 403);
+    $pdo->beginTransaction();
+    $st = $pdo->prepare('SELECT COALESCE(MAX(id), 0) FROM talk_messages WHERE room_id = ?');
+    $st->execute([$roomId]);
+    $last = (int)$st->fetchColumn();
+    $add = $pdo->prepare('INSERT IGNORE INTO talk_room_members (room_id, user_id, last_read_id, joined_at) VALUES (?, ?, ?, ?)');
+    foreach ($ids as $i) $add->execute([$roomId, $i, $last, talk_now()]);
+    talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . '님이 ' . implode(', ', array_map(fn($i) => talk_display_name($pdo, $i) . '님', $ids)) . '을 초대했어요.');
+    talk_event($pdo, $roomId, 'room');
+    $pdo->commit();
+}
+
+// 나가기: 여럿 방은 안내 글을 남기고, 1:1 방은 조용히 (상대가 다시 보내면 다시 보임)
+function talk_room_leave(PDO $pdo, int $uid, int $roomId): void {
+    $room = talk_room_row($pdo, $uid, $roomId);
+    $pdo->beginTransaction();
+    $pdo->prepare('DELETE FROM talk_room_members WHERE room_id = ? AND user_id = ?')->execute([$roomId, $uid]);
+    if ($room['kind'] === 'group') talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . '님이 나갔어요.');
+    talk_event($pdo, $roomId, 'room');
+    $pdo->commit();
 }

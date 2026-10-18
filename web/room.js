@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, time, dateLine, dayKey } from './html.js';
 import { state, roomTitle, loadOlder, send, discard, showProfile } from './store.js';
 import { nickOf } from './names.js';
+import { RoomSettings } from './roomsettings.js';
 
 export function Room({ id, onBack }) {
   const room = state.rooms[id];
@@ -13,6 +14,7 @@ export function Room({ id, onBack }) {
   const [noMore, setNoMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState('');
+  const [settings, setSettings] = useState(false);
   const input = useRef(null);
 
   // 처음 열 때 기기에 메시지가 없으면 서버에서
@@ -70,9 +72,10 @@ export function Room({ id, onBack }) {
   if (!room) return html`<section class="page"><header class="bar"><button class="icon" onClick=${onBack}>‹</button></header><p class="empty">방을 찾지 못했어요.</p></section>`;
 
   const others = room.members.filter((m) => m.id !== state.me.id);
+  const byId = new Map(room.members.map((m) => [m.id, m]));
   const names = new Map(room.members.map((m) => [m.id, nickOf(m)]));
   // 안 읽은 사람 수: 그 메시지 번호까지 아직 안 읽은 사람 (보낸 사람은 읽은 것으로)
-  const unreadCount = (m) => room.members.filter((p) => p.id !== m.user_id && p.last_read_id < m.id).length;
+  const unreadCount = (m) => m.kind === 'system' ? 0 : room.members.filter((p) => p.id !== m.user_id && p.last_read_id < m.id).length;
 
   const rows = [];
   let prevDay = '', prevUser = 0, prevMin = '';
@@ -80,6 +83,11 @@ export function Room({ id, onBack }) {
     const day = dayKey(m.at);
     if (day !== prevDay) { rows.push(html`<div class="day" key=${'d' + day}><span>${dateLine(m.at)}</span></div>`); prevUser = 0; }
     prevDay = day;
+    if (m.kind === 'system') {
+      rows.push(html`<div class="msg-system" key=${m.id}><span>${m.body}</span></div>`);
+      prevUser = 0;
+      return;
+    }
     const mine = m.user_id === state.me.id;
     const next = list[i + 1];
     const minute = time(m.at);
@@ -90,7 +98,7 @@ export function Room({ id, onBack }) {
     const n = m.pending ? 0 : unreadCount(m);
     rows.push(html`
       <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (first ? ' first' : '')} key=${m.id || m.client_id}>
-        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} size=${36} /></button>` : html`<span class="avatar-gap"></span>`)}
+        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} photo=${byId.get(m.user_id)?.photo} size=${36} /></button>` : html`<span class="avatar-gap"></span>`)}
         <div class="msg-col">
           ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">
@@ -112,6 +120,9 @@ export function Room({ id, onBack }) {
         <h2 class=${'ellipsis' + (room.kind === 'dm' && others[0] ? ' tap' : '')} onClick=${() => room.kind === 'dm' && others[0] && showProfile(others[0].id)}>${roomTitle(room)}</h2>
         ${room.kind === 'group' && html`<span class="hint">${room.members.length}</span>`}
         ${!state.online && html`<span class="offline">연결 끊김</span>`}
+        ${room.muted > 0 && html`<span class="mark">🔕</span>`}
+        <span class="grow"></span>
+        <button class="icon" onClick=${() => setSettings(true)} aria-label="방 설정">☰</button>
       </header>
       <div class="messages" ref=${scroller} onScroll=${onScroll}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
@@ -122,6 +133,7 @@ export function Room({ id, onBack }) {
         <textarea ref=${input} rows="1" value=${text} onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
         <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
       </form>
+      ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} />`}
     </section>
   `;
 }

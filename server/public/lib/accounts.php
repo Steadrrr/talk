@@ -57,9 +57,32 @@ function talk_clean_nick(mixed $v): ?string {
     return $n;
 }
 
-// 닉네임 바꾸기: 같은 그룹 사람들의 앱이 친구 목록(groups_rev)과 방 목록(방마다 'room' 변경)을 다시 받게 한다
 function talk_set_nick(PDO $pdo, int $uid, ?string $nick): void {
     $pdo->prepare('UPDATE talk_users SET nick = ? WHERE id = ?')->execute([$nick, $uid]);
+    talk_profile_changed($pdo, $uid);
+}
+
+// 프로필 사진: 휴대폰에서 줄인 JPEG·WebP·PNG (300KB 까지). null 이면 지움
+const TALK_PHOTO_MAX = 300 * 1024;
+function talk_set_photo(PDO $pdo, int $uid, ?string $data): void {
+    if ($data !== null) {
+        if (strlen($data) > TALK_PHOTO_MAX) talk_fail('사진이 너무 커요.');
+        if (talk_photo_type($data) === null) talk_fail('사진 파일이 아니에요.');
+    }
+    $pdo->prepare('UPDATE talk_users SET photo = ?, photo_key = ? WHERE id = ?')
+        ->execute([$data, $data === null ? null : bin2hex(random_bytes(12)), $uid]);
+    talk_profile_changed($pdo, $uid);
+}
+
+function talk_photo_type(string $data): ?string {
+    if (str_starts_with($data, "\xFF\xD8\xFF")) return 'image/jpeg';
+    if (str_starts_with($data, "\x89PNG")) return 'image/png';
+    if (str_starts_with($data, 'RIFF') && substr($data, 8, 4) === 'WEBP') return 'image/webp';
+    return null;
+}
+
+// 닉네임·사진이 바뀌면: 같은 그룹 사람들의 앱이 친구 목록(groups_rev)과 방 목록(방마다 'room' 변경)을 다시 받게 한다
+function talk_profile_changed(PDO $pdo, int $uid): void {
     $st = $pdo->prepare('SELECT room_id FROM talk_room_members WHERE user_id = ?');
     $st->execute([$uid]);
     foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $rid) talk_event($pdo, (int)$rid, 'room');
@@ -103,7 +126,7 @@ function talk_token_from_request(): string {
 function talk_auth(PDO $pdo): array {
     $t = talk_token_from_request();
     if (!preg_match('/^[a-f0-9]{64}$/', $t)) talk_fail('로그인이 필요해요.', 401);
-    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.is_admin FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
+    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.photo_key, u.is_admin FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
         WHERE d.token_hash = ? AND d.revoked = 0 AND u.disabled = 0');
     $st->execute([hash('sha256', $t)]);
     $me = $st->fetch();
@@ -112,7 +135,7 @@ function talk_auth(PDO $pdo): array {
     if (strtotime($me['last_seen'] . ' UTC') < time() - 300) {
         $pdo->prepare('UPDATE talk_devices SET last_seen = ? WHERE id = ?')->execute([talk_now(), $me['device_id']]);
     }
-    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'is_admin' => (int)$me['is_admin'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
+    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo_key'], 'is_admin' => (int)$me['is_admin'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
 }
 
 // 앱에서 이 방을 보고 있음 (동기화할 때마다 부름, 방이 같으면 5초에 한 번만 적음, 0 = 목록). 앱을 숨기면 me/away 로 지움
@@ -172,11 +195,11 @@ function talk_my_groups(PDO $pdo, int $uid): array {
     if (!$groups) return [];
     $ids = array_column($groups, 'id');
     $in = implode(',', array_fill(0, count($ids), '?'));
-    $st = $pdo->prepare("SELECT m.group_id, u.id, u.name, u.nick FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id
+    $st = $pdo->prepare("SELECT m.group_id, u.id, u.name, u.nick, u.photo_key FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.group_id IN ($in) AND u.disabled = 0 ORDER BY COALESCE(u.nick, u.name)");
     $st->execute($ids);
     $members = [];
-    foreach ($st->fetchAll() as $r) $members[(int)$r['group_id']][] = ['id' => (int)$r['id'], 'name' => $r['name'], 'nick' => $r['nick']];
+    foreach ($st->fetchAll() as $r) $members[(int)$r['group_id']][] = ['id' => (int)$r['id'], 'name' => $r['name'], 'nick' => $r['nick'], 'photo' => $r['photo_key']];
     return array_map(fn($g) => ['id' => (int)$g['id'], 'name' => $g['name'], 'members' => $members[(int)$g['id']] ?? []], $groups);
 }
 

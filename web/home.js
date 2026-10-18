@@ -32,12 +32,12 @@ function Friends() {
     <section class="page">
       <${Header} title="친구" />
       <div class="scroll">
-        <button class="person me-row" onClick=${() => showProfile(me.id)}><${Avatar} name=${nickOf(me)} id=${me.id} size=${52} /><b>${nickOf(me)}</b></button>
+        <button class="person me-row" onClick=${() => showProfile(me.id)}><${Avatar} name=${nickOf(me)} id=${me.id} photo=${me.photo} size=${52} /><b>${nickOf(me)}</b></button>
         ${state.groups.length === 0 && html`<p class="empty">아직 들어간 그룹이 없어요. 설정에서 초대 코드를 넣어 주세요.</p>`}
         ${state.groups.map((g) => html`
           <h3 class="group-title">${g.name} <span class="hint">${g.members.length}</span></h3>
           ${g.members.filter((m) => m.id !== me.id).map((m) => html`
-            <button class="person" onClick=${() => showProfile(m.id)}><${Avatar} name=${nickOf(m)} id=${m.id} /><span>${nickOf(m)}</span></button>`)}
+            <button class="person" onClick=${() => showProfile(m.id)}><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} /><span>${nickOf(m)}</span></button>`)}
           ${g.members.length <= 1 && html`<p class="hint pad">아직 아무도 없어요.</p>`}`)}
       </div>
     </section>
@@ -56,9 +56,9 @@ function Chats({ onOpen }) {
           const other = r.kind === 'dm' ? r.members.find((m) => m.id !== state.me.id) : null;
           return html`
             <button class="room" onClick=${() => onOpen(r.id)}>
-              ${other ? html`<${Avatar} name=${nickOf(other)} id=${other.id} size=${48} />` : html`<span class="avatar multi">${r.members.length}</span>`}
+              ${other ? html`<${Avatar} name=${nickOf(other)} id=${other.id} photo=${other.photo} size=${48} />` : html`<span class="avatar multi">${r.members.length}</span>`}
               <span class="room-main">
-                <span class="room-top"><b class="ellipsis">${roomTitle(r)}</b>${r.kind === 'group' && html`<span class="hint">${r.members.length}</span>`}</span>
+                <span class="room-top"><b class="ellipsis">${roomTitle(r)}</b>${r.kind === 'group' && html`<span class="hint">${r.members.length}</span>`}${r.pinned > 0 && html`<span class="mark" title="위에 고정">📌</span>`}${r.muted > 0 && html`<span class="mark" title="알림 끔">🔕</span>`}</span>
                 <span class="ellipsis hint">${r.last ? r.last.body : '새 대화방'}</span>
               </span>
               <span class="room-side"><span class="hint small">${listTime(r.last?.at || r.created_at)}</span>${r.unread > 0 && html`<span class="badge">${r.unread > 99 ? '99+' : r.unread}</span>`}</span>
@@ -97,7 +97,7 @@ function NewRoom({ onClose, onOpen }) {
           <label class="pad">방 이름 <span class="hint">(비우면 사람 이름으로)</span><input value=${name} onInput=${(e) => setName(e.target.value)} maxlength="40" /></label>
           <div class="scroll">
             ${group.members.filter((m) => m.id !== state.me.id).map((m) => html`
-              <label class="person check"><input type="checkbox" checked=${picked.includes(m.id)} onChange=${() => toggle(m.id)} /><${Avatar} name=${nickOf(m)} id=${m.id} /><span>${nickOf(m)}</span></label>`)}
+              <label class="person check"><input type="checkbox" checked=${picked.includes(m.id)} onChange=${() => toggle(m.id)} /><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} /><span>${nickOf(m)}</span></label>`)}
           </div>`}
         ${err && html`<p class="err pad">${err}</p>`}
       </div>
@@ -145,8 +145,8 @@ function Settings() {
         ${msg && html`<p class="ok">${msg}</p>`}
         ${err && html`<p class="err">${err}</p>`}
         <div class="card">
-          <button class="me-row" onClick=${() => showProfile(state.me.id)}><${Avatar} name=${nickOf(state.me)} id=${state.me.id} size=${52} /><div class="grow ellipsis" style="text-align:left"><b>${fullName(state.me)}</b><div class="hint">${state.groups.map((g) => g.name).join(' · ') || '그룹 없음'}</div></div><span class="hint">›</span></button>
-          <p class="hint">눌러서 닉네임을 바꿀 수 있어요. 로그인은 본명(${state.me.name})으로 해요. 프로필 사진은 다음 업데이트에서 생겨요.</p>
+          <button class="me-row" onClick=${() => showProfile(state.me.id)}><${Avatar} name=${nickOf(state.me)} id=${state.me.id} photo=${state.me.photo} size=${52} /><div class="grow ellipsis" style="text-align:left"><b>${fullName(state.me)}</b><div class="hint">${state.groups.map((g) => g.name).join(' · ') || '그룹 없음'}</div></div><span class="hint">›</span></button>
+          <p class="hint">눌러서 사진과 닉네임을 바꿀 수 있어요. 로그인은 본명(${state.me.name})으로 해요.</p>
         </div>
         <${PushCard} />
         ${!standalone && html`<div class="card"><b>홈 화면에 추가하기</b><p class="hint">아이폰: 사파리 아래 공유 버튼 → "홈 화면에 추가". 안드로이드: 크롬 메뉴 ⋮ → "홈 화면에 추가". 앱처럼 바로 열려요.</p></div>`}

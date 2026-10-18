@@ -76,6 +76,17 @@ function mergeRooms(rooms, full) {
   if (state.openRoom && state.rooms[state.openRoom] && !document.hidden) state.rooms[state.openRoom].unread = 0;
 }
 
+// 나간 방·닫힌 그룹의 방: 기기에서도 지운다
+function dropRooms(ids) {
+  const keep = new Set(ids);
+  for (const id of Object.keys(state.rooms).map(Number)) {
+    if (keep.has(id)) continue;
+    delete state.rooms[id];
+    delete state.messages[id];
+    if (state.openRoom === id) state.openRoom = null;
+  }
+}
+
 // ───── 동기화 ─────
 let syncing = null;
 let timer = 0;
@@ -91,6 +102,7 @@ export async function syncNow() {
         if (r.full) state.messages = Object.fromEntries(Object.entries(state.messages).map(([k, v]) => [k, v.filter((m) => m.pending)]));
         mergeRooms(r.rooms, r.full);
         mergeMessages(r.messages);
+        if (r.room_ids) dropRooms(r.room_ids);
         state.cursor = r.cursor;
         more = r.more;
         if (r.groups_rev !== undefined && r.groups_rev !== state.groupsRev) await loadMe();
@@ -152,6 +164,37 @@ export function person(id) {
 
 // 프로필 창 (사람 번호, 없으면 닫힘)
 export function showProfile(id) { state.profile = id; notify(); }
+
+// 방 설정
+export async function roomPrefs(roomId, prefs) {
+  const room = state.rooms[roomId];
+  if (room) { Object.assign(room, Object.fromEntries(Object.entries(prefs).map(([k, v]) => [k, v ? 1 : 0]))); notify(); }
+  await api('rooms/prefs', { room_id: roomId, ...prefs });
+  await syncNow();
+}
+export async function renameRoom(roomId, name) {
+  await api('rooms/rename', { room_id: roomId, name });
+  await syncNow();
+}
+export async function inviteToRoom(roomId, userIds) {
+  await api('rooms/invite', { room_id: roomId, user_ids: userIds });
+  await syncNow();
+}
+export async function leaveRoom(roomId) {
+  await api('rooms/leave', { room_id: roomId });
+  if (state.openRoom === roomId) state.openRoom = null;
+  delete state.rooms[roomId];
+  delete state.messages[roomId];
+  notify();
+  syncNow();
+}
+
+// 프로필 사진: data = base64 (JPEG) 또는 null(지우기)
+export async function setPhoto(data) {
+  await api('me/photo', { data: data || '' });
+  await loadMe();
+  await syncNow();
+}
 
 export async function setNick(nick) {
   await api('me/nick', { nick });

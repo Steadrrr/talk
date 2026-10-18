@@ -140,3 +140,15 @@ button.me-row { width: 100%; text-align: left; font-size: 18px; }
 .switch:checked::after { transform: translateX(20px); }
 .switch:focus { outline: none; }
 .text.left { align-self: flex-start; padding: 4px 0; }
+.photo-btns { display: flex; gap: 8px; margin-top: 4px; }
+.text.dim { color: var(--dim); font-weight: 500; }
+img.avatar { object-fit: cover; background: var(--line); }
+.mark { font-size: 12px; flex: none; }
+
+/* 방 설정 */
+.section { padding: 4px 16px; }
+.section h3 { font-size: 13px; color: var(--dim); font-weight: 600; margin: 16px 0 6px; }
+.section .switch-row { padding: 8px 0; }
+.leave { color: var(--bad); }
+.msg-system { text-align: center; margin: 10px 0; }
+.msg-system span { font-size: 12px; color: var(--dim); background: var(--bg); border-radius: 12px; padding: 3px 12px; display: inline-block; max-width: 90%; }

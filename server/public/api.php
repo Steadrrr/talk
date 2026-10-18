@@ -15,6 +15,21 @@ $route = trim((string)($_SERVER['PATH_INFO'] ?? ($_GET['r'] ?? '')), '/');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 $cfg = talk_config();
+// 프로필 사진 (로그인 없이: <img> 는 머리를 못 붙임. 주소의 열쇠가 무작위라 알아야만 봄)
+if (preg_match('#^photo/([a-f0-9]{24})$#', $route, $pm)) {
+    $cfg0 = talk_config();
+    if ($cfg0 === null) talk_fail('설정 전이에요.', 503);
+    $st = talk_db($cfg0)->prepare('SELECT photo FROM talk_users WHERE photo_key = ?');
+    $st->execute([$pm[1]]);
+    $data = $st->fetchColumn();
+    if (!$data) talk_fail('사진이 없어요.', 404);
+    header('Content-Type: ' . (talk_photo_type($data) ?? 'application/octet-stream'));
+    header('Cache-Control: public, max-age=31536000, immutable');
+    header('Content-Length: ' . strlen($data));
+    echo $data;
+    exit;
+}
+
 if ($route === 'health') {
     $out = ['ok' => true, 'name' => 'SAKi Talk', 'version' => TALK_SERVER_VERSION, 'configured' => $cfg !== null];
     if ($cfg !== null) {
@@ -91,11 +106,45 @@ $uid = $me['id'];
 
 switch ($route) {
     case 'me':
-        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'is_admin' => $me['is_admin']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
+        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'is_admin' => $me['is_admin']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
 
     case 'me/nick':
         $need('POST');
         talk_set_nick($pdo, $uid, talk_clean_nick(talk_body()['nick'] ?? ''));
+        talk_json(['ok' => true]);
+
+    case 'me/photo':
+        $need('POST');
+        $b = talk_body(500_000);
+        $data = null;
+        if (!empty($b['data'])) {
+            $data = base64_decode((string)$b['data'], true);
+            if ($data === false) talk_fail('사진을 읽지 못했어요.');
+        }
+        talk_set_photo($pdo, $uid, $data);
+        talk_json(['ok' => true]);
+
+    case 'rooms/prefs':
+        $need('POST');
+        $b = talk_body();
+        talk_room_prefs($pdo, $uid, (int)($b['room_id'] ?? 0), $b);
+        talk_json(['ok' => true]);
+
+    case 'rooms/rename':
+        $need('POST');
+        $b = talk_body();
+        talk_room_rename($pdo, $uid, (int)($b['room_id'] ?? 0), (string)($b['name'] ?? ''));
+        talk_json(['ok' => true]);
+
+    case 'rooms/invite':
+        $need('POST');
+        $b = talk_body();
+        talk_room_invite($pdo, $uid, (int)($b['room_id'] ?? 0), (array)($b['user_ids'] ?? []));
+        talk_json(['ok' => true]);
+
+    case 'rooms/leave':
+        $need('POST');
+        talk_room_leave($pdo, $uid, (int)(talk_body()['room_id'] ?? 0));
         talk_json(['ok' => true]);
 
     case 'me/away':
@@ -148,7 +197,8 @@ switch ($route) {
 
     case 'sync':
         if ($q('active', '0') === '1') talk_mark_active($pdo, $me, (int)$q('room', 0));
-        talk_json(['ok' => true] + talk_sync($pdo, $uid, (int)$q('since', 0)));
+        // room_ids: 지금 들어가 있는 방 전부 (나간 방·닫힌 그룹의 방을 앱에서 지우게)
+        talk_json(['ok' => true] + talk_sync($pdo, $uid, (int)$q('since', 0)) + ['room_ids' => talk_my_room_ids($pdo, $uid)]);
 
     case 'rooms/dm':
         $need('POST');

@@ -355,6 +355,79 @@ try {
     assert.equal((await waitPush(800)).length, 0, '알림을 끄면 안 보냄');
   });
 
+  await t('방 설정: 알림 끄기·고정(나에게만), 이름 바꾸기·초대·나가기(안내 글)', async () => {
+    const dad = await idOf(tok.mom, '아빠');
+    const me = await idOf(tok.mom, '일래');
+    let r = await api('rooms/create', { group_id: Number(family), member_ids: [dad], name: '장보기' }, tok.mom);
+    const room = r.body.room.id;
+    const view = async (token) => (await api('sync?since=0', undefined, token)).body;
+
+    r = await api('rooms/prefs', { room_id: room, muted: true, pinned: true }, tok.dad);
+    assert.equal(r.status, 200);
+    let v = (await view(tok.dad)).rooms.find((x) => x.id === room);
+    assert.equal(v.muted, 1); assert.equal(v.pinned, 1);
+    v = (await view(tok.mom)).rooms.find((x) => x.id === room);
+    assert.equal(v.muted, 0, '엄마 쪽은 그대로');
+
+    r = await api('rooms/rename', { room_id: room, name: '주말 장보기' }, tok.dad);
+    assert.equal(r.status, 200);
+    let s2 = await view(tok.mom);
+    assert.equal(s2.rooms.find((x) => x.id === room).name, '주말 장보기');
+    let sys = s2.messages.filter((m) => m.room_id === room && m.kind === 'system').map((m) => m.body);
+    assert.deepEqual(sys, ['아빠님이 방 이름을 "주말 장보기"(으)로 바꿨어요.']);
+    assert.equal(s2.rooms.find((x) => x.id === room).unread, 0, '안내 글은 안 읽은 수에 안 셈');
+
+    r = await api('rooms/invite', { room_id: room, user_ids: [me] }, tok.mom);
+    assert.equal(r.status, 200);
+    r = await api('rooms/invite', { room_id: room, user_ids: [await idOf(tok.f1, '친구1')] }, tok.me);
+    assert.equal(r.status, 403, '다른 그룹 사람은 초대 못 함');
+    s2 = await view(tok.me);
+    assert.ok(s2.room_ids.includes(room));
+    assert.ok(s2.messages.some((m) => m.room_id === room && m.body === '엄마곰님이 일래님을 초대했어요.'));
+
+    r = await api('rooms/leave', { room_id: room }, tok.me);
+    assert.equal(r.status, 200);
+    s2 = await view(tok.me);
+    assert.ok(!s2.room_ids.includes(room), '나간 방은 room_ids 에서 빠짐');
+    r = await api('messages/send', { room_id: room, body: '나간 방' }, tok.me);
+    assert.equal(r.status, 403);
+    s2 = await view(tok.mom);
+    assert.ok(s2.messages.some((m) => m.room_id === room && m.body === '일래님이 나갔어요.'));
+    assert.equal(s2.rooms.find((x) => x.id === room).members.length, 2);
+
+    // 1:1 방: 나가면 안 보이고, 상대가 보내면 다시 들어옴
+    const dm = (await api('rooms/dm', { user_id: dad }, tok.mom)).body.room.id;
+    r = await api('rooms/rename', { room_id: dm, name: 'x' }, tok.mom);
+    assert.equal(r.status, 400, '1:1 방은 이름 못 바꿈');
+    await api('rooms/leave', { room_id: dm }, tok.dad);
+    assert.ok(!(await view(tok.dad)).room_ids.includes(dm));
+    await api('messages/send', { room_id: dm, body: '돌아와' }, tok.mom);
+    v = await view(tok.dad);
+    assert.ok(v.room_ids.includes(dm), '상대가 보내면 다시 보임');
+    assert.equal(v.rooms.find((x) => x.id === dm).unread, 1, '안 읽은 것은 새 메시지만');
+  });
+
+  await t('프로필 사진: 올리면 모두에게 주소가 보이고, 로그인 없이 그 주소로 받음', async () => {
+    // 1x1 JPEG
+    const jpg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
+    let r = await api('me/photo', { data: Buffer.from('not image').toString('base64') }, tok.mom);
+    assert.equal(r.status, 400);
+    r = await api('me/photo', { data: jpg.toString('base64') }, tok.mom);
+    assert.equal(r.status, 200);
+    const me = (await api('me', undefined, tok.mom)).body.me;
+    assert.match(me.photo, /^[a-f0-9]{24}$/);
+    const momInDad = (await api('me', undefined, tok.dad)).body.groups[0].members.find((m) => m.name === '엄마');
+    assert.equal(momInDad.photo, me.photo);
+    const res = await req('/api.php/photo/' + me.photo);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await res.arrayBuffer()), jpg);
+    assert.equal((await req('/api.php/photo/' + '0'.repeat(24))).status, 404);
+    r = await api('me/photo', { data: '' }, tok.mom);
+    assert.equal((await api('me', undefined, tok.mom)).body.me.photo, null, '지우기');
+    assert.equal((await req('/api.php/photo/' + me.photo)).status, 404);
+  });
+
   await t('이미 가입한 사람이 초대 코드로 다른 그룹에 들어감', async () => {
     const inv = inviteOf(await adminPost({ act: 'invite', group: friends, uses: '1', days: '1' }));
     let r = await api('groups/join', { invite: inv }, tok.mom);
