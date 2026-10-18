@@ -2,7 +2,7 @@
 import { useState } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
-import { state, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom } from './store.js';
+import { state, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki } from './store.js';
 
 export function RoomSettings({ room, onClose, onLeft }) {
   const [name, setName] = useState(room.name || '');
@@ -89,6 +89,7 @@ export function RoomSettings({ room, onClose, onLeft }) {
               <h3>방 이름 <span class="hint">(모두에게 보여요, 비우면 사람 이름으로)</span></h3>
               <div class="inline"><input value=${name} onInput=${(e) => setName(e.target.value)} maxlength="40" placeholder=${roomTitle({ ...room, name: '' })} /><button class="primary" type="submit" disabled=${name.trim() === (room.name || '')}>저장</button></div>
             </form>`}
+          ${room.saki && (room.saki.ready || room.saki.on) && html`<${SakiSection} room=${room} run=${run} />`}
           <div class="section">
             <h3>나에게만</h3>
             <label class="switch-row"><span class="grow">새 메시지 알림</span>
@@ -116,6 +117,36 @@ export function RoomSettings({ room, onClose, onLeft }) {
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
     </div>
   `;
+}
+
+// 사키(SAKi Lite 봇): 단체방에서 방장·관리자가 초대하고 성격·말투·대답 빈도를 정함. 다른 사람은 보기만
+const PERSONALITIES = [['calm', '차분'], ['lively', '활발'], ['quiet', '조용'], ['tsundere', '츤데레']];
+function SakiSection({ room, run }) {
+  const s = room.saki;
+  const can = room.created_by === state.me.id || !!state.me.is_admin;
+  const set = (changes) => run(() => setSaki(room.id, changes));
+  const seg = (items, value, key) => html`
+    <div class="seg">${items.map(([v, label]) => html`<button type="button" class=${value === v ? 'on' : ''} disabled=${!can} onClick=${() => value !== v && set({ [key]: v })}>${label}</button>`)}</div>`;
+  return html`
+    <div class="section saki-section">
+      <h3>사키 <span class="hint">${can ? '(방장·관리자만 바꿔요)' : '(방장이나 관리자가 바꿔요)'}</span></h3>
+      <label class="switch-row"><span class="grow">사키 초대<br /><span class="hint">글에 "사키"를 넣거나 사키 말에 답장하면 대답해요</span></span>
+        <input type="checkbox" class="switch" checked=${!!s.on} disabled=${!can} onChange=${(e) => set({ on: e.target.checked })} /></label>
+      ${s.on > 0 && html`
+        <p class="hint">성격</p>
+        ${seg(PERSONALITIES, s.personality, 'personality')}
+        <label class="switch-row"><span class="grow">존댓말<br /><span class="hint">어른이 있는 방이면 켜 주세요</span></span>
+          <input type="checkbox" class="switch" checked=${!!s.polite} disabled=${!can} onChange=${(e) => set({ polite: e.target.checked })} /></label>
+        <p class="hint">대답 빈도</p>
+        ${seg([['called', '부를 때만'], ['chime', '가끔 끼어들기']], s.freq, 'freq')}
+        ${s.freq === 'chime' && html`
+          <label class="switch-row"><span class="grow">끼어들기 최소 간격</span>
+            <select value=${s.gap} disabled=${!can} onChange=${(e) => set({ gap: Number(e.target.value) })}>
+              ${[5, 10, 20, 30, 60, 120].map((m) => html`<option value=${m}>${m < 60 ? `${m}분` : `${m / 60}시간`}</option>`)}
+            </select></label>`}
+        <label class="switch-row"><span class="grow">반응 달기<br /><span class="hint">사키를 부른 메시지에 표정 이모지</span></span>
+          <input type="checkbox" class="switch" checked=${!!s.react} disabled=${!can} onChange=${(e) => set({ react: e.target.checked })} /></label>`}
+    </div>`;
 }
 
 // 나가기 전에 묻는 말: 1:1 은 두 사람 모두에게서 사라지고, 여럿 방은 나만 나감 (한 명만 남으면 방이 지워짐)

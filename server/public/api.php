@@ -10,6 +10,7 @@ require __DIR__ . '/lib/chat.php';
 require __DIR__ . '/lib/push.php';
 require __DIR__ . '/lib/media.php';
 require __DIR__ . '/lib/notices.php';
+require __DIR__ . '/lib/saki.php';
 
 header('X-Robots-Tag: noindex');
 
@@ -80,7 +81,7 @@ if ($route === 'auth/login') {
     $need('POST');
     $b = talk_body();
     talk_login_locked($pdo);
-    $st = $pdo->prepare('SELECT id, password_hash FROM talk_users WHERE name = ? AND disabled = 0');
+    $st = $pdo->prepare('SELECT id, password_hash FROM talk_users WHERE name = ? AND disabled = 0 AND is_bot = 0');
     $st->execute([trim((string)($b['name'] ?? ''))]);
     $u = $st->fetch();
     if (!$u || !password_verify((string)($b['password'] ?? ''), $u['password_hash'])) talk_login_fail($pdo, '이름이나 비밀번호가 맞지 않아요.');
@@ -190,6 +191,12 @@ switch ($route) {
         $b = talk_body();
         talk_room_notice($pdo, $uid, (int)($b['room_id'] ?? 0), (int)($b['message_id'] ?? 0));
         talk_json(['ok' => true]);
+
+    case 'rooms/saki':
+        // 사키 설정 (방장·관리자만): on·personality·polite·freq·gap·react 중 바꿀 것만
+        $need('POST');
+        $b = talk_body();
+        talk_json(['ok' => true, 'saki' => talk_saki_set($pdo, $me, (int)($b['room_id'] ?? 0), $b)]);
 
     case 'rooms/leave':
         $need('POST');

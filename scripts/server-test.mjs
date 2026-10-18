@@ -39,7 +39,41 @@ const pushServer = http.createServer((rq, rs) => {
 await new Promise((r) => pushServer.listen(0, '127.0.0.1', r));
 const PUSH_PREFIX = `http://127.0.0.1:${pushServer.address().port}/push/`;
 
-const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX } });
+// 가짜 SAKi Lite: X-Saki-Lite-Key 를 확인하고 문서(saki-lite-연동.md)의 응답 모양을 돌려준다. lite.mode 로 pass·limited·401·503 흉내
+const SAKI_KEY = crypto.randomBytes(36).toString('base64url'); // 48자
+const lite = { mode: 'reply', calls: [], pathInfo: true };
+const liteServer = http.createServer((rq, rs) => {
+  const chunks = [];
+  rq.on('data', (c) => chunks.push(c));
+  rq.on('end', () => {
+    const u = new URL(rq.url, 'http://x');
+    const route = u.pathname.startsWith('/saki/api.php/') && u.pathname.length > 14 ? u.pathname.slice(14) : u.searchParams.get('r');
+    const send = (code, body) => { rs.writeHead(code, { 'Content-Type': 'application/json' }); rs.end(JSON.stringify(body)); };
+    if (!lite.pathInfo && u.pathname !== '/saki/api.php') { rs.writeHead(404, { 'Content-Type': 'text/html' }); rs.end('<h1>Not Found</h1>'); return; }
+    let body = null;
+    try { body = JSON.parse(Buffer.concat(chunks).toString() || 'null'); } catch { /* 아래에서 400 */ }
+    lite.calls.push({ route, key: rq.headers['x-saki-lite-key'], body });
+    if (rq.method !== 'POST') return send(405, { ok: false, error: 'POST 만 받아요.' });
+    if (lite.mode === 'off') return send(503, { ok: false, error: 'SAKi Lite 가 꺼져 있어요.' });
+    if (rq.headers['x-saki-lite-key'] !== SAKI_KEY || lite.mode === 'badkey') return send(401, { ok: false, error: '열쇠가 맞지 않아요.' });
+    if (!body) return send(400, { ok: false, error: 'JSON 이 아니에요.' });
+    if (route === 'lite/status') return send(200, { ok: true, on: true, model: 'claude-haiku-5-5', personalities: [], emotions: [], day: '2026-10-18', spent: 0.0123, requests: 3, cap: 0.2 });
+    if (route !== 'lite/reply') return send(404, { ok: false, error: '없는 주소' });
+    const base = { ok: true, mode: body.mode, pass: false, emotion: 'neutral', reaction: '', links: [], limited: false, spent: 0.01, cap: 0.2 };
+    if (lite.mode === 'pass') return send(200, { ...base, pass: true, text: '' });
+    if (lite.mode === 'limited') return send(200, { ...base, limited: true, why: 'daily-cap', text: '오늘은 여기까지 할게…' });
+    send(200, { ...base, text: '흥, 내일은 맑대. …사키가 알려 준 거야.', emotion: 'happy', reaction: '😊', links: [
+      { kind: 'page', title: '기상청 날씨', url: 'https://www.kma.go.kr/weather' },
+      { kind: 'youtube', title: '유튜브에서 "소풍 도시락" 찾기', url: 'https://www.youtube.com/results?search_query=%EC%86%8C%ED%92%8D' },
+      { kind: 'page', title: '나쁜 링크', url: 'http://insecure.example.com/' },
+      { kind: 'page', title: '스크립트', url: 'javascript:alert(1)' },
+    ] });
+  });
+});
+await new Promise((r) => liteServer.listen(0, '127.0.0.1', r));
+const LITE_URL = `http://127.0.0.1:${liteServer.address().port}/saki/api.php/`;
+
+const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX, TALK_SAKI_TEST_URL: LITE_URL } });
 let phpLog = '';
 php.stderr.on('data', (d) => { phpLog += d; });
 
@@ -618,6 +652,162 @@ try {
     assert.equal(r.status, 200);
   });
 
+  // ───── 사키 (SAKi Lite 봇) ─────
+  const sql = (q) => execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '-N', '-D', dbName, '-e', q]).toString().trim();
+  let sakiRoom, botId;
+  const roomOf = async (token) => (await api('sync?since=0', undefined, token)).body.rooms.find((x) => x.id === sakiRoom);
+  const msgsOf = async (token) => (await api('messages/history?room_id=' + sakiRoom + '&before=0', undefined, token)).body.messages;
+  const botMsgs = async () => (await msgsOf(tok.mom)).filter((m) => m.user_id === botId && m.kind === 'text');
+  const replies = () => lite.calls.filter((c) => c.route === 'lite/reply');
+  // 보내고 나서 응답 뒤 일(알림·사키 부르기)이 끝날 때까지: php -S 는 요청을 하나씩 처리하므로 다음 요청이 돌아오면 끝난 것
+  const say = async (body, token) => { const r = await api('messages/send', { room_id: sakiRoom, ...body }, token); await fetch(BASE + '/api.php/health'); return r; };
+
+  await t('사키: 열쇠가 없으면 부를 수 없음, 관리 화면에서 열쇠를 넣으면 확인하고 끝 4자만 보여 줌', async () => {
+    const dad = await idOf(tok.mom, '아빠');
+    const admin = await idOf(tok.mom, '일래');
+    sakiRoom = (await api('rooms/create', { group_id: Number(family), member_ids: [dad, admin], name: '소풍방' }, tok.mom)).body.room.id;
+    let room = await roomOf(tok.mom);
+    assert.equal(room.saki.ready, false);
+    assert.equal(room.saki.on, 0);
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, on: true }, tok.mom)).status, 503);
+    let html = await adminPost({ act: 'saki_key', key: 'short key!' });
+    assert.match(html, /열쇠 모양이 아니에요/);
+    html = await adminPost({ act: 'saki_key', key: SAKI_KEY });
+    assert.match(html, /열쇠를 저장했어요/);
+    assert.match(html, /잘 됨/);
+    assert.ok(html.includes('····' + SAKI_KEY.slice(-4)));
+    assert.ok(!html.includes(SAKI_KEY), '관리 화면에 열쇠 전체가 안 보임');
+    assert.equal(lite.calls.at(-1).route, 'lite/status');
+    assert.equal(lite.calls.at(-1).key, SAKI_KEY);
+    html = await adminPost({ act: 'saki_status' });
+    assert.match(html, /오늘 \$0\.012 \/ \$0\.20/);
+    room = await roomOf(tok.mom);
+    assert.equal(room.saki.ready, true);
+  });
+
+  await t('사키: 방장·관리자만 초대, 초대하면 방 멤버에 봇과 안내 글, 봇은 로그인 못 함', async () => {
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, on: true }, tok.dad)).status, 403, '방장이 아님');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, on: true, personality: 'evil' }, tok.mom)).status, 400);
+    const dm2 = (await api('rooms/dm', { user_id: await idOf(tok.mom, '아빠') }, tok.mom)).body.room.id;
+    assert.equal((await api('rooms/saki', { room_id: dm2, on: true }, tok.mom)).status, 400, '1:1 방은 안 됨');
+    const r = await api('rooms/saki', { room_id: sakiRoom, on: true, personality: 'tsundere', polite: true }, tok.mom);
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.saki, { on: 1, personality: 'tsundere', polite: 1, freq: 'called', gap: 10, react: 1 });
+    const room = await roomOf(tok.dad);
+    const bot = room.members.find((m) => m.bot);
+    assert.ok(bot && bot.nick === '사키');
+    botId = bot.id;
+    assert.equal(room.last.body, '사키가 들어왔어요.');
+    assert.equal((await api('me', undefined, tok.mom)).body.groups.flatMap((g) => g.members).some((m) => m.id === botId), false, '친구 목록에는 안 나옴');
+    assert.equal((await api('auth/login', { name: '사키', password: '!' })).status, 401);
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, gap: 1 }, tok.me)).body.saki.gap, 5, '관리자도 바꿈, 간격은 5~120분');
+  });
+
+  await t('사키: 이름을 부르면 최근 대화를 Lite 에 보내고, 봇 메시지(https 링크만)·반응·웹 푸시, 입력 중은 꺼짐', async () => {
+    const sub = { endpoint: PUSH_PREFIX + 'dad-saki', keys: { p256dh: crypto.createECDH('prime256v1').generateKeys().toString('base64url'), auth: crypto.randomBytes(16).toString('base64url') } };
+    assert.equal((await api('push/subscribe', sub, tok.dad)).status, 200);
+    await say({ body: '내일 소풍 가는데' }, tok.mom);
+    assert.equal(replies().length, 0, '부르지 않으면 안 부름');
+    pushes.length = 0;
+    const call = (await say({ body: '사키야 내일 날씨 어때?' }, tok.dad)).body.message;
+    assert.equal(replies().length, 1);
+    const c = replies()[0];
+    assert.equal(c.key, SAKI_KEY);
+    assert.equal(c.body.personality, 'tsundere');
+    assert.equal(c.body.polite, true);
+    assert.equal(c.body.mode, 'called');
+    assert.equal(c.body.name, '사키');
+    assert.equal(c.body.room, '소풍방');
+    assert.deepEqual(c.body.messages, [{ name: '엄마곰', text: '내일 소풍 가는데' }, { name: '아빠', text: '사키야 내일 날씨 어때?' }], '안내 글은 빼고 닉네임으로');
+    const [bm] = await botMsgs();
+    assert.match(bm.body, /내일은 맑대/);
+    assert.deepEqual(bm.links.map((l) => l.url), ['https://www.kma.go.kr/weather', 'https://www.youtube.com/results?search_query=%EC%86%8C%ED%92%8D']);
+    assert.equal(bm.links[1].kind, 'youtube');
+    const called = (await msgsOf(tok.mom)).find((m) => m.id === call.id);
+    assert.deepEqual(called.reactions, [[botId, '😊']]);
+    for (let i = 0; i < 40 && !pushes.some((p) => p.path === '/push/dad-saki'); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(pushes.some((p) => p.path === '/push/dad-saki'), '봇 메시지도 웹 푸시');
+    assert.deepEqual((await api('sync?since=0&active=1&room=' + sakiRoom, undefined, tok.mom)).body.typing, [], '봇 입력 중 표시는 꺼짐');
+    assert.equal(replies().length, 1, '봇 메시지(글에 "사키"가 있어도)는 다시 부르지 않음');
+    await api('push/unsubscribe', { endpoint: sub.endpoint }, tok.dad);
+  });
+
+  await t('사키: 사키 메시지에 답장하면 부름, 부르는 중이면 새로 안 부름, 열쇠는 앱 응답·로그에 없음', async () => {
+    const [bm] = await botMsgs();
+    await say({ body: '고마워', reply_to: bm.id }, tok.mom);
+    assert.equal(replies().length, 2);
+    assert.deepEqual(replies()[1].body.messages.at(-2), { name: '사키', text: bm.body, bot: true });
+    sql(`INSERT INTO talk_meta (k, v) VALUES ('saki_busy:${sakiRoom}', UNIX_TIMESTAMP())`);
+    await say({ body: '사키 또 불러' }, tok.mom);
+    assert.equal(replies().length, 2, '부르는 중이면 버림');
+    sql(`UPDATE talk_meta SET v = UNIX_TIMESTAMP() - 61 WHERE k = 'saki_busy:${sakiRoom}'`);
+    await say({ body: '사키 다시' }, tok.mom);
+    assert.equal(replies().length, 3, '60초 지난 표시는 무효');
+    const all = JSON.stringify([(await api('sync?since=0', undefined, tok.mom)).body, (await api('me', undefined, tok.me)).body]);
+    assert.ok(!all.includes(SAKI_KEY) && !phpLog.includes(SAKI_KEY));
+  });
+
+  await t('사키: 가끔 끼어들기는 간격이 지나고 사람 메시지가 3개 쌓이면 한 번, pass 면 아무것도 안 올림', async () => {
+    await api('rooms/saki', { room_id: sakiRoom, freq: 'chime', gap: 10 }, tok.mom);
+    lite.mode = 'pass';
+    const before = (await botMsgs()).length;
+    const n = replies().length;
+    await say({ body: '점심은?' }, tok.dad);
+    await say({ body: '뭐 먹지' }, tok.mom);
+    assert.equal(replies().length, n, '사키가 방금 말해서 간격이 안 지남');
+    sql(`UPDATE talk_messages SET created_at = created_at - INTERVAL 11 MINUTE WHERE room_id = ${sakiRoom}`);
+    await say({ body: '김밥' }, tok.mom);
+    assert.equal(replies().length, n + 1, '간격이 지났고 사람 메시지 3개');
+    assert.equal(replies().at(-1).body.mode, 'chime');
+    await say({ body: '좋아' }, tok.dad);
+    assert.equal(replies().length, n + 1, '방금 끼어들기를 물어봐서 간격이 안 지남');
+    assert.equal((await botMsgs()).length, before, 'pass 면 안 올림');
+    await api('rooms/saki', { room_id: sakiRoom, freq: 'called' }, tok.mom);
+  });
+
+  await t('사키: 하루 상한 거절 말은 방마다 하루 한 번만, 401·503 이면 조용히 쉬고 관리 화면에 보임', async () => {
+    lite.mode = 'limited';
+    const before = (await botMsgs()).length;
+    await say({ body: '사키야 하나 더' }, tok.dad);
+    assert.equal((await botMsgs()).at(-1).body, '오늘은 여기까지 할게…');
+    const n = replies().length;
+    await say({ body: '사키야 또' }, tok.dad);
+    assert.equal(replies().length, n, '그날은 다시 안 부름');
+    assert.equal((await botMsgs()).length, before + 1);
+    sql(`DELETE FROM talk_meta WHERE k = 'saki_limited:${sakiRoom}'`);
+    lite.mode = 'badkey';
+    await say({ body: '사키?' }, tok.dad);
+    assert.equal((await botMsgs()).length, before + 1, '401 이면 안 올림');
+    let html = await (await req('/setup.php')).text();
+    assert.match(html, /열쇠가 맞지 않아요/);
+    lite.mode = 'off';
+    html = await adminPost({ act: 'saki_status' });
+    assert.match(html, /꺼짐/);
+    lite.mode = 'reply';
+    lite.pathInfo = false;
+    await say({ body: '사키 돌아왔어?' }, tok.dad);
+    assert.equal((await botMsgs()).length, before + 2, 'PATH_INFO 가 안 되면 ?r= 로');
+    assert.equal(lite.calls.at(-1).route, 'lite/reply');
+    lite.pathInfo = true;
+    assert.ok(!html.includes(SAKI_KEY));
+  });
+
+  await t('사키: 초대를 끄면 봇이 나가고 더는 안 부름, 사람 한 명 + 봇만 남으면 방이 없어짐', async () => {
+    let r = await api('rooms/saki', { room_id: sakiRoom, on: false }, tok.mom);
+    assert.equal(r.body.saki.on, 0);
+    let room = await roomOf(tok.mom);
+    assert.ok(!room.members.some((m) => m.bot));
+    assert.equal(room.last.body, '사키가 나갔어요.');
+    const n = replies().length;
+    await say({ body: '사키야?' }, tok.dad);
+    assert.equal(replies().length, n);
+    await api('rooms/saki', { room_id: sakiRoom, on: true }, tok.mom);
+    await api('rooms/leave', { room_id: sakiRoom }, tok.dad);
+    assert.ok(await roomOf(tok.mom));
+    await api('rooms/leave', { room_id: sakiRoom }, tok.me);
+    assert.equal(await roomOf(tok.mom), undefined);
+  });
+
   await t('관리: 백업 내려받기 (읽기용 txt·옮기기용 json, 비밀번호는 안 들어감)', async () => {
     const txt = await adminPost({ act: 'backup_txt' });
     assert.match(txt, /SAKi Talk 대화 백업/);
@@ -744,5 +934,6 @@ try {
 } finally {
   php.kill();
   pushServer.close();
+  liteServer.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 }

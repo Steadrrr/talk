@@ -227,6 +227,13 @@ export async function setRoomPhoto(roomId, data) {
   await syncNow();
 }
 
+// 사키(SAKi Lite 봇) 설정: 방장·관리자만. on·personality·polite·freq·gap·react 중 바꿀 것만
+export async function setSaki(roomId, changes) {
+  const room = state.rooms[roomId];
+  if (room?.saki) { Object.assign(room.saki, changes); notify(); }
+  try { await api('rooms/saki', { room_id: roomId, ...changes }); } finally { await syncNow(); }
+}
+
 // 공지 올리기(메시지 번호)·내리기(0)
 export async function setNotice(roomId, msgId) {
   await api('rooms/notice', { room_id: roomId, message_id: msgId || 0 });
@@ -250,7 +257,7 @@ export async function setNick(nick) {
 export function roomTitle(room) {
   if (!room) return '';
   if (room.name) return room.name;
-  const others = room.members.filter((m) => m.id !== state.me?.id).map(nickOf);
+  const others = room.members.filter((m) => m.id !== state.me?.id && !m.bot).map(nickOf);
   return others.join(', ') || '나';
 }
 

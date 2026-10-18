@@ -30,7 +30,7 @@ function talk_room_member(PDO $pdo, int $uid, int $roomId): bool {
 function talk_msg_view(array $m): array {
     return ['id' => (int)$m['id'], 'room_id' => (int)$m['room_id'], 'user_id' => (int)$m['user_id'], 'kind' => $m['kind'],
         'body' => $m['body'], 'client_id' => $m['client_id'], 'at' => talk_iso($m['created_at']),
-        'reply_to' => (int)($m['reply_to'] ?? 0) ?: null];
+        'reply_to' => (int)($m['reply_to'] ?? 0) ?: null] + (empty($m['links']) ? [] : ['links' => json_decode($m['links'], true)]);
 }
 
 const TALK_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
@@ -78,7 +78,7 @@ function talk_react(PDO $pdo, int $uid, int $msgId, string $emoji): void {
 function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
     if (!$roomIds) return [];
     $in = implode(',', array_fill(0, count($roomIds), '?'));
-    $st = $pdo->prepare("SELECT r.id, r.group_id, r.kind, r.name, r.created_at, r.photo_key, r.photo_by, COALESCE(u.nick, u.name) AS photo_by_name,
+    $st = $pdo->prepare("SELECT r.id, r.group_id, r.kind, r.name, r.created_at, r.created_by, r.saki, r.photo_key, r.photo_by, COALESCE(u.nick, u.name) AS photo_by_name,
             n.id AS notice_id, n.body AS notice_body, n.user_id AS notice_user, COALESCE(nb.nick, nb.name) AS notice_by_name
         FROM talk_rooms r LEFT JOIN talk_users u ON u.id = r.photo_by
         LEFT JOIN talk_messages n ON n.id = r.notice_id AND n.kind = 'text' LEFT JOIN talk_users nb ON nb.id = r.notice_by
@@ -87,16 +87,18 @@ function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
     $rooms = [];
     foreach ($st->fetchAll() as $r) {
         $rooms[(int)$r['id']] = ['id' => (int)$r['id'], 'group_id' => (int)$r['group_id'], 'kind' => $r['kind'], 'name' => $r['name'],
-            'created_at' => talk_iso($r['created_at']),
+            'created_at' => talk_iso($r['created_at']), 'created_by' => (int)$r['created_by'],
+            // 사키 설정 (단체방만, 열쇠가 들어 있을 때 ready)
+            'saki' => $r['kind'] === 'group' && function_exists('talk_saki_settings') ? talk_saki_settings($r['saki']) + ['ready' => talk_saki_ready()] : null,
             'photo' => $r['photo_key'], 'photo_by' => $r['photo_key'] ? $r['photo_by_name'] : null, 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0,
             'notice' => $r['notice_id'] ? ['id' => (int)$r['notice_id'], 'body' => $r['notice_body'], 'user_id' => (int)$r['notice_user'], 'by' => $r['notice_by_name']] : null];
     }
-    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name, u.nick, u.photo_key FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
+    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, u.name, u.nick, u.photo_key, u.is_bot FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id IN ($in) ORDER BY m.joined_at, m.user_id");
     $st->execute($roomIds);
     foreach ($st->fetchAll() as $m) {
         $rid = (int)$m['room_id'];
-        $rooms[$rid]['members'][] = ['id' => (int)$m['user_id'], 'name' => $m['name'], 'nick' => $m['nick'], 'photo' => $m['photo_key'], 'last_read_id' => (int)$m['last_read_id']];
+        $rooms[$rid]['members'][] = ['id' => (int)$m['user_id'], 'name' => $m['name'], 'nick' => $m['nick'], 'photo' => $m['photo_key'], 'last_read_id' => (int)$m['last_read_id']] + ((int)$m['is_bot'] ? ['bot' => 1] : []);
         if ((int)$m['user_id'] === $uid) { $rooms[$rid]['muted'] = (int)$m['muted']; $rooms[$rid]['pinned'] = (int)$m['pinned']; }
     }
     $st = $pdo->prepare("SELECT m.* FROM talk_messages m JOIN (SELECT room_id, MAX(id) mid FROM talk_messages WHERE room_id IN ($in) GROUP BY room_id) x ON m.id = x.mid");
@@ -247,6 +249,8 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     talk_event($pdo, $roomId, 'msg', $id);
     $pdo->commit();
     if (function_exists('talk_push_message')) talk_after_response(fn() => talk_push_message($pdo, $roomId, $uid, $body));
+    // 사키를 불렀으면 (또는 끼어들 때가 됐으면) 알림 다음에 SAKi Lite 를 부른다
+    if (function_exists('talk_saki_after_send')) talk_saki_after_send($pdo, $roomId, $uid, $id, $body, $replyTo);
     if (random_int(1, 200) === 1) talk_cleanup_events($pdo);
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$id]);
@@ -371,7 +375,8 @@ function talk_room_leave(PDO $pdo, array $cfg, int $uid, int $roomId): void {
         talk_room_destroy($pdo, $cfg, $roomId);
     } else {
         $pdo->prepare('DELETE FROM talk_room_members WHERE room_id = ? AND user_id = ?')->execute([$roomId, $uid]);
-        $st = $pdo->prepare('SELECT COUNT(*) FROM talk_room_members WHERE room_id = ?');
+        // 사람이 한 명만 남으면 (사키 봇은 세지 않음)
+        $st = $pdo->prepare('SELECT COUNT(*) FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id WHERE m.room_id = ? AND u.is_bot = 0');
         $st->execute([$roomId]);
         if ((int)$st->fetchColumn() <= 1) talk_room_destroy($pdo, $cfg, $roomId);
         else talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . '님이 나갔어요.');

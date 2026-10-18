@@ -65,7 +65,8 @@ export function Profile({ onOpen }) {
               <input value=${nick} onInput=${(e) => setNickText(e.target.value)} maxlength="20" placeholder=${`비우면 본명(${p.name})으로 보여요`} autofocus />
               <div class="inline"><button type="button" class="text" onClick=${() => setEditing(false)}>그만두기</button><button class="primary" type="submit" disabled=${busy}>저장</button></div>
             </form>`}
-          ${!isMe && html`<button class="primary" onClick=${talk}>1:1 대화</button>`}
+          ${p.bot ? html`<p class="hint">SAKi Lite 가 대답하는 봇이에요. 글에 "사키"를 넣거나 사키 말에 답장하면 대답해요.</p>`
+            : !isMe && html`<button class="primary" onClick=${talk}>1:1 대화</button>`}
         </div>
       </div>
       ${draft && html`<${PhotoCrop} img=${draft} size=${320} title="프로필 사진으로 할까요?" busy=${busy} onCancel=${() => setDraft(null)} onOk=${confirmPhoto} />`}

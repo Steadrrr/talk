@@ -127,7 +127,7 @@ export function Room({ id, onBack }) {
   const byId = new Map(room.members.map((m) => [m.id, m]));
   const names = new Map(room.members.map((m) => [m.id, nickOf(m)]));
   // 안 읽은 사람 수: 그 메시지 번호까지 아직 안 읽은 사람 (보낸 사람은 읽은 것으로)
-  const unreadCount = (m) => m.kind === 'system' ? 0 : room.members.filter((p) => p.id !== m.user_id && p.last_read_id < m.id).length;
+  const unreadCount = (m) => m.kind === 'system' ? 0 : room.members.filter((p) => p.id !== m.user_id && !p.bot && p.last_read_id < m.id).length;
 
   const rows = [];
   let prevDay = '', prevUser = 0, prevMin = '';
@@ -164,6 +164,7 @@ export function Room({ id, onBack }) {
                 : html`${n > 0 && html`<span class="unread">${n}</span>`}${showTime && html`<span class="hint small">${minute}</span>`}`}
             </div>
           </div>
+          ${m.kind === 'text' && m.links?.length > 0 && html`<${LinkCards} links=${m.links} />`}
           ${m.kind !== 'deleted' && m.reactions?.length > 0 && html`<${Reactions} m=${m} names=${names} />`}
           ${m.failed && html`<div class="fail"><button class="del" onClick=${() => confirm('보내지 못한 것을 지울까요?') && discard(id, m)}>지우기</button><button class="retry" onClick=${() => m.kind === 'text' ? send(id, null, m) : sendMedia(id, null, m)}>재전송</button></div>`}
         </div>
@@ -329,6 +330,20 @@ function TextBubble({ m, names, onMenu, onJump }) {
       ${m.reply && html`<div class="quote" onClick=${(e) => { e.stopPropagation(); onJump(m.reply.id); }}>
         <b>${names.get(m.reply.user_id) || '나간 사람'}</b><span>${replyPreview(m.reply)}</span></div>`}
       ${m.body}
+    </div>`;
+}
+
+// 사키가 붙인 링크: 제목 + 사이트 이름 카드, 누르면 새 창 (서버가 https 주소만 남김)
+const LINK_ICON = { youtube: '▶️', naver: '🔎', page: '🔗' };
+function LinkCards({ links }) {
+  const site = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } };
+  return html`
+    <div class="link-cards">
+      ${links.filter((l) => /^https:\/\//.test(l.url)).map((l) => html`
+        <a class="link-card" href=${l.url} target="_blank" rel="noopener noreferrer">
+          <span class="link-icon">${LINK_ICON[l.kind] || LINK_ICON.page}</span>
+          <span class="link-text"><b class="ellipsis">${l.title}</b><span class="hint small ellipsis">${site(l.url)}</span></span>
+        </a>`)}
     </div>`;
 }
 

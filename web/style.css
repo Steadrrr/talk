@@ -292,3 +292,12 @@ img.avatar { object-fit: cover; background: var(--line); }
 .notice-head b { max-width: 100%; word-break: break-word; }
 .notice-full { margin: 0; padding: 0 16px 14px; white-space: pre-wrap; word-break: break-word; font-size: calc(14px * var(--fs)); line-height: 1.6; }
 .update-toast { position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 20; padding: 10px 16px; border-radius: 20px; background: var(--fg); color: var(--bg); font-size: calc(14px * var(--fs)); box-shadow: 0 4px 12px rgba(0,0,0,.2); white-space: nowrap; }
+
+/* 사키: 링크 카드, 방 설정 */
+.link-cards { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 240px; max-width: 100%; }
+.link-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); color: var(--fg); text-decoration: none; min-width: 0; }
+.link-icon { flex: none; }
+.link-text { display: flex; flex-direction: column; min-width: 0; }
+.saki-section .seg { margin: 4px 0 8px; max-width: none; }
+.saki-section .seg button:disabled { opacity: .7; }
+.saki-section select { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }

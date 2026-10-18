@@ -249,6 +249,8 @@ function talk_push_notice(PDO $pdo, string $title): array {
 function talk_after_response(callable $fn): void {
     register_shutdown_function(function () use ($fn) {
         if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        elseif (function_exists('litespeed_finish_request')) litespeed_finish_request();
+        else { while (ob_get_level() > 0) @ob_end_flush(); @flush(); }
         ignore_user_abort(true);
         try { $fn(); } catch (Throwable $e) { error_log('talk push: ' . $e->getMessage()); }
     });

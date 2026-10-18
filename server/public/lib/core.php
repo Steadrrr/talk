@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 15;
+const TALK_SERVER_VERSION = 16;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -139,6 +139,10 @@ function talk_migrate(PDO $pdo): void {
         id INT AUTO_INCREMENT PRIMARY KEY, kind VARCHAR(8) NOT NULL, title VARCHAR(120) NOT NULL, body TEXT NOT NULL,
         created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    // 16: SAKi Lite "사키" 봇 (봇 사용자, 방마다 사키 설정 JSON, 봇 메시지에 붙는 링크 JSON)
+    $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS is_bot TINYINT NOT NULL DEFAULT 0";
+    $q[] = "ALTER TABLE talk_rooms ADD COLUMN IF NOT EXISTS saki VARCHAR(255) NULL";
+    $q[] = "ALTER TABLE talk_messages ADD COLUMN IF NOT EXISTS links TEXT NULL";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);
@@ -178,7 +182,10 @@ function talk_json(mixed $data, int $code = 200): never {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $out = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    // 길이를 알려 두면 응답 뒤 일(알림·사키)이 오래 걸려도 앱은 다 받은 즉시 끝낸다 (fastcgi_finish_request 가 없는 서버에서)
+    header('Content-Length: ' . strlen($out));
+    echo $out;
     exit;
 }
 

@@ -12,6 +12,7 @@ require __DIR__ . '/lib/media.php';
 require __DIR__ . '/lib/push.php';
 require __DIR__ . '/lib/notices.php';
 require __DIR__ . '/lib/backup.php';
+require __DIR__ . '/lib/saki.php';
 
 // DB 시각(UTC) → 한국 시간으로 보여 주기 (한국은 서머타임 없음)
 function kst(?string $utc): string { return $utc ? gmdate('Y-m-d H:i:s', strtotime($utc . ' UTC') + 9 * 3600) : ''; }
@@ -227,6 +228,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
         } elseif ($act === 'notice_delete') {
             talk_notice_delete($pdo, (int)($_POST['id'] ?? 0));
             $msg = '공지를 지웠어요.';
+        } elseif ($act === 'saki_key') {
+            // SAKi Lite 열쇠: SAKI 관리 화면에서 만든 값을 붙여 넣음. 설정 파일에만 두고 다시 보여 주지 않는다 (끝 4자만)
+            $key = trim((string)($_POST['key'] ?? ''));
+            if (!preg_match('/^[A-Za-z0-9_-]{16,200}$/', $key)) throw new RuntimeException('SAKi Lite 열쇠 모양이 아니에요. SAKI 관리 화면에서 나온 값을 그대로 붙여 넣어 주세요.');
+            $cfg['saki_lite_key'] = $key;
+            talk_write_config($cfg['private_dir'], $cfg);
+            $n = talk_saki_check($pdo, $cfg);
+            $msg = 'SAKi Lite 열쇠를 저장했어요. 확인 결과: ' . talk_saki_status_text($n);
+        } elseif ($act === 'saki_key_clear') {
+            unset($cfg['saki_lite_key']);
+            talk_write_config($cfg['private_dir'], $cfg);
+            $msg = 'SAKi Lite 열쇠를 지웠어요. 사키를 초대한 방에서도 사키가 조용히 쉬어요.';
+        } elseif ($act === 'saki_status') {
+            $msg = 'SAKi Lite 상태: ' . talk_saki_status_text(talk_saki_check($pdo, $cfg));
         } elseif ($act === 'backup_txt' || $act === 'backup_json') {
             talk_backup_download($pdo, $act === 'backup_json' ? 'json' : 'txt');
         }
@@ -271,7 +286,7 @@ $st->execute([talk_now()]);
 foreach ($st->fetchAll() as $r) $invites[(int)$r['group_id']][] = $r;
 $userGroups = [];
 foreach ($pdo->query('SELECT user_id, group_id FROM talk_group_members')->fetchAll() as $r) $userGroups[(int)$r['user_id']][(int)$r['group_id']] = true;
-$users = $pdo->query('SELECT u.id, u.name, u.nick, u.is_admin, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
+$users = $pdo->query('SELECT u.id, u.name, u.nick, u.is_admin, u.is_bot, u.disabled, u.created_at, (SELECT COUNT(*) FROM talk_devices d WHERE d.user_id = u.id AND d.revoked = 0) devs FROM talk_users u ORDER BY u.id')->fetchAll();
 $devs = $pdo->query('SELECT d.id, d.name, d.last_seen, d.active_at, d.active_room, (SELECT COUNT(*) FROM talk_push_subs s WHERE s.device_id = d.id) subs, u.name AS owner FROM talk_devices d JOIN talk_users u ON u.id = d.user_id WHERE d.revoked = 0 ORDER BY u.id, d.last_seen DESC')->fetchAll();
 $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT(*) FROM talk_messages) m')->fetch();
 $copy = fn(string $text, string $label) => '<button type="button" class="sub" data-copy="' . h($text) . '">' . h($label) . '</button>';
@@ -322,12 +337,12 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 
 <fieldset><legend>사람 (그룹을 체크하고 저장하면 여러 그룹에 한꺼번에 넣고 빼요)</legend>
 <?php foreach ($users as $u): ?>
-<div class="row"><span><b><?= h($u['name']) ?></b><?= $u['nick'] ? ' · ' . h($u['nick']) : '' ?> <span class="hint"><?= (int)$u['is_admin'] ? '관리자' : '사용자' ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr(kst($u['created_at']), 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
-<?php if (!(int)$u['is_admin']): ?><span class="btns">
+<div class="row"><span><b><?= h($u['name']) ?></b><?= $u['nick'] ? ' · ' . h($u['nick']) : '' ?> <span class="hint"><?= (int)$u['is_bot'] ? '사키 봇 (로그인 없음, 사키를 초대한 방에만)' : ((int)$u['is_admin'] ? '관리자' : '사용자') ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr(kst($u['created_at']), 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
+<?php if (!(int)$u['is_admin'] && !(int)$u['is_bot']): ?><span class="btns">
 <form method="post"><?= $hidden('user_pw', ['id' => (int)$u['id']]) ?><button type="submit" class="sub">새 비밀번호</button></form>
 <form method="post"><?= $hidden((int)$u['disabled'] ? 'user_on' : 'user_off', ['id' => (int)$u['id']]) ?><button type="submit" class="sub"><?= (int)$u['disabled'] ? '다시 켜기' : '멈추기' ?></button></form>
 </span><?php endif; ?></div>
-<?php if (!(int)$u['is_admin'] && $groups): ?>
+<?php if (!(int)$u['is_admin'] && !(int)$u['is_bot'] && $groups): ?>
 <form method="post" class="row ugroups"><?= $hidden('user_groups', ['id' => (int)$u['id']]) ?>
 <span class="checks"><?php foreach ($groups as $g): ?><label class="check"><input type="checkbox" name="groups[]" value="<?= (int)$g['id'] ?>"<?= isset($userGroups[(int)$u['id']][(int)$g['id']]) ? ' checked' : '' ?>> <?= h($g['name']) ?><?= (int)$g['closed'] ? ' (닫힘)' : '' ?></label><?php endforeach; ?></span>
 <button type="submit" class="sub">그룹 저장</button></form>
@@ -396,6 +411,21 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <form method="post"><?= $hidden('notice_delete', ['id' => $n['id']]) ?><button type="submit" class="sub">지우기</button></form>
 </details>
 <?php endforeach; ?>
+</details>
+
+<?php $sakiKey = (string)($cfg['saki_lite_key'] ?? ''); $sakiNote = json_decode((string)talk_meta_get($pdo, 'saki_status'), true); ?>
+<details class="menu" id="m-saki"><summary>사키 (SAKi Lite) <span class="hint"><?= $sakiKey === '' ? '열쇠 없음' : '열쇠 ····' . h(substr($sakiKey, -4)) ?></span></summary>
+<fieldset><legend>SAKi Lite 열쇠</legend>
+<p class="hint">단체방의 "사키"는 SAKI 서버의 SAKi Lite 가 대답해요. SAKI 관리 화면 → "SAKi Lite" 칸 → "켜기 (열쇠 만들기)" 에서 나온 열쇠를 여기에 붙여 넣어 주세요. 저장하면 다시 보여 주지 않아요. 비용 상한은 SAKI 관리 화면에서만 바꿔요.</p>
+<p>지금 <?= $sakiKey === '' ? '<b>열쇠 없음</b> (방 설정에 사키 칸이 안 보여요)' : '열쇠 <code>····' . h(substr($sakiKey, -4)) . '</code>' ?></p>
+<form method="post" autocomplete="off"><?= $hidden('saki_key') ?>
+<label><?= $sakiKey === '' ? '열쇠' : '새 열쇠 (SAKI 에서 열쇠를 새로 만들었을 때)' ?> <input name="key" type="password" required autocomplete="off" spellcheck="false"></label>
+<button type="submit">저장하고 확인</button></form>
+<?php if ($sakiKey !== ''): ?>
+<form method="post" class="row"><?= $hidden('saki_status') ?><span class="hint"><?= $sakiNote ? '마지막 ' . h($sakiNote['what'] === 'status' ? '상태 확인' : '대답') . ' ' . h(kst($sakiNote['at'])) . ' · ' . h(talk_saki_status_text($sakiNote)) : '아직 부른 적 없어요.' ?></span><button type="submit" class="sub">상태 확인</button></form>
+<form method="post" class="row"><?= $hidden('saki_key_clear') ?><span class="hint">열쇠를 지우면 사키가 모든 방에서 조용히 쉬어요.</span><button type="submit" class="sub">열쇠 지우기</button></form>
+<?php endif; ?>
+</fieldset>
 </details>
 
 <details class="menu" id="m-admin"><summary>관리자</summary>
