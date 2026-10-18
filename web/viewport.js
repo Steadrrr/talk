@@ -6,10 +6,14 @@ export function fitViewport() {
   const root = document.documentElement;
   const fit = () => {
     root.style.setProperty('--app-h', Math.round(vv.height) + 'px');
-    root.classList.toggle('kb', window.innerHeight - vv.height > 120); // 키보드가 떠 있음 → 아래 안전 여백 빼기
+    root.classList.toggle('kb', typing() || window.innerHeight - vv.height > 120); // 키보드가 떠 있음 → 아래 안전 여백 빼기
     if (window.scrollY || vv.offsetTop) window.scrollTo(0, 0);
     window.dispatchEvent(new Event('talk:fit'));
   };
+  // 아이폰 홈 화면 앱은 키보드가 떠도 innerHeight 가 같이 줄어 높이 차이로는 모를 때가 있음 → 글 입력칸에 커서가 있으면 키보드로 봄
+  const typing = () => matchMedia('(pointer: coarse)').matches && !!document.activeElement?.matches?.('textarea, input:not([type=file]):not([type=checkbox])');
+  document.addEventListener('focusin', fit);
+  document.addEventListener('focusout', () => setTimeout(fit, 50));
   vv.addEventListener('resize', fit);
   vv.addEventListener('scroll', fit);
   fit();

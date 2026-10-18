@@ -191,11 +191,11 @@ export function Room({ id, onBack }) {
           <div class="grow ellipsis"><b>${names.get(replyTo.user_id) || '나간 사람'}</b>에게 답장<br /><span class="hint">${replyPreview(replyTo)}</span></div>
           <button class="icon" onClick=${() => setReplyTo(null)} aria-label="답장 그만두기">✕</button>
         </div>`}
-      <form class="composer" onSubmit=${(e) => { e.preventDefault(); submit(); }}>
+      <div class="composer">
         <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
-        <textarea ref=${input} rows="1" value=${text} onInput=${(e) => { setText(e.target.value); setTyping(id, e.target.value.trim() !== ''); }} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
-        <button type="submit" class="send" disabled=${!text.trim()} aria-label="보내기">↑</button>
-      </form>
+        <textarea ref=${input} rows="1" name="talk-chat-text" autocomplete="off" autocapitalize="off" spellcheck="false" data-form-type="other" value=${text} onInput=${(e) => { setText(e.target.value); setTyping(id, e.target.value.trim() !== ''); }} onKeyDown=${onKey} placeholder="메시지" maxlength="4000"></textarea>
+        <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label="보내기">↑</button>
+      </div>
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
         onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} />`}
       ${big && html`<${MediaViewer} m=${big} who=${names.get(big.user_id) || ''} onClose=${() => setBig(null)} />`}
