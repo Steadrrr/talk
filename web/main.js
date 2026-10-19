@@ -14,11 +14,13 @@ import { PushPrompt } from './pushui.js';
 import { pushState, pushAsked, refreshPush, clearRoomNotifications } from './push.js';
 import './style.css';
 import { applyFontSize } from './fontsize.js';
+import { applyChatTheme } from './chattheme.js';
 import { fitViewport } from './viewport.js';
 import './saki-splash.js';
 import './badge.js';
 
 applyFontSize();
+applyChatTheme();
 fitViewport();
 // S.A.K.i 스플래시: 앱을 완전히 껐다가 새로 열 때, 새 버전으로 저절로 새로고침했을 때 (그냥 새로고침하면 다시 안 띄움)
 try {

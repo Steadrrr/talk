@@ -11,6 +11,7 @@ import { TAB_ICONS } from './icons.js';
 import { preview } from './media.js';
 import { FONT_SIZES, getFontSize, setFontSize } from './fontsize.js';
 import { NoticeStrip } from './notices.js';
+import { ChatThemeCard } from './chattheme.js';
 
 export function Home({ tab, setTab, onOpen }) {
   const unread = Object.values(state.rooms).reduce((n, r) => n + (r.unread || 0), 0);
@@ -216,6 +217,7 @@ function Settings() {
           <div class="seg fs-seg">${FONT_SIZES.map((f) => html`<button class=${fs === f.key ? 'on' : ''} onClick=${() => { setFontSize(f.key); setFs(f.key); }}>${f.label}</button>`)}</div>
           <p class="hint fs-preview">대화와 목록의 글씨가 이 크기로 보여요. 이 기기에만 적용돼요.</p>
         </div>
+        <${ChatThemeCard} />
         <${InstallCard} />
         <form class="card" onSubmit=${join}>
           <b>초대 코드 넣기</b>

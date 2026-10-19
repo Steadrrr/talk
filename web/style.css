@@ -1,6 +1,7 @@
 :root {
   --bg: #f6f7f9; --card: #fff; --fg: #1c1f24; --dim: #69707a; --acc: #e8508e; --acc-fg: #fff; --bad: #c62828; --ok: #1f8f4e; --line: #e3e6ea;
   --mine: #ff8fbd; --mine-fg: #2b0f1c; --theirs: #fff; --chat-bg: #f3e9ef;
+  /* 말풍선·배경 색은 설정 탭 '채팅방 꾸미기'에서 바꾸면 chattheme.js 가 <html> 에 직접 덮어씀 */
   color-scheme: light dark;
   --fs: 1; /* 글씨 크기 배율 (설정 탭에서 고름) */
 }
@@ -110,6 +111,10 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 
 /* 채팅방 */
 .room-page { background: var(--chat-bg); }
+/* 배경화면(--chat-wall)은 메시지 칸에만: 스크롤해도 사진은 그대로 */
+.messages, .theme-preview { background-color: var(--chat-bg); background-image: var(--chat-wall, none); background-size: cover; background-position: center; background-repeat: no-repeat; }
+.messages .who, .messages .meta .hint, .messages .typing .hint, .messages > .hint, .messages > .empty, .theme-preview .hint { color: var(--chat-dim, var(--dim)); }
+.chat-wall .messages .who, .chat-wall .messages .meta .hint, .chat-wall .messages .typing .hint, .chat-wall .messages > .hint, .chat-wall .messages > .empty, .chat-wall .theme-preview .hint { text-shadow: 0 0 2px var(--chat-halo), 0 0 4px var(--chat-halo), 0 0 6px var(--chat-halo); font-weight: 600; }
 .messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 10px 12px; min-height: 0; overscroll-behavior: contain; }
 .day { text-align: center; margin: 14px 0 8px; }
 .day span { font-size: calc(12px * var(--fs)); color: var(--dim); background: var(--bg); border-radius: 12px; padding: 3px 12px; }
@@ -124,7 +129,7 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 .msg.theirs.first > .tap { align-self: flex-start; margin-top: calc(18px * var(--fs) + 4px); }
 .msg-line { display: flex; align-items: flex-end; gap: 5px; }
 .msg.mine .msg-line { flex-direction: row-reverse; }
-.bubble { padding: 8px 12px; border-radius: 16px; background: var(--theirs); white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgba(0,0,0,.04); }
+.bubble { padding: 8px 12px; border-radius: 16px; background: var(--theirs); color: var(--theirs-fg, var(--fg)); white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgba(0,0,0,.04); }
 .msg.mine .bubble { background: var(--mine); color: var(--mine-fg); }
 .msg.theirs.first .bubble { border-top-left-radius: 4px; }
 .msg.mine.first .bubble { border-top-right-radius: 4px; }
@@ -278,7 +283,7 @@ img.avatar { object-fit: cover; background: var(--line); }
 /* 입력 중 표시: 상대 말풍선 자리에 점 세 개 */
 .typing { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px 62px; }
 .typing .dots { display: inline-flex; gap: 4px; padding: 10px 12px; border-radius: 16px; border-top-left-radius: 4px; background: var(--theirs); }
-.typing .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--dim); animation: typing-dot 1.2s infinite ease-in-out; }
+.typing .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--theirs-fg, var(--dim)); animation: typing-dot 1.2s infinite ease-in-out; }
 .typing .dots i:nth-child(2) { animation-delay: .15s; }
 .typing .dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes typing-dot { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
@@ -307,3 +312,16 @@ img.avatar { object-fit: cover; background: var(--line); }
 .saki-section select { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .saki-section .relation-row input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 55%; max-width: 220px; }
 .saki-section .relation-row input:disabled { opacity: .7; }
+
+/* 채팅방 꾸미기 (설정 탭) */
+.theme-preview { border-radius: 12px; border: 1px solid var(--line); padding: 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.theme-preview .msg { align-items: flex-end; gap: 5px; margin: 0; }
+.theme-preview .bubble { max-width: 75%; }
+.theme-label { font-size: calc(14px * var(--fs)); color: var(--dim); margin-top: 4px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); flex: none; position: relative; margin: 0; cursor: pointer; }
+.swatch.on { outline: 3px solid var(--acc); outline-offset: 2px; }
+.swatch.def { width: auto; padding: 0 12px; border-radius: 17px; background: var(--bg); color: var(--fg); font-size: calc(13px * var(--fs)); }
+.swatch.pick { background: conic-gradient(#f66, #fd5, #6d6, #5cf, #a7f, #f6c, #f66); overflow: hidden; }
+.swatch.pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; padding: 0; border: 0; cursor: pointer; }
+.theme-dim { margin: 0; display: block; }
