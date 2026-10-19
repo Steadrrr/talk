@@ -12,7 +12,7 @@ const TALK_SAKI_URL = 'https://mysaki.mycafe24.com/saki/api.php/';
 const TALK_SAKI_PERSONALITIES = ['calm' => '차분', 'lively' => '활발', 'quiet' => '조용', 'tsundere' => '츤데레'];
 // 방 설정 기본값: 끔, 활발, 반말, 부를 때만, 끼어들기 최소 간격 10분, 반응 달기 켬
 const TALK_SAKI_DEFAULTS = ['on' => 0, 'personality' => 'lively', 'polite' => 0, 'freq' => 'called', 'gap' => 10, 'react' => 1];
-const TALK_SAKI_CONTEXT = 20;      // Lite 에 보내는 최근 메시지 수
+const TALK_SAKI_CONTEXT = 30;      // Lite 에 보내는 최근 메시지 수 (Lite 가 받는 최대 30개, 글은 모두 합쳐 약 6000자까지만 읽음)
 const TALK_SAKI_BUSY_SECONDS = 60; // 한 방에 동시에 하나만: 부르는 중 표시가 이보다 오래되면 무효
 
 // 자동 검증용: php -S 를 띄울 때만 주는 환경 변수 (가짜 Lite 서버 주소, http 허용)
