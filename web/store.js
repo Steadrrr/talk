@@ -244,6 +244,13 @@ export async function setSaki(roomId, changes) {
   try { await api('rooms/saki', { room_id: roomId, ...changes }); } finally { await syncNow(); }
 }
 
+// 사키에게 알려 줄 관계 (예: "엄마"): 내 것은 나, 다른 사람 것은 방장·관리자
+export async function setSakiRelation(roomId, userId, relation) {
+  const m = state.rooms[roomId]?.members.find((p) => p.id === userId);
+  if (m) { m.relation = relation; notify(); }
+  try { await api('rooms/saki', { room_id: roomId, relation_user: userId, relation }); } finally { await syncNow(); }
+}
+
 // 공지 올리기(메시지 번호)·내리기(0)
 export async function setNotice(roomId, msgId) {
   await api('rooms/notice', { room_id: roomId, message_id: msgId || 0 });

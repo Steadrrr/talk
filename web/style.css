@@ -305,3 +305,5 @@ img.avatar { object-fit: cover; background: var(--line); }
 .saki-section .seg { margin: 4px 0 8px; max-width: none; }
 .saki-section .seg button:disabled { opacity: .7; }
 .saki-section select { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.saki-section .relation-row input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 55%; max-width: 220px; }
+.saki-section .relation-row input:disabled { opacity: .7; }

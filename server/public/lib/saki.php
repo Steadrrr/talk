@@ -14,6 +14,25 @@ const TALK_SAKI_PERSONALITIES = ['calm' => '차분', 'lively' => '활발', 'quie
 const TALK_SAKI_DEFAULTS = ['on' => 0, 'personality' => 'lively', 'polite' => 0, 'freq' => 'called', 'gap' => 10, 'react' => 1];
 const TALK_SAKI_CONTEXT = 30;      // Lite 에 보내는 최근 메시지 수 (Lite 가 받는 최대 30개, 글은 모두 합쳐 약 6000자까지만 읽음)
 const TALK_SAKI_BUSY_SECONDS = 60; // 한 방에 동시에 하나만: 부르는 중 표시가 이보다 오래되면 무효
+const TALK_SAKI_SUMMARY_MAX = 300;      // 하루 요약 때 보내는 메시지 수 (Lite 가 summary 때 받는 최대)
+const TALK_SAKI_SUMMARY_CHARS = 30000;  // 하루 요약 때 글 합계 (넘는 앞부분은 버림)
+const TALK_SAKI_SUMMARY_MIN = 30;       // 오늘 대화가 이보다 적으면 최근 24시간으로
+const TALK_SAKI_RELATION_MAX = 40;      // 사키에게 알려 줄 관계: 사람마다
+const TALK_SAKI_MEMBERS_CHARS = 500;    // 관계: 방 전체 합계
+
+// 사키가 앱 사용법을 물으면 참고하는 SAKi Talk 기능 설명 (1500자 안쪽, 일반 글). 기능이 바뀌면 같이 고친다.
+// 사키 자신과 Project S.A.K.I 소개는 SAKI 쪽 프롬프트에 들어 있다
+const TALK_SAKI_APP = 'SAKi Talk: 가족·친구 10명 안쪽이 쓰는 광고 없는 메신저 웹앱. 홈 화면에 추가해 앱처럼 씀. '
+    . '그룹(가족·친구 등)마다 초대 코드로 가입하고 같은 그룹 사람끼리만 보임. 한 사람이 여러 그룹에 있을 수 있음. '
+    . '친구 프로필의 1:1 대화, 채팅 탭의 + (새 채팅방)에서 한 명을 고르면 1:1, 여러 명이면 단체방. '
+    . '글·사진(14일 보관)·영상(3일 보관, 60초까지) 보내기. 사진·영상은 휴대폰에서 줄여서 올림. '
+    . '메시지를 길게 누르면 반응·답장·복사·공지로 올리기·삭제. 방 안 검색, 입력 중 표시, 메시지 옆 읽지 않은 사람 수. '
+    . '웹 푸시 알림: 방마다 알림 끄기, 설정 탭의 "정신병 방지(연속알림 차단)"를 켜면 한 방에 1분 안에 3개 이상 몰아서 올라올 때부터 조용히 받음. '
+    . '방 설정에서 방 사진·이름 바꾸기·친구 초대·나가기, 프로필에서 사진·닉네임 바꾸기. 채팅 목록 맨 위에 공지사항(바뀐 점). 새 버전은 저절로 새로고침. '
+    . '사키: 단체방 설정에서 방장·관리자가 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·반응 달기를 정함. '
+    . '방 사람마다 "사키에게 알려 줄 관계"를 적을 수 있음. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
+    . '"사키야 오늘 무슨 얘기 했어?"처럼 요약·정리를 부탁하면 오늘 대화를 요약함. "사키야 매뉴얼 보여줘"면 사용법 페이지 링크. '
+    . '사키는 하루 쓸 수 있는 양이 정해져 있어 다 쓰면 그날은 쉼. 관리자는 일래.';
 
 // 자동 검증용: php -S 를 띄울 때만 주는 환경 변수 (가짜 Lite 서버 주소, http 허용)
 function talk_saki_test_url(): string { return (string)getenv('TALK_SAKI_TEST_URL'); }
@@ -65,8 +84,19 @@ function talk_saki_bot(PDO $pdo): int {
 function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
     $room = talk_room_row($pdo, $me['id'], $roomId);
     if ($room['kind'] !== 'group') talk_fail('사키는 단체방에만 부를 수 있어요.');
-    if ((int)$room['created_by'] !== $me['id'] && !$me['is_admin']) talk_fail('사키 설정은 방장이나 관리자만 바꿀 수 있어요.', 403);
+    $manager = (int)$room['created_by'] === $me['id'] || $me['is_admin'];
     $old = talk_saki_settings($room['saki']);
+    // 사키에게 알려 줄 관계: 내 것은 내가, 다른 사람 것은 방장·관리자가
+    if (array_key_exists('relation', $b)) {
+        $who = (int)($b['relation_user'] ?? $me['id']);
+        if ($who !== $me['id'] && !$manager) talk_fail('다른 사람의 관계는 방장이나 관리자만 적을 수 있어요.', 403);
+        $text = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F\[\]<>]+/u', ' ', (string)$b['relation'])), 0, TALK_SAKI_RELATION_MAX);
+        $st = $pdo->prepare('UPDATE talk_room_members m JOIN talk_users u ON u.id = m.user_id SET m.saki_relation = ? WHERE m.room_id = ? AND m.user_id = ? AND u.is_bot = 0');
+        $st->execute([$text === '' ? null : $text, $roomId, $who]);
+        talk_event($pdo, $roomId, 'room');
+        if (!array_intersect_key($b, TALK_SAKI_DEFAULTS)) return $old;
+    }
+    if (!$manager) talk_fail('사키 설정은 방장이나 관리자만 바꿀 수 있어요.', 403);
     $new = $old;
     if (array_key_exists('on', $b)) $new['on'] = $b['on'] ? 1 : 0;
     if (array_key_exists('personality', $b)) {
@@ -107,6 +137,11 @@ function talk_saki_called(string $body, string $botName): bool {
 // 사용법(매뉴얼)을 보여 달라는 말인지
 function talk_saki_wants_manual(string $body): bool {
     return (bool)preg_match('/매뉴얼|메뉴얼|사용법|설명서|도움말|manual/iu', $body);
+}
+
+// 하루 요약을 부탁하는 말인지
+function talk_saki_wants_summary(string $body): bool {
+    return (bool)preg_match('/요약|정리|무슨\s*(얘기|이야기)/u', $body);
 }
 
 // 사용법 페이지 주소 (이 서버의 /talk/manual/)
@@ -150,7 +185,8 @@ function talk_saki_after_send(PDO $pdo, int $roomId, int $uid, int $msgId, strin
         talk_after_response(fn() => talk_saki_post($pdo, $roomId, $bot, $msgId, $text, [['kind' => 'page', 'title' => 'SAKi Talk 사용법', 'url' => $url]], ''));
         return;
     }
-    $mode = $called ? 'called' : ($s['freq'] === 'chime' ? 'chime' : '');
+    // "사키야 오늘 무슨 얘기 했어?", "사키 정리해 줘": 하루 요약
+    $mode = $called ? (talk_saki_wants_summary($body) ? 'summary' : 'called') : ($s['freq'] === 'chime' ? 'chime' : '');
     if ($mode === '') return;
     $cfg = talk_config();
     if ((string)($cfg['saki_lite_key'] ?? '') === '') return;
@@ -210,20 +246,64 @@ function talk_saki_chime_due(PDO $pdo, int $roomId, int $bot, int $gapMin): bool
     return (int)$st->fetchColumn() >= 3;
 }
 
-// Lite 에 보낼 최근 대화: 오래된 것 → 최근, 사진·영상은 "(사진)"·"(영상)", 지운 것·안내 글은 뺌, 이름은 닉네임만
-function talk_saki_context(PDO $pdo, int $roomId, int $bot): array {
-    $st = $pdo->prepare("SELECT m.user_id, m.kind, m.body, COALESCE(u.nick, u.name) AS who FROM talk_messages m LEFT JOIN talk_users u ON u.id = m.user_id
-        WHERE m.room_id = ? AND m.kind IN ('text', 'photo', 'video') ORDER BY m.id DESC LIMIT " . TALK_SAKI_CONTEXT);
-    $st->execute([$roomId]);
+// Lite 에 보낼 대화: 오래된 것 → 최근, 사진·영상은 "(사진)"·"(영상)", 지운 것·안내 글은 뺌, 이름은 닉네임만, 보낸 시각(한국 HH:MM)
+//  - 보통: 최근 30개
+//  - 하루 요약: 오늘(한국 0시부터) 대화, 적으면 최근 24시간. 300개·글 합계 30000자까지 (넘으면 앞부분을 버림)
+// → [메시지들, 요약 기간 이름]
+function talk_saki_context(PDO $pdo, int $roomId, int $bot, bool $summary = false): array {
+    $sql = "SELECT m.user_id, m.kind, m.body, m.created_at, COALESCE(u.nick, u.name) AS who FROM talk_messages m LEFT JOIN talk_users u ON u.id = m.user_id
+        WHERE m.room_id = ? AND m.kind IN ('text', 'photo', 'video')";
+    $range = '';
+    if ($summary) {
+        $day = talk_saki_day();
+        $dayStart = gmdate('Y-m-d H:i:s', strtotime("$day 00:00:00 UTC") - 9 * 3600);
+        $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video') AND created_at >= ?");
+        $st->execute([$roomId, $dayStart]);
+        if ((int)$st->fetchColumn() >= TALK_SAKI_SUMMARY_MIN) {
+            $since = $dayStart;
+            $range = sprintf('오늘 (%d월 %d일)', (int)substr($day, 5, 2), (int)substr($day, 8, 2));
+        } else {
+            $since = gmdate('Y-m-d H:i:s', time() - 86400);
+            $range = '최근 24시간';
+        }
+        $st = $pdo->prepare("$sql AND m.created_at >= ? ORDER BY m.id DESC LIMIT " . TALK_SAKI_SUMMARY_MAX);
+        $st->execute([$roomId, $since]);
+    } else {
+        $st = $pdo->prepare("$sql ORDER BY m.id DESC LIMIT " . TALK_SAKI_CONTEXT);
+        $st->execute([$roomId]);
+    }
     $out = [];
-    foreach (array_reverse($st->fetchAll()) as $m) {
+    $chars = 0;
+    foreach ($st->fetchAll() as $m) { // 최근 → 오래된 순서로 담고 나중에 뒤집음
         $text = $m['kind'] === 'photo' ? '(사진)' : ($m['kind'] === 'video' ? '(영상)' : mb_substr((string)$m['body'], 0, 600));
-        $one = ['name' => mb_substr((string)($m['who'] ?? '나간 사람'), 0, 20) ?: '나간 사람', 'text' => $text];
+        if ($summary && $out && ($chars += mb_strlen($text)) > TALK_SAKI_SUMMARY_CHARS) break;
+        $one = ['name' => mb_substr((string)($m['who'] ?? '나간 사람'), 0, 20) ?: '나간 사람', 'text' => $text,
+            'at' => gmdate('H:i', strtotime($m['created_at'] . ' UTC') + 9 * 3600)];
         if ((int)$m['user_id'] === $bot) $one['bot'] = true;
         $out[] = $one;
     }
+    $out = array_reverse($out);
     // 마지막은 사람의 메시지여야 한다
     while ($out && !empty(end($out)['bot'])) array_pop($out);
+    return [$out, $range];
+}
+
+// 방 사람(봇 제외)과 적어 둔 관계. 아무도 안 적었으면 null (칸을 보내지 않음). 12명까지, 관계 글은 합쳐 500자까지
+function talk_saki_members(PDO $pdo, int $roomId): ?array {
+    $st = $pdo->prepare('SELECT COALESCE(u.nick, u.name) AS who, m.saki_relation FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
+        WHERE m.room_id = ? AND u.is_bot = 0 ORDER BY m.joined_at, m.user_id LIMIT 12');
+    $st->execute([$roomId]);
+    $rows = $st->fetchAll();
+    if (!array_filter($rows, fn($r) => (string)$r['saki_relation'] !== '')) return null;
+    $out = [];
+    $left = TALK_SAKI_MEMBERS_CHARS;
+    foreach ($rows as $r) {
+        $one = ['name' => mb_substr((string)$r['who'], 0, 20)];
+        $rel = trim(preg_replace('/[\x00-\x1F\x7F\[\]<>]+/u', ' ', (string)$r['saki_relation']));
+        $rel = mb_substr($rel, 0, min(TALK_SAKI_RELATION_MAX, $left));
+        if ($rel !== '') { $one['relation'] = $rel; $left -= mb_strlen($rel); }
+        $out[] = $one;
+    }
     return $out;
 }
 
@@ -341,13 +421,22 @@ function talk_saki_run(PDO $pdo, array $cfg, int $roomId, int $bot, int $msgId, 
     if (!talk_saki_lock($pdo, $roomId)) return; // 부르는 중에 온 부르기는 버림 (다음 부르기가 최근 대화를 다 보냄)
     try {
         if ($mode === 'chime') talk_meta_set($pdo, "saki_chime:$roomId", (string)time());
-        $messages = talk_saki_context($pdo, $roomId, $bot);
+        [$messages, $range] = talk_saki_context($pdo, $roomId, $bot, $mode === 'summary');
         if (!$messages) return;
         talk_saki_typing($pdo, $roomId, $bot, true);
-        $r = talk_saki_call($cfg, 'reply', [
+        $req = [
             'personality' => $s['personality'], 'polite' => (bool)$s['polite'], 'mode' => $mode,
-            'name' => mb_substr(talk_display_name($pdo, $bot), 0, 20), 'room' => mb_substr($roomName, 0, 40), 'messages' => $messages,
-        ]);
+            'name' => mb_substr(talk_display_name($pdo, $bot), 0, 20), 'room' => mb_substr($roomName, 0, 40),
+        ];
+        if ($members = talk_saki_members($pdo, $roomId)) $req['members'] = $members;
+        if ($mode === 'summary') $req['range'] = $range;
+        if ($mode === 'called') {
+            $req['app'] = TALK_SAKI_APP;
+            // 하루 사용량 90% 안내: 방마다 하루 한 번만 (안내를 붙였다는 답을 받으면 그날은 그만)
+            if (talk_meta_get($pdo, "saki_budget:$roomId") !== $day) $req['budget_notice'] = true;
+        }
+        $req['messages'] = $messages;
+        $r = talk_saki_call($cfg, 'reply', $req);
         talk_saki_note($pdo, $cfg, 'reply', $r);
         talk_saki_typing($pdo, $roomId, $bot, false);
         [$code, $res, $err] = $r;
@@ -358,6 +447,7 @@ function talk_saki_run(PDO $pdo, array $cfg, int $roomId, int $bot, int $msgId, 
         $text = trim((string)($res['text'] ?? ''));
         if (!empty($res['pass']) || $text === '') return;
         if (!empty($res['limited'])) talk_meta_set($pdo, "saki_limited:$roomId", $day);
+        if (!empty($res['budget_noticed'])) talk_meta_set($pdo, "saki_budget:$roomId", $day);
         // Claude 쪽 오류 말("잘 안 되네…")은 같은 방에서 연달아 나오면 첫 번째만
         if (($res['why'] ?? '') === 'claude-error') {
             if (talk_meta_get($pdo, "saki_err:$roomId") !== null) return;

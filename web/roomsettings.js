@@ -2,7 +2,7 @@
 import { useState } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
-import { state, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki } from './store.js';
+import { state, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation } from './store.js';
 
 export function RoomSettings({ room, onClose, onLeft }) {
   const [name, setName] = useState(room.name || '');
@@ -147,8 +147,19 @@ function SakiSection({ room, run }) {
               ${[5, 10, 20, 30, 60, 120].map((m) => html`<option value=${m}>${m < 60 ? `${m}분` : `${m / 60}시간`}</option>`)}
             </select></label>`}
         <label class="switch-row"><span class="grow">반응 달기<br /><span class="hint">사키를 부른 메시지에 표정 이모지</span></span>
-          <input type="checkbox" class="switch" checked=${!!s.react} disabled=${!can} onChange=${(e) => set({ react: e.target.checked })} /></label>`}
+          <input type="checkbox" class="switch" checked=${!!s.react} disabled=${!can} onChange=${(e) => set({ react: e.target.checked })} /></label>
+        <p class="hint">사키에게 알려 줄 관계 <span class="hint">(예: 엄마, 일래의 동생. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>
+        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}`}
     </div>`;
+}
+
+function RelationRow({ room, p, edit, run }) {
+  const [text, setText] = useState(p.relation || '');
+  const save = () => { if (text.trim() !== (p.relation || '')) run(() => setSakiRelation(room.id, p.id, text.trim())); };
+  return html`
+    <label class="switch-row relation-row"><span class="grow ellipsis">${nickOf(p)}</span>
+      <input type="text" maxlength="40" placeholder=${edit ? '관계 적기' : ''} value=${text} disabled=${!edit}
+        onInput=${(e) => setText(e.target.value)} onBlur=${save} onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} /></label>`;
 }
 
 // 나가기 전에 묻는 말: 1:1 은 두 사람 모두에게서 사라지고, 여럿 방은 나만 나감 (한 명만 남으면 방이 지워짐)

@@ -41,7 +41,7 @@ const PUSH_PREFIX = `http://127.0.0.1:${pushServer.address().port}/push/`;
 
 // 가짜 SAKi Lite: X-Saki-Lite-Key 를 확인하고 문서(saki-lite-연동.md)의 응답 모양을 돌려준다. lite.mode 로 pass·limited·401·503 흉내
 const SAKI_KEY = crypto.randomBytes(36).toString('base64url'); // 48자
-const lite = { mode: 'reply', calls: [], pathInfo: true };
+const lite = { mode: 'reply', calls: [], pathInfo: true, budget: false }; // budget: 90% 를 넘은 척 (budget_notice 를 받으면 안내를 붙였다고 답함)
 const liteServer = http.createServer((rq, rs) => {
   const chunks = [];
   rq.on('data', (c) => chunks.push(c));
@@ -57,9 +57,10 @@ const liteServer = http.createServer((rq, rs) => {
     if (lite.mode === 'off') return send(503, { ok: false, error: 'SAKi Lite 가 꺼져 있어요.' });
     if (rq.headers['x-saki-lite-key'] !== SAKI_KEY || lite.mode === 'badkey') return send(401, { ok: false, error: '열쇠가 맞지 않아요.' });
     if (!body) return send(400, { ok: false, error: 'JSON 이 아니에요.' });
-    if (route === 'lite/status') return send(200, { ok: true, on: true, model: 'claude-haiku-5-5', personalities: [], emotions: [], day: '2026-10-18', spent: 0.0123, requests: 3, cap: 0.2 });
+    if (route === 'lite/status') return send(200, { ok: true, on: true, model: 'claude-haiku-5-5', features: ['members', 'budget_notice', 'summary', 'app'], personalities: [], emotions: [], day: '2026-10-18', spent: 0.0123, requests: 3, cap: 0.2 });
     if (route !== 'lite/reply') return send(404, { ok: false, error: '없는 주소' });
-    const base = { ok: true, mode: body.mode, pass: false, emotion: 'neutral', reaction: '', links: [], limited: false, spent: 0.01, cap: 0.2 };
+    const base = { ok: true, mode: body.mode, pass: false, emotion: 'neutral', reaction: '', links: [], limited: false, spent: 0.01, cap: 0.2,
+      budget_noticed: !!(lite.budget && body.budget_notice && body.mode === 'called') };
     if (lite.mode === 'pass') return send(200, { ...base, pass: true, text: '' });
     if (lite.mode === 'limited') return send(200, { ...base, limited: true, why: 'daily-cap', text: '오늘은 여기까지 할게…' });
     send(200, { ...base, text: '흥, 내일은 맑대. …사키가 알려 준 거야.', emotion: 'happy', reaction: '😊', links: [
@@ -762,7 +763,12 @@ try {
     assert.equal(c.body.mode, 'called');
     assert.equal(c.body.name, '사키');
     assert.equal(c.body.room, '소풍방');
-    assert.deepEqual(c.body.messages, [{ name: '엄마곰', text: '내일 소풍 가는데' }, { name: '아빠', text: '사키야 내일 날씨 어때?' }], '안내 글은 빼고 닉네임으로');
+    assert.deepEqual(c.body.messages.map(({ at, ...x }) => x), [{ name: '엄마곰', text: '내일 소풍 가는데' }, { name: '아빠', text: '사키야 내일 날씨 어때?' }], '안내 글은 빼고 닉네임으로');
+    assert.ok(c.body.messages.every((x) => /^\d\d:\d\d$/.test(x.at)), '보낸 시각 HH:MM');
+    assert.equal(c.body.members, undefined, '관계를 아무도 안 적었으면 members 없음');
+    assert.equal(c.body.budget_notice, true);
+    assert.match(c.body.app, /SAKi Talk/);
+    assert.ok(c.body.app.length <= 1500);
     const [bm] = await botMsgs();
     assert.match(bm.body, /내일은 맑대/);
     assert.deepEqual(bm.links.map((l) => l.url), ['https://www.kma.go.kr/weather', 'https://www.youtube.com/results?search_query=%EC%86%8C%ED%92%8D']);
@@ -838,6 +844,42 @@ try {
     await syncS(tok.mom);
     assert.equal(replies().length, n + 2, '1시간 넘게 지난 글은 안 함');
     await api('rooms/saki', { room_id: sakiRoom, freq: 'called' }, tok.mom);
+  });
+
+  await t('사키: 관계(내 것은 나, 남의 것은 방장)·90% 안내는 방마다 하루 한 번·하루 요약', async () => {
+    const dad = await idOf(tok.mom, '아빠');
+    const admin = await idOf(tok.mom, '일래');
+    const mom = (await api('me', undefined, tok.mom)).body.me.id;
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation: '아빠, <회사원>' }, tok.dad)).status, 200, '내 관계는 내가');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: mom, relation: '엄마' }, tok.dad)).status, 403, '남의 것은 방장·관리자만');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: admin, relation: '나' }, tok.mom)).status, 200);
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: botId, relation: '봇' }, tok.mom)).status, 200, '봇은 조용히 무시');
+    const room = await roomOf(tok.dad);
+    assert.equal(room.members.find((m) => m.id === dad).relation, '아빠,  회사원');
+    assert.equal(room.members.find((m) => m.id === mom).relation, undefined);
+    assert.equal(room.members.find((m) => m.bot).relation, undefined);
+    lite.budget = true;
+    await say({ body: '사키야 우리 누구누구 있어?' }, tok.dad);
+    let c = replies().at(-1).body;
+    assert.deepEqual(c.members.filter((m) => m.relation).sort((a, b) => a.name.localeCompare(b.name)), [{ name: '아빠', relation: '아빠,  회사원' }, { name: '일래', relation: '나' }]);
+    assert.ok(c.members.some((m) => m.name === '엄마곰' && !m.relation) && !c.members.some((m) => m.name === '사키'), '안 적은 사람은 이름만, 봇은 뺌');
+    assert.equal(c.budget_notice, true);
+    await say({ body: '사키야 또 불러 봄' }, tok.dad);
+    assert.equal(replies().at(-1).body.budget_notice, undefined, '안내를 붙였다는 답을 받은 날은 다시 안 보냄');
+    lite.budget = false;
+    // 하루 요약: 오늘 대화를 300개까지 (보통은 30개)
+    sql(`INSERT INTO talk_messages (room_id, user_id, kind, body, created_at) SELECT ${sakiRoom}, ${dad}, 'text', CONCAT('수다 ', seq), UTC_TIMESTAMP() FROM seq_1_to_40`);
+    await say({ body: '사키야 이거 봐' }, tok.dad);
+    assert.equal(replies().at(-1).body.messages.length, 30);
+    await say({ body: '사키야 오늘 무슨 얘기 했어?' }, tok.mom);
+    c = replies().at(-1).body;
+    assert.equal(c.mode, 'summary');
+    assert.match(c.range, /^(오늘 \(\d+월 \d+일\)|최근 24시간)$/);
+    assert.ok(c.messages.length > 40, '30개보다 많이');
+    assert.equal(c.messages.at(-1).text, '사키야 오늘 무슨 얘기 했어?');
+    assert.equal(c.app, undefined);
+    assert.equal(c.budget_notice, undefined);
+    sql(`DELETE FROM talk_messages WHERE room_id = ${sakiRoom} AND body LIKE '수다 %'`); // 아래 시험의 기록 한 쪽(최근 메시지)을 밀어내지 않게
   });
 
   await t('사키: 하루 상한 거절 말은 방마다 하루 한 번만, 401·503 이면 조용히 쉬고 관리 화면에 보임', async () => {
