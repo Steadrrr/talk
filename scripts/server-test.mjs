@@ -397,6 +397,19 @@ try {
     assert.equal(r.body.me.nick, null);
   });
 
+  await t('말풍선 색: 저장하면 나·친구 목록·방 사람 목록에, 이상한 값은 거절, 비우면 기본', async () => {
+    const before = (await api('sync?since=0', undefined, tok.mom)).body;
+    let r = await api('me/bubble', { color: '#FEE500' }, tok.dad);
+    assert.equal(r.status, 200);
+    assert.equal((await api('me', undefined, tok.dad)).body.me.bubble, '#fee500');
+    r = await api('sync?since=' + before.cursor, undefined, tok.mom);
+    assert.equal(r.body.rooms.flatMap((x) => x.members).find((m) => m.name === '아빠')?.bubble, '#fee500', '방 사람 목록에도');
+    assert.equal((await api('me', undefined, tok.mom)).body.groups[0].members.find((m) => m.name === '아빠').bubble, '#fee500');
+    assert.equal((await api('me/bubble', { color: 'red;background:url(x)' }, tok.dad)).status, 400);
+    await api('me/bubble', { color: '' }, tok.dad);
+    assert.equal((await api('me', undefined, tok.dad)).body.me.bubble, null);
+  });
+
   const sql = (q) => execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '-N', '-D', dbName, '-e', q]).toString().trim();
 
   await t('알림: 받는 사람 기기로 암호화해 보냄, 그 방을 보고 있거나 끄면 안 보냄, 시험 알림', async () => {

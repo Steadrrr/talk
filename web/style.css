@@ -325,3 +325,6 @@ img.avatar { object-fit: cover; background: var(--line); }
 .swatch.pick { background: conic-gradient(#f66, #fd5, #6d6, #5cf, #a7f, #f6c, #f66); overflow: hidden; }
 .swatch.pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; padding: 0; border: 0; cursor: pointer; }
 .theme-dim { margin: 0; display: block; }
+.card.nav-row { flex-direction: row; align-items: center; width: 100%; text-align: left; color: var(--fg); }
+.theme-preview { margin: 12px 0; }
+.card .switch-row { font-size: calc(15px * var(--fs)); }

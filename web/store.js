@@ -6,6 +6,7 @@ import { nickOf } from './names.js';
 import { prepPhoto, prepVideo, upload } from './media.js';
 import { keepPending, dropPending, listPending, clearPending } from './pending.js';
 import { checkUpdate } from './update.js';
+import { syncMyBubble } from './chattheme.js';
 
 const SAVE_KEY = 'talk.state.v1';
 const KEEP_PER_ROOM = 100; // 기기에 남기는 방별 최근 메시지 수
@@ -182,6 +183,7 @@ window.addEventListener('online', () => { if (!stopped) syncNow().then(schedule)
 export async function loadMe() {
   const r = await api('me');
   state.me = r.me;
+  syncMyBubble(r.me.bubble);
   state.groups = r.groups;
   state.groupsRev = r.groups_rev || 0;
   saveSoon();
@@ -261,6 +263,13 @@ export async function setNotice(roomId, msgId) {
 export async function setPhoto(data) {
   await api('me/photo', data ? b64Blob(data) : { data: '' });
   await loadMe();
+  await syncNow();
+}
+
+// 내 말풍선 색 (다른 사람 화면에도 이 색). null 이면 기본
+export async function setBubble(color) {
+  await api('me/bubble', { color: color || '' });
+  if (state.me) state.me.bubble = color || null;
   await syncNow();
 }
 

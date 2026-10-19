@@ -62,6 +62,14 @@ function talk_set_nick(PDO $pdo, int $uid, ?string $nick): void {
     talk_profile_changed($pdo, $uid);
 }
 
+// 말풍선 색: '#rrggbb' 또는 비우면 기본 (null)
+function talk_set_bubble(PDO $pdo, int $uid, mixed $v): void {
+    $c = strtolower(trim((string)$v));
+    if ($c !== '' && !preg_match('/^#[0-9a-f]{6}$/', $c)) talk_fail('색 값이 이상해요.');
+    $pdo->prepare('UPDATE talk_users SET bubble = ? WHERE id = ?')->execute([$c === '' ? null : $c, $uid]);
+    talk_profile_changed($pdo, $uid);
+}
+
 // 프로필 사진: 휴대폰에서 줄인 JPEG·WebP·PNG (300KB 까지). null 이면 지움
 const TALK_PHOTO_MAX = 300 * 1024;
 function talk_set_photo(PDO $pdo, int $uid, ?string $data): void {
@@ -149,7 +157,7 @@ function talk_token_from_request(): string {
 function talk_auth(PDO $pdo): array {
     $t = talk_token_from_request();
     if (!preg_match('/^[a-f0-9]{64}$/', $t)) talk_fail('로그인이 필요해요.', 401);
-    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.photo_key, u.is_admin, u.push_quiet FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
+    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.photo_key, u.bubble, u.is_admin, u.push_quiet FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
         WHERE d.token_hash = ? AND d.revoked = 0 AND u.disabled = 0');
     $st->execute([hash('sha256', $t)]);
     $me = $st->fetch();
@@ -158,7 +166,7 @@ function talk_auth(PDO $pdo): array {
     if (strtotime($me['last_seen'] . ' UTC') < time() - 300) {
         $pdo->prepare('UPDATE talk_devices SET last_seen = ? WHERE id = ?')->execute([talk_now(), $me['device_id']]);
     }
-    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo_key'], 'is_admin' => (int)$me['is_admin'], 'push_quiet' => (int)$me['push_quiet'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
+    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo_key'], 'bubble' => $me['bubble'], 'is_admin' => (int)$me['is_admin'], 'push_quiet' => (int)$me['push_quiet'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
 }
 
 // 앱에서 이 방을 보고 있음 (동기화할 때마다 부름, 방이 같으면 5초에 한 번만 적음, 0 = 목록). 앱을 숨기면 me/away 로 지움
@@ -218,11 +226,11 @@ function talk_my_groups(PDO $pdo, int $uid): array {
     if (!$groups) return [];
     $ids = array_column($groups, 'id');
     $in = implode(',', array_fill(0, count($ids), '?'));
-    $st = $pdo->prepare("SELECT m.group_id, u.id, u.name, u.nick, u.photo_key FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id
+    $st = $pdo->prepare("SELECT m.group_id, u.id, u.name, u.nick, u.photo_key, u.bubble FROM talk_group_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.group_id IN ($in) AND u.disabled = 0 ORDER BY COALESCE(u.nick, u.name)");
     $st->execute($ids);
     $members = [];
-    foreach ($st->fetchAll() as $r) $members[(int)$r['group_id']][] = ['id' => (int)$r['id'], 'name' => $r['name'], 'nick' => $r['nick'], 'photo' => $r['photo_key']];
+    foreach ($st->fetchAll() as $r) $members[(int)$r['group_id']][] = ['id' => (int)$r['id'], 'name' => $r['name'], 'nick' => $r['nick'], 'photo' => $r['photo_key'], 'bubble' => $r['bubble']];
     return array_map(fn($g) => ['id' => (int)$g['id'], 'name' => $g['name'], 'members' => $members[(int)$g['id']] ?? []], $groups);
 }
 

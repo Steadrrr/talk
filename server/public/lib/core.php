@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 18;
+const TALK_SERVER_VERSION = 19;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -147,6 +147,8 @@ function talk_migrate(PDO $pdo): void {
     $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS push_quiet TINYINT NOT NULL DEFAULT 0";
     // 18: 사키에게 알려 줄 관계 (방 사람마다 한 줄, 예: "엄마", "일래의 동생")
     $q[] = "ALTER TABLE talk_room_members ADD COLUMN IF NOT EXISTS saki_relation VARCHAR(40) NULL";
+    // 19: 내 말풍선 색 (#rrggbb, 비우면 기본). 다른 사람 화면에도 내 말풍선이 이 색으로 보임
+    $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS bubble CHAR(7) NULL";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);

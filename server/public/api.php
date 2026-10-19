@@ -127,11 +127,16 @@ $uid = $me['id'];
 
 switch ($route) {
     case 'me':
-        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'is_admin' => $me['is_admin'], 'push_quiet' => $me['push_quiet']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
+        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'bubble' => $me['bubble'], 'is_admin' => $me['is_admin'], 'push_quiet' => $me['push_quiet']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
 
     case 'me/nick':
         $need('POST');
         talk_set_nick($pdo, $uid, talk_clean_nick(talk_body()['nick'] ?? ''));
+        talk_json(['ok' => true]);
+
+    case 'me/bubble':
+        $need('POST');
+        talk_set_bubble($pdo, $uid, talk_body()['color'] ?? '');
         talk_json(['ok' => true]);
 
     case 'me/prefs':

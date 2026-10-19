@@ -4,6 +4,7 @@ import { html, Avatar, time, dateLine, dayKey } from './html.js';
 import { state, roomTitle, loadOlder, send, sendMedia, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
 import { mediaUrl, mediaInfo, saveMedia } from './media.js';
 import { nickOf } from './names.js';
+import { bubbleStyle } from './chattheme.js';
 import { RoomSettings } from './roomsettings.js';
 
 export function Room({ id, onBack }) {
@@ -176,7 +177,7 @@ export function Room({ id, onBack }) {
           <div class="msg-line">
             ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig(m)} onMenu=${() => setMenu(m)} />`
               : m.kind === 'deleted' ? html`<div class="bubble gone">삭제된 메시지예요</div>`
-              : html`<${TextBubble} m=${m} names=${names} onMenu=${() => setMenu(m)} onJump=${jumpTo} />`}
+              : html`<${TextBubble} m=${m} names=${names} style=${mine ? null : bubbleStyle(byId.get(m.user_id))} onMenu=${() => setMenu(m)} onJump=${jumpTo} />`}
             <div class="meta">
               ${m.failed ? html`<span class="small bad">못 보냄</span>`
                 : m.pending ? html`<span class="hint small">보내는 중</span>`
@@ -346,10 +347,10 @@ const CE = (() => { try { const d = document.createElement('div'); d.contentEdit
 const replyPreview = (r) => r.kind === 'photo' ? '사진' : r.kind === 'video' ? '동영상' : r.kind === 'deleted' ? '삭제된 메시지' : r.body;
 
 // 글 말풍선: 길게 누르면 메뉴, 답장이면 위에 원래 글
-function TextBubble({ m, names, onMenu, onJump }) {
+function TextBubble({ m, names, style, onMenu, onJump }) {
   const press = useLongPress(() => !m.pending && onMenu(), () => {});
   return html`
-    <div class="bubble" ...${press}>
+    <div class="bubble" style=${style} ...${press}>
       ${m.reply && html`<div class="quote" onClick=${(e) => { e.stopPropagation(); onJump(m.reply.id); }}>
         <b>${names.get(m.reply.user_id) || '나간 사람'}</b><span>${replyPreview(m.reply)}</span></div>`}
       ${m.body}

@@ -1,9 +1,11 @@
-// 채팅방 꾸미기: 내 말풍선·상대 말풍선·배경 색, 배경화면 사진. 이 기기에만 기억 (서버 디스크를 안 씀)
+// 채팅방 꾸미기: 내 말풍선·상대 말풍선·배경 색, 배경화면 사진
+// 내 말풍선 색만 서버에 (talk_users.bubble → 다른 사람 화면에도 그 색), 나머지는 이 기기에만 기억 (서버 디스크를 안 씀)
 // 색은 CSS 변수(--mine, --theirs, --chat-bg …)를 바꿔서 적용. '기본'이면 변수를 지워 밝은·어두운 화면 기본색을 따름
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { html } from './html.js';
+import { api } from './api.js';
 
-const KEY = 'talk.chatTheme';     // { mine, theirs, bg, dim, lum }
+const KEY = 'talk.chatTheme';     // { mine, theirs, bg, dim, lum, friends(false=친구 색 안 봄), synced }
 const WALL_KEY = 'talk.chatWall'; // 배경화면 JPEG (data URL, 보통 150~300KB)
 
 export const MINE_COLORS = ['#ff8fbd', '#fee500', '#9fd3ff', '#b8e986', '#c9b3ff', '#ffb38a', '#d9dde3', '#3a4a8c'];
@@ -12,8 +14,10 @@ export const BG_COLORS = ['#f3e9ef', '#b2c7d9', '#e3f1dc', '#f4ecdc', '#e8eaed',
 
 const dark = () => matchMedia('(prefers-color-scheme: dark)').matches;
 
+let cur = null;   // 말풍선마다 읽으므로 한 번 읽어 둠
 export function getChatTheme() {
-  try { return { dim: 0, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { dim: 0 }; }
+  if (!cur) { try { cur = { dim: 0, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { cur = { dim: 0 }; } }
+  return cur;
 }
 function getWall() {
   try { return localStorage.getItem(WALL_KEY) || ''; } catch { return ''; }
@@ -26,6 +30,23 @@ function lum(hex) {
 }
 // 그 색 위에 올릴 글씨 색
 const inkOn = (hex) => (lum(hex) > 0.6 ? '#1c1f24' : '#ffffff');
+
+// 친구 말풍선: 친구가 정한 색이 있고 "친구가 정한 색으로 보기"가 켜져 있으면 그 색 (아니면 null → 내가 고른 상대 말풍선 색)
+export function bubbleStyle(member) {
+  const c = member?.bubble;
+  if (!c || getChatTheme().friends === false) return null;
+  return { background: c, color: inkOn(c) };
+}
+
+// 서버의 내 말풍선 색을 이 기기에 맞춤 (me 를 받을 때마다). 처음 한 번은 이 기기에서 먼저 고른 색을 서버로 올림
+export function syncMyBubble(bubble) {
+  if (bubble === undefined) return;
+  const t = getChatTheme();
+  if (!t.synced) {
+    if (!bubble && t.mine) { api('me/bubble', { color: t.mine }).catch(() => {}); save({ ...t, synced: 1 }); return; }
+  } else if ((bubble || null) === (t.mine || null)) return;
+  save({ ...t, mine: bubble || null, synced: 1 });
+}
 
 // 배경화면을 얼마나 어둡게 덮을지: 어두운 화면에서는 눈부시지 않게 조금 더
 function wallShade(t) {
@@ -52,6 +73,7 @@ export function applyChatTheme(t = getChatTheme()) {
 }
 
 function save(t) {
+  cur = t;
   try { localStorage.setItem(KEY, JSON.stringify(t)); } catch { /* 이번 실행 동안만 */ }
   applyChatTheme(t);
 }
@@ -103,14 +125,32 @@ function Swatches({ colors, value, onPick }) {
     </div>`;
 }
 
-// 설정 탭 "채팅방 꾸미기" 칸
-export function ChatThemeCard() {
+const BACK = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4 7 12l8 8" /></svg>`;
+
+// 설정 탭에서 누르면 들어가는 "채팅방 꾸미기" 화면. 휴대폰 뒤로 가기로도 나옴 (history 한 칸)
+export function ChatThemePage({ onBack, setBubble }) {
   const [t, setT] = useState(getChatTheme);
   const [hasWall, setHasWall] = useState(() => !!getWall());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const change = (p) => { const n = { ...t, ...p }; setT(n); save(n); };
 
+  useEffect(() => {
+    history.pushState({ decor: 1 }, '');
+    const onPop = () => onBack();
+    addEventListener('popstate', onPop);
+    return () => removeEventListener('popstate', onPop);
+  }, []);
+  const back = () => (history.state?.decor ? history.back() : onBack());
+
+  // 내 말풍선: 화면은 바로 바꾸고 서버에는 잠깐 뒤에 (색 고르기 창을 끄는 동안 여러 번 바뀌므로)
+  const timer = useState({})[0];
+  function pickMine(c) {
+    change({ mine: c, synced: 1 });
+    setErr('');
+    clearTimeout(timer.id);
+    timer.id = setTimeout(() => setBubble(c).catch((e) => setErr(e.message)), 600);
+  }
   async function pick(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -127,35 +167,49 @@ export function ChatThemeCard() {
     if (!confirm('채팅방 색과 배경화면을 처음대로 돌릴까요?')) return;
     try { localStorage.removeItem(WALL_KEY); } catch { /* 무시 */ }
     setHasWall(false);
-    const n = { dim: 0 };
+    const n = { dim: 0, synced: 1 };
     setT(n); save(n);
+    if (t.mine) setBubble(null).catch((e) => setErr(e.message));
   }
 
   return html`
-    <div class="card">
-      <b>채팅방 꾸미기</b>
-      <div class="theme-preview">
-        <div class="msg theirs first"><div class="bubble">안녕! 오늘 저녁 뭐 먹어?</div><span class="hint small">오후 7:02</span></div>
-        <div class="msg mine first"><span class="hint small">오후 7:03</span><div class="bubble">치킨 어때 🍗</div></div>
+    <section class="page">
+      <header class="bar"><button class="icon hicon" onClick=${back} aria-label="뒤로">${BACK}</button><h2>채팅방 꾸미기</h2></header>
+      <div class="scroll pad">
+        <div class="theme-preview">
+          <div class="msg theirs first"><div class="bubble">안녕! 오늘 저녁 뭐 먹어?</div><span class="hint small">오후 7:02</span></div>
+          <div class="msg mine first"><span class="hint small">오후 7:03</span><div class="bubble">치킨 어때 🍗</div></div>
+        </div>
+        <div class="card">
+          <b>내 말풍선</b>
+          <${Swatches} colors=${MINE_COLORS} value=${t.mine} onPick=${pickMine} />
+          <p class="hint">다른 사람 화면에도 내 말풍선이 이 색으로 보여요.</p>
+        </div>
+        <div class="card">
+          <b>상대 말풍선</b>
+          <${Swatches} colors=${THEIRS_COLORS} value=${t.theirs} onPick=${(c) => change({ theirs: c })} />
+          <label class="switch-row">
+            <span class="grow">친구가 정한 색으로 보기<div class="hint">끄면 친구 말풍선이 모두 위에서 고른 색으로 보여요.</div></span>
+            <input type="checkbox" class="switch" checked=${t.friends !== false} onChange=${(e) => change({ friends: e.target.checked ? undefined : false })} />
+          </label>
+        </div>
+        <div class="card">
+          <b>배경</b>
+          <${Swatches} colors=${BG_COLORS} value=${t.bg} onPick=${(c) => change({ bg: c })} />
+          <span class="theme-label">배경화면 사진</span>
+          <div class="photo-btns">
+            <label class="text left">${busy ? '줄이는 중…' : hasWall ? '사진 바꾸기' : '사진 고르기'}<input type="file" accept="image/*" hidden disabled=${busy} onChange=${pick} /></label>
+            ${hasWall && html`<button class="text dim" onClick=${removeWall}>지우기</button>`}
+          </div>
+          ${hasWall && html`
+            <label class="theme-dim">어둡게 <span class="hint">${t.dim || 0}%</span>
+              <input type="range" class="crop-zoom" min="0" max="70" step="5" value=${t.dim || 0} style=${{ '--p': (t.dim || 0) / 70 }}
+                onInput=${(e) => change({ dim: Number(e.target.value) })} />
+            </label>`}
+          <p class="hint">배경은 이 기기에만 적용돼요. '기본'은 밝은·어두운 화면에 맞춰 바뀌어요.</p>
+        </div>
+        ${err && html`<p class="err">${err}</p>`}
+        <button class="danger" onClick=${reset}>처음대로</button>
       </div>
-      <span class="theme-label">내 말풍선</span>
-      <${Swatches} colors=${MINE_COLORS} value=${t.mine} onPick=${(c) => change({ mine: c })} />
-      <span class="theme-label">상대 말풍선</span>
-      <${Swatches} colors=${THEIRS_COLORS} value=${t.theirs} onPick=${(c) => change({ theirs: c })} />
-      <span class="theme-label">배경 색</span>
-      <${Swatches} colors=${BG_COLORS} value=${t.bg} onPick=${(c) => change({ bg: c })} />
-      <span class="theme-label">배경화면</span>
-      <div class="photo-btns">
-        <label class="text left">${busy ? '줄이는 중…' : hasWall ? '사진 바꾸기' : '사진 고르기'}<input type="file" accept="image/*" hidden disabled=${busy} onChange=${pick} /></label>
-        ${hasWall && html`<button class="text dim" onClick=${removeWall}>지우기</button>`}
-      </div>
-      ${hasWall && html`
-        <label class="theme-dim">어둡게 <span class="hint">${t.dim || 0}%</span>
-          <input type="range" class="crop-zoom" min="0" max="70" step="5" value=${t.dim || 0} style=${{ '--p': (t.dim || 0) / 70 }}
-            onInput=${(e) => change({ dim: Number(e.target.value) })} />
-        </label>`}
-      ${err && html`<p class="err">${err}</p>`}
-      <p class="hint">이 기기에만 적용돼요. '기본'은 밝은·어두운 화면에 맞춰 바뀌어요.</p>
-      <button class="text left" onClick=${reset}>처음대로</button>
-    </div>`;
+    </section>`;
 }

@@ -2,7 +2,7 @@
 import { useState, useRef } from 'preact/hooks';
 import { html, Avatar, listTime } from './html.js';
 import { api } from './api.js';
-import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile, leaveRoom } from './store.js';
+import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile, leaveRoom, setBubble } from './store.js';
 import { leaveQuestion } from './roomsettings.js';
 import { nickOf, fullName } from './names.js';
 import { PushCard } from './pushui.js';
@@ -11,7 +11,7 @@ import { TAB_ICONS } from './icons.js';
 import { preview } from './media.js';
 import { FONT_SIZES, getFontSize, setFontSize } from './fontsize.js';
 import { NoticeStrip } from './notices.js';
-import { ChatThemeCard } from './chattheme.js';
+import { ChatThemePage } from './chattheme.js';
 
 export function Home({ tab, setTab, onOpen }) {
   const unread = Object.values(state.rooms).reduce((n, r) => n + (r.unread || 0), 0);
@@ -170,6 +170,7 @@ function Settings() {
   const [oldPw, setOldPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [fs, setFs] = useState(getFontSize());
+  const [decor, setDecor] = useState(false);   // 채팅방 꾸미기 화면
 
   async function join(e) {
     e.preventDefault();
@@ -201,6 +202,7 @@ function Settings() {
     clearAll();
   }
 
+  if (decor) return html`<${ChatThemePage} onBack=${() => setDecor(false)} setBubble=${setBubble} />`;
   return html`
     <section class="page">
       <${Header} title="설정" />
@@ -217,7 +219,9 @@ function Settings() {
           <div class="seg fs-seg">${FONT_SIZES.map((f) => html`<button class=${fs === f.key ? 'on' : ''} onClick=${() => { setFontSize(f.key); setFs(f.key); }}>${f.label}</button>`)}</div>
           <p class="hint fs-preview">대화와 목록의 글씨가 이 크기로 보여요. 이 기기에만 적용돼요.</p>
         </div>
-        <${ChatThemeCard} />
+        <button class="card nav-row" onClick=${() => setDecor(true)}>
+          <span class="grow"><b>채팅방 꾸미기</b><div class="hint">말풍선 색, 배경 색, 배경화면</div></span><span class="hint">›</span>
+        </button>
         <${InstallCard} />
         <form class="card" onSubmit=${join}>
           <b>초대 코드 넣기</b>
