@@ -776,11 +776,23 @@ try {
     await api('push/unsubscribe', { endpoint: sub.endpoint }, tok.dad);
   });
 
+  await t('사키: "매뉴얼 보여줘"는 Lite 를 부르지 않고 성격 말투로 사용법 링크', async () => {
+    const n = replies().length;
+    await say({ body: '사키야 매뉴얼 보여줘' }, tok.dad);
+    assert.equal(replies().length, n, 'Lite 안 부름');
+    const m = (await botMsgs()).at(-1);
+    assert.match(m.body, /사용법/);
+    assert.match(m.body, /이번만 알려 드리는/, '츤데레 + 존댓말');
+    assert.equal(m.links.length, 1);
+    assert.match(m.links[0].url, /^https:\/\/127\.0\.0\.1:\d+\/talk\/manual\/$/);
+    if (fs.existsSync(path.join(www, 'talk', 'manual', 'index.html'))) assert.equal((await fetch(BASE + '/manual/')).status, 200);
+  });
+
   await t('사키: 사키 메시지에 답장하면 부름, 부르는 중이면 새로 안 부름, 열쇠는 앱 응답·로그에 없음', async () => {
     const [bm] = await botMsgs();
     await say({ body: '고마워', reply_to: bm.id }, tok.mom);
     assert.equal(replies().length, 2);
-    assert.deepEqual(replies()[1].body.messages.at(-2), { name: '사키', text: bm.body, bot: true });
+    assert.ok(replies()[1].body.messages.some((x) => x.bot && x.name === '사키' && x.text === bm.body), '사키의 지난 말은 bot: true');
     sql(`INSERT INTO talk_meta (k, v) VALUES ('saki_busy:${sakiRoom}', UNIX_TIMESTAMP())`);
     await say({ body: '사키 또 불러' }, tok.mom);
     assert.equal(replies().length, 2, '부르는 중이면 버림');

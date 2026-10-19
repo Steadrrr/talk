@@ -104,6 +104,29 @@ function talk_saki_called(string $body, string $botName): bool {
     return mb_stripos($body, '사키') !== false || ($botName !== '' && mb_stripos($body, $botName) !== false);
 }
 
+// 사용법(매뉴얼)을 보여 달라는 말인지
+function talk_saki_wants_manual(string $body): bool {
+    return (bool)preg_match('/매뉴얼|메뉴얼|사용법|설명서|도움말|manual/iu', $body);
+}
+
+// 사용법 페이지 주소 (이 서버의 /talk/manual/)
+function talk_saki_manual_url(): string {
+    $host = preg_replace('/[^A-Za-z0-9.:-]/', '', (string)($_SERVER['HTTP_HOST'] ?? 'mysaki.mycafe24.com'));
+    $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/talk/api.php'))), '/');
+    return "https://$host$dir/manual/";
+}
+
+// 링크와 같이 올릴 한 줄: 방 설정의 성격·존댓말에 맞춰
+function talk_saki_manual_text(array $s): string {
+    $lines = [
+        'calm' => ['SAKi Talk 사용법이야. 천천히 읽어 봐.', 'SAKi Talk 사용법이에요. 천천히 읽어 보세요.'],
+        'lively' => ['짠! SAKi Talk 사용법 가져왔어!', '짠! SAKi Talk 사용법 가져왔어요!'],
+        'quiet' => ['…사용법, 여기.', '…사용법, 여기 있어요.'],
+        'tsundere' => ['흥, 이번만 알려 주는 거야. 사용법은 여기.', '흥, 이번만 알려 드리는 거예요. 사용법은 여기요.'],
+    ];
+    return $lines[$s['personality']][$s['polite'] ? 1 : 0] ?? $lines['lively'][0];
+}
+
 // 사람이 메시지를 보낸 직후 (talk_send): 부를 조건이면 응답을 돌려준 뒤 Lite 를 부르게 걸어 둔다
 function talk_saki_after_send(PDO $pdo, int $roomId, int $uid, int $msgId, string $body, int $replyTo): void {
     $st = $pdo->prepare('SELECT kind, name, saki FROM talk_rooms WHERE id = ?');
@@ -119,6 +142,13 @@ function talk_saki_after_send(PDO $pdo, int $roomId, int $uid, int $msgId, strin
         $st = $pdo->prepare('SELECT user_id FROM talk_messages WHERE id = ?');
         $st->execute([$replyTo]);
         $called = (int)$st->fetchColumn() === $bot;
+    }
+    // "사키야 매뉴얼 보여줘": Lite 를 부르지 않고 바로 사용법 페이지 링크 (돈 안 듦)
+    if ($called && talk_saki_wants_manual($body)) {
+        $text = talk_saki_manual_text($s);
+        $url = talk_saki_manual_url();
+        talk_after_response(fn() => talk_saki_post($pdo, $roomId, $bot, $msgId, $text, [['kind' => 'page', 'title' => 'SAKi Talk 사용법', 'url' => $url]], ''));
+        return;
     }
     $mode = $called ? 'called' : ($s['freq'] === 'chime' ? 'chime' : '');
     if ($mode === '') return;
