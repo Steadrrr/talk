@@ -403,6 +403,29 @@ try {
     assert.equal(fam.notice, null);
   });
 
+  await t('일정 공지: 여러 개, 가까운 날 순, 방 사람 누구나 고치고 내림, 지난 날짜는 안 됨', async () => {
+    const day = (n) => new Date(Date.now() + 9 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+    const far = (await api('rooms/schedule', { room_id: room, day: day(30), title: '가족 여행', place: { name: '제주공항', road: '제주 공항로 2', lat: 33.5, lng: 126.49 } }, tok.dad)).body.id;
+    const near = (await api('rooms/schedule', { room_id: room, day: day(0), title: '  저녁   모임 ' }, tok.mom)).body.id;
+    let fam = (await api('sync?since=0', undefined, tok.me)).body.rooms.find((x) => x.id === room);
+    assert.deepEqual(fam.schedules.map((s) => [s.id, s.day, s.title]), [[near, day(0), '저녁 모임'], [far, day(30), '가족 여행']]);
+    assert.equal(fam.schedules[1].place.name, '제주공항');
+    assert.equal(fam.schedules[1].by, '아빠');
+    assert.equal((await api('rooms/schedule', { room_id: room, day: day(-1), title: '어제' }, tok.dad)).status, 400);
+    assert.equal((await api('rooms/schedule', { room_id: room, day: '2026-02-30', title: 'x' }, tok.dad)).status, 400);
+    assert.equal((await api('rooms/schedule', { room_id: room, day: day(1), title: ' ' }, tok.dad)).status, 400);
+    assert.equal((await api('rooms/schedule', { room_id: room, day: day(1), title: '남' }, tok.f1)).status, 403);
+    assert.equal((await api('rooms/schedule', { room_id: room, id: far, day: day(2), title: '가족 여행 (앞당김)' }, tok.me)).status, 200);
+    fam = (await api('sync?since=0', undefined, tok.me)).body.rooms.find((x) => x.id === room);
+    assert.deepEqual(fam.schedules.map((s) => [s.id, s.day, s.place]), [[near, day(0), null], [far, day(2), null]]);
+    assert.equal((await api('rooms/schedule_delete', { room_id: room, id: near }, tok.f1)).status, 403);
+    assert.equal((await api('rooms/schedule_delete', { room_id: room, id: near }, tok.dad)).status, 200);
+    assert.equal((await api('rooms/schedule_delete', { room_id: room, id: far }, tok.dad)).status, 200);
+    const r = (await api('sync?since=0', undefined, tok.me)).body;
+    assert.deepEqual(r.rooms.find((x) => x.id === room).schedules, []);
+    assert.ok(r.messages.some((m) => m.kind === 'system' && m.body.includes('일정을 올렸어요: ') && m.body.includes('가족 여행')));
+  });
+
   await t('예전 대화 불러오기 (50개씩)', async () => {
     for (let i = 0; i < 55; i++) await api('messages/send', { room_id: dm, body: '메시지 ' + i }, tok.mom);
     let r = await api('messages/history?room_id=' + dm, undefined, tok.dad);

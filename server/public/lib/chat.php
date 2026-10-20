@@ -91,8 +91,14 @@ function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
             // 사키 설정 (단체방만, 열쇠가 들어 있을 때 ready)
             'saki' => $r['kind'] === 'group' && function_exists('talk_saki_settings') ? talk_saki_settings($r['saki']) + ['ready' => talk_saki_ready()] : null,
             'photo' => $r['photo_key'], 'photo_by' => $r['photo_key'] ? $r['photo_by_name'] : null, 'members' => [], 'last' => null, 'unread' => 0, 'muted' => 0, 'pinned' => 0,
-            'notice' => $r['notice_id'] ? ['id' => (int)$r['notice_id'], 'body' => $r['notice_body'], 'user_id' => (int)$r['notice_user'], 'by' => $r['notice_by_name']] : null];
+            'notice' => $r['notice_id'] ? ['id' => (int)$r['notice_id'], 'body' => $r['notice_body'], 'user_id' => (int)$r['notice_user'], 'by' => $r['notice_by_name']] : null,
+            'schedules' => []];
     }
+    // 일정 공지: 오늘(한국 날짜)부터, 가까운 날 순
+    $st = $pdo->prepare("SELECT s.*, COALESCE(u.nick, u.name) AS by_name FROM talk_schedules s LEFT JOIN talk_users u ON u.id = s.user_id
+        WHERE s.room_id IN ($in) AND s.day >= ? ORDER BY s.day, s.id");
+    $st->execute([...$roomIds, talk_kst_day()]);
+    foreach ($st->fetchAll() as $s) $rooms[(int)$s['room_id']]['schedules'][] = talk_schedule_view($s);
     $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, m.saki_relation, u.name, u.nick, u.photo_key, u.bubble, u.is_bot FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id IN ($in) ORDER BY m.joined_at, m.user_id");
     $st->execute($roomIds);
@@ -400,10 +406,10 @@ function talk_room_destroy(PDO $pdo, array $cfg, int $roomId): void {
     $pdo->prepare('DELETE FROM talk_room_members WHERE room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_saki_memory WHERE room_id = ?')->execute([$roomId]); // 사키 기억·일기는 방 것이라 같이
     $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ?')->execute([$roomId]);
+    $pdo->prepare('DELETE FROM talk_schedules WHERE room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_rooms WHERE id = ?')->execute([$roomId]);
 }
 
-// 채팅방 대표 사진: 방 사람 누구나. 새로 올리면 예전 사진은 지워짐 (null 이면 지우기)
 // 공지 올리기(그 방의 글 메시지)·내리기(0): 방 사람 누구나
 function talk_room_notice(PDO $pdo, int $uid, int $roomId, int $msgId): void {
     talk_room_row($pdo, $uid, $roomId);
@@ -419,6 +425,68 @@ function talk_room_notice(PDO $pdo, int $uid, int $roomId, int $msgId): void {
     $pdo->commit();
 }
 
+// 일정 공지: 방 사람 누구나 올리고 고치고 지움 (방마다 여러 개, 30개까지). 장소는 장소 검색에서 고른 것 (없어도 됨)
+const TALK_SCHEDULE_MAX = 30;
+function talk_kst_day(int $plus = 0): string { return gmdate('Y-m-d', time() + 9 * 3600 + $plus * 86400); }
+function talk_schedule_view(array $s): array {
+    $place = $s['place'] ? json_decode($s['place'], true) : null;
+    return ['id' => (int)$s['id'], 'day' => $s['day'], 'title' => $s['title'], 'place' => is_array($place) ? $place : null,
+        'user_id' => (int)$s['user_id'], 'by' => $s['by_name'] ?? '', 'updated' => talk_iso($s['updated_at'])];
+}
+function talk_schedule_save(PDO $pdo, int $uid, array $b): array {
+    $roomId = (int)($b['room_id'] ?? 0);
+    talk_room_row($pdo, $uid, $roomId);
+    $id = (int)($b['id'] ?? 0);
+    $day = (string)($b['day'] ?? '');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $day) || !checkdate((int)substr($day, 5, 2), (int)substr($day, 8, 2), (int)substr($day, 0, 4))) talk_fail('날짜를 골라 주세요.');
+    if ($day < talk_kst_day()) talk_fail('지난 날짜는 등록할 수 없어요.');
+    $title = trim(preg_replace('/\s+/u', ' ', (string)($b['title'] ?? '')));
+    if ($title === '') talk_fail('내용을 적어 주세요.');
+    $title = mb_substr($title, 0, 100);
+    $place = null;
+    if (is_array($b['place'] ?? null)) {
+        $p = $b['place'];
+        $str = fn($k, $n) => mb_substr(trim((string)($p[$k] ?? '')), 0, $n);
+        $lat = (float)($p['lat'] ?? 0); $lng = (float)($p['lng'] ?? 0);
+        if ($str('name', 60) === '' || abs($lat) > 90 || abs($lng) > 180) talk_fail('장소를 다시 골라 주세요.');
+        $place = json_encode(['name' => $str('name', 60), 'addr' => $str('addr', 120), 'road' => $str('road', 120), 'cat' => $str('cat', 40),
+            'lat' => round($lat, 7), 'lng' => round($lng, 7)], JSON_UNESCAPED_UNICODE);
+    }
+    $pdo->beginTransaction();
+    if ($id) {
+        $st = $pdo->prepare('SELECT id FROM talk_schedules WHERE id = ? AND room_id = ?');
+        $st->execute([$id, $roomId]);
+        if (!$st->fetchColumn()) { $pdo->rollBack(); talk_fail('일정이 없어요.', 404); }
+        $pdo->prepare('UPDATE talk_schedules SET day = ?, title = ?, place = ?, user_id = ?, updated_at = ? WHERE id = ?')->execute([$day, $title, $place, $uid, talk_now(), $id]);
+    } else {
+        $st = $pdo->prepare('SELECT COUNT(*) FROM talk_schedules WHERE room_id = ? AND day >= ?');
+        $st->execute([$roomId, talk_kst_day()]);
+        if ((int)$st->fetchColumn() >= TALK_SCHEDULE_MAX) { $pdo->rollBack(); talk_fail('일정은 ' . TALK_SCHEDULE_MAX . '개까지 올릴 수 있어요.'); }
+        $pdo->prepare('DELETE FROM talk_schedules WHERE room_id = ? AND day < ?')->execute([$roomId, talk_kst_day()]); // 지난 것은 이때 정리
+        $pdo->prepare('INSERT INTO talk_schedules (room_id, user_id, day, title, place, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$roomId, $uid, $day, $title, $place, talk_now(), talk_now()]);
+        $id = (int)$pdo->lastInsertId();
+    }
+    $md = (int)substr($day, 5, 2) . '월 ' . (int)substr($day, 8, 2) . '일';
+    talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . (!empty($b['id']) ? '님이 일정을 고쳤어요: ' : '님이 일정을 올렸어요: ') . "$md $title");
+    talk_event($pdo, $roomId, 'room');
+    $pdo->commit();
+    return ['id' => $id];
+}
+function talk_schedule_delete(PDO $pdo, int $uid, int $roomId, int $id): void {
+    talk_room_row($pdo, $uid, $roomId);
+    $st = $pdo->prepare('SELECT title FROM talk_schedules WHERE id = ? AND room_id = ?');
+    $st->execute([$id, $roomId]);
+    $title = $st->fetchColumn();
+    if ($title === false) talk_fail('일정이 없어요.', 404);
+    $pdo->beginTransaction();
+    $pdo->prepare('DELETE FROM talk_schedules WHERE id = ?')->execute([$id]);
+    talk_system_msg($pdo, $roomId, $uid, talk_display_name($pdo, $uid) . "님이 일정을 내렸어요: $title");
+    talk_event($pdo, $roomId, 'room');
+    $pdo->commit();
+}
+
+// 채팅방 대표 사진: 방 사람 누구나. 새로 올리면 예전 사진은 지워짐 (null 이면 지우기)
 function talk_room_photo(PDO $pdo, int $uid, int $roomId, ?string $data): void {
     talk_room_row($pdo, $uid, $roomId);
     if ($data !== null) {

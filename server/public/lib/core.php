@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 23;
+const TALK_SERVER_VERSION = 24;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -168,6 +168,11 @@ function talk_migrate(PDO $pdo): void {
     // 23: 위치·장소 메시지의 지도 사진 (네이버 Static Map 을 보낼 때 한 번 받아 둠, 전달한 곳도 같은 열쇠)
     $q[] = "CREATE TABLE IF NOT EXISTS talk_maps (
         mkey CHAR(24) PRIMARY KEY, data MEDIUMBLOB NOT NULL, created_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    // 24: 일정 공지 (방마다 여러 개, 날짜·내용·장소 JSON). 지난 날짜는 다음 날부터 안 내려줌
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_schedules (
+        id INT AUTO_INCREMENT PRIMARY KEY, room_id INT NOT NULL, user_id INT NOT NULL, day DATE NOT NULL, title VARCHAR(100) NOT NULL,
+        place TEXT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, INDEX (room_id, day)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)

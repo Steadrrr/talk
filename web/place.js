@@ -89,9 +89,9 @@ export function PlaceSheet({ m, onClose }) {
     </div>`;
 }
 
-// ＋ 메뉴: 사진·영상 / 내 위치 / 장소 검색
+// ＋ 메뉴: 사진·영상 / 내 위치 / 장소 검색 / 일정 (위쪽 D-Day)
 //  사진 고르기는 label 안의 file input 으로 (아이폰은 누름 안에서 열어야 고르기 창이 뜸)
-export function AttachSheet({ onFiles, onHere, onSearch, onClose }) {
+export function AttachSheet({ onFiles, onHere, onSearch, onSchedule, onClose }) {
   const backdrop = useBackdrop(onClose);
   return html`
     <div class="sheet-bg" onClick=${backdrop}>
@@ -101,6 +101,7 @@ export function AttachSheet({ onFiles, onHere, onSearch, onClose }) {
             <input type="file" accept="image/*,video/*" multiple hidden onChange=${(e) => { onFiles(e); onClose(); }} /></label>
           <button class="attach-item" onClick=${onHere}><span class="attach-icon">📍</span>내 위치</button>
           <button class="attach-item" onClick=${onSearch}><span class="attach-icon">🔎</span>장소 검색</button>
+          <button class="attach-item" onClick=${onSchedule}><span class="attach-icon">📅</span>일정</button>
         </div>
         <button class="cancel" onClick=${onClose}>취소</button>
       </div>
@@ -151,8 +152,8 @@ export function HereSheet({ roomId, onSent, onClose }) {
     </div>`;
 }
 
-// 장소 검색: 가게·건물 이름이나 주소 → 누르면 그 장소를 보냄
-export function PlaceSearch({ roomId, onSent, onClose }) {
+// 장소 검색: 가게·건물 이름이나 주소 → 누르면 그 장소를 보냄 (onPick 이 있으면 보내지 않고 고른 장소를 넘김: 일정의 장소)
+export function PlaceSearch({ roomId, onSent, onPick, onClose }) {
   const [q, setQ] = useState('');
   const [res, setRes] = useState(null);
   const [err, setErr] = useState('');
@@ -170,6 +171,7 @@ export function PlaceSearch({ roomId, onSent, onClose }) {
     return () => clearTimeout(t);
   }, [q]);
   function pick(p) {
+    if (onPick) { onPick(p); return; }
     sendPlace(roomId, { ...p, here: false });
     onSent();
   }
@@ -188,7 +190,7 @@ export function PlaceSearch({ roomId, onSent, onClose }) {
               <span class="hit-top"><b>${p.name}</b>${p.cat && html`<span class="hint small">${p.cat}</span>`}</span>
               <span class="hint small">${p.road || p.addr}</span>
             </button>`)}
-          ${res && res.length > 0 && html`<p class="hint pad small">누르면 이 방에 바로 보내요.</p>`}
+          ${res && res.length > 0 && html`<p class="hint pad small">${onPick ? '누르면 일정의 장소로 골라요.' : '누르면 이 방에 바로 보내요.'}</p>`}
         </div>
       </div>
     </div>`;

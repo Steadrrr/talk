@@ -470,3 +470,28 @@ img.avatar { object-fit: cover; background: var(--line); }
 .place-sheet .primary-btn:disabled { opacity: .45; }
 .place-web { text-align: center; color: var(--dim); font-size: calc(13px * var(--fs)); padding: 4px; }
 .menu-preview .place-card { pointer-events: none; }
+/* 일정 공지 (D-Day): 공지 밑 줄, 펼친 목록, 올리기 창 */
+.schedule-bar { margin-top: 6px; }
+.notice-bar + .schedule-bar { margin-top: 6px; }
+.notice-body .more { flex: none; align-self: center; }
+.dday { color: var(--acc); font-weight: 700; }
+.schedule-list { list-style: none; margin: 0; padding: 0 4px 6px 0; max-height: 50vh; overflow-y: auto; }
+.schedule-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); }
+.schedule-item > .dday { flex: none; min-width: 58px; font-size: calc(14px * var(--fs)); padding-top: 1px; }
+.schedule-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.schedule-title { white-space: pre-wrap; word-break: break-word; font-size: calc(14px * var(--fs)); }
+.schedule-place { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; background: var(--bg); color: var(--fg); border-radius: 10px; padding: 6px 10px; margin-top: 4px; font-size: calc(14px * var(--fs)); }
+.schedule-sheet .field { display: flex; flex-direction: column; gap: 6px; font-size: calc(14px * var(--fs)); color: var(--dim); }
+.schedule-sheet .field input { color: var(--fg); }
+.schedule-sheet .primary-btn { background: var(--acc); color: var(--acc-fg); }
+.schedule-sheet .primary-btn:disabled { opacity: .45; }
+.schedule-picked { display: flex; align-items: center; gap: 6px; background: var(--bg); border-radius: 12px; padding: 8px 6px 8px 12px; color: var(--fg); }
+.schedule-picked .grow { display: flex; flex-direction: column; min-width: 0; }
+.action-sheet .schedule-picked button { min-height: 36px; background: none; }
+.manage-head { font-size: calc(17px * var(--fs)); font-weight: 700; padding: 18px 16px 2px; margin: 0; }
+.manage-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.manage-card .notice-full-text { white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.manage-card .schedule-list { max-height: none; padding: 0; }
+.manage-card .schedule-item:first-child { border-top: 0; }
+.manage-btns { display: flex; gap: 4px; justify-content: flex-end; }
+.manage-btns .text { padding: 2px 4px; min-height: 0; }

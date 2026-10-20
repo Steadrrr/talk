@@ -267,6 +267,16 @@ export async function setNotice(roomId, msgId) {
   await syncNow();
 }
 
+// 일정 공지 올리기·고치기(s.id): { day: 'YYYY-MM-DD', title, place(장소 검색 결과 또는 null) }, 내리기
+export async function saveSchedule(roomId, s) {
+  await api('rooms/schedule', { room_id: roomId, id: s.id || 0, day: s.day, title: s.title, place: s.place || null });
+  await syncNow();
+}
+export async function deleteSchedule(roomId, id) {
+  await api('rooms/schedule_delete', { room_id: roomId, id });
+  await syncNow();
+}
+
 // 프로필 사진: data = base64 (JPEG) 또는 null(지우기)
 export async function setPhoto(data) {
   await api('me/photo', data ? b64Blob(data) : { data: '' });

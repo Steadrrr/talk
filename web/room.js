@@ -9,6 +9,7 @@ import { bubbleStyle } from './chattheme.js';
 import { RoomSettings } from './roomsettings.js';
 import { SendPreview } from './photoedit.js';
 import { PlaceBubble, PlaceSheet, AttachSheet, HereSheet, PlaceSearch, placeInfo } from './place.js';
+import { ScheduleBar, ScheduleSheet } from './schedule.js';
 
 export function Room({ id, onBack }) {
   const room = state.rooms[id];
@@ -27,7 +28,7 @@ export function Room({ id, onBack }) {
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState(null); // 보내기 전에 보는 사진들 (편집 가능)
-  const [attach, setAttach] = useState('');   // ＋ 메뉴: 'menu' | 'here' (내 위치) | 'search' (장소 검색)
+  const [attach, setAttach] = useState('');   // ＋ 메뉴: 'menu' | 'here' (내 위치) | 'search' (장소 검색) | 'schedule' (일정 등록)
   const [place, setPlace] = useState(null);   // 눌러서 연 장소 메시지
   const input = useRef(null);           // 지금 쓰는 입력칸 (아래 두 칸 중 하나)
   const boxes = [useRef(null), useRef(null)];
@@ -309,6 +310,7 @@ export function Room({ id, onBack }) {
         </div>
       </header>
       ${room.notice && html`<${NoticeBar} notice=${room.notice} roomId=${id} onGo=${() => goTo(room.notice.id)} />`}
+      <${ScheduleBar} schedules=${room.schedules} roomId=${id} onPlace=${(p) => setPlace({ body: JSON.stringify(p) })} />
       <div class="messages" ref=${scroller} onScroll=${onScroll}
         onPointerDown=${swDown} onPointerMove=${swMove} onPointerUp=${swUp} onPointerCancel=${swUp} onClickCapture=${swClick}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
@@ -337,7 +339,8 @@ export function Room({ id, onBack }) {
       ${big && html`<${MediaViewer} items=${big.items} start=${big.start} names=${names} onClose=${() => setBig(null)} />`}
       ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => setPhotos(false)} />`}
       ${picked && html`<${SendPreview} files=${picked} onSend=${sendPhotos} onClose=${() => setPicked(null)} />`}
-      ${attach === 'menu' && html`<${AttachSheet} onFiles=${pickFiles} onHere=${() => setAttach('here')} onSearch=${() => setAttach('search')} onClose=${() => setAttach('')} />`}
+      ${attach === 'menu' && html`<${AttachSheet} onFiles=${pickFiles} onHere=${() => setAttach('here')} onSearch=${() => setAttach('search')} onSchedule=${() => setAttach('schedule')} onClose=${() => setAttach('')} />`}
+      ${attach === 'schedule' && html`<${ScheduleSheet} roomId=${id} onClose=${() => setAttach('')} />`}
       ${attach === 'here' && html`<${HereSheet} roomId=${id} onSent=${() => { atBottom.current = true; setAttach(''); }} onClose=${() => setAttach('')} />`}
       ${attach === 'search' && html`<${PlaceSearch} roomId=${id} onSent=${() => { atBottom.current = true; setAttach(''); }} onClose=${() => setAttach('')} />`}
       ${place && html`<${PlaceSheet} m=${place} onClose=${() => setPlace(null)} />`}

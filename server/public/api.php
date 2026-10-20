@@ -239,6 +239,17 @@ switch ($route) {
         talk_room_notice($pdo, $uid, (int)($b['room_id'] ?? 0), (int)($b['message_id'] ?? 0));
         talk_json(['ok' => true]);
 
+    case 'rooms/schedule':
+        // 일정 공지 올리기·고치기(id): room_id, day(YYYY-MM-DD), title, place({name,addr,road,cat,lat,lng} 또는 없음)
+        $need('POST');
+        talk_json(['ok' => true] + talk_schedule_save($pdo, $uid, talk_body()));
+
+    case 'rooms/schedule_delete':
+        $need('POST');
+        $b = talk_body();
+        talk_schedule_delete($pdo, $uid, (int)($b['room_id'] ?? 0), (int)($b['id'] ?? 0));
+        talk_json(['ok' => true]);
+
     case 'rooms/saki_memory':
         // 사키가 기억하는 것·일기 보기 (방 사람 누구나 고치고 지움): memory 나 diary_day+diary_text 가 있으면 바꾸고, 지금 것을 돌려줌
         $need('POST');
