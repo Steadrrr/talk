@@ -421,20 +421,32 @@ function RoomSearch({ roomId, names, onClose, onPick }) {
     </div>`;
 }
 
-// 공지 띠: 방 위에 걸린 글. 누르면 그 글로, 접으면 이 기기에서 작은 단추로 (새 공지가 올라오면 다시 펼침)
+// 공지 띠: 방 위에 걸린 글. 평소엔 첫 줄만(넘치면 …), 누르면 전체가 펼쳐지고 "숨기기"를 누르면 이 기기에서 안 보임
+// (공지 번호를 기억해 두고, 새 공지가 올라오면 다시 보임)
 function NoticeBar({ notice, roomId, onGo }) {
-  const key = 'talk.noticeFold.' + roomId;
-  const [folded, setFolded] = useState(() => { try { return localStorage.getItem(key) === String(notice.id); } catch { return false; } });
-  useEffect(() => { try { setFolded(localStorage.getItem(key) === String(notice.id)); } catch { /* 무시 */ } }, [notice.id]);
-  const fold = (v) => { setFolded(v); try { v ? localStorage.setItem(key, String(notice.id)) : localStorage.removeItem(key); } catch { /* 무시 */ } };
-  if (folded) return html`<button class="notice-pill" onClick=${() => fold(false)} aria-label="공지 펼치기">📢 공지</button>`;
+  const key = 'talk.noticeHide.' + roomId;
+  const isHidden = () => { try { return localStorage.getItem(key) === String(notice.id); } catch { return false; } };
+  const [hidden, setHidden] = useState(isHidden);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setHidden(isHidden()); setOpen(false); }, [notice.id]);
+  if (hidden) return null;
+  const hide = () => { setHidden(true); try { localStorage.setItem(key, String(notice.id)); } catch { /* 무시 */ } };
+  const first = notice.body.split('\n')[0];
+  const more = first !== notice.body;
   return html`
-    <div class="notice-bar">
-      <button class="notice-body" onClick=${onGo}>
-        <span class="notice-text">📢 ${notice.body}</span>
-        <span class="hint small">${notice.by}님이 올린 공지</span>
+    <div class=${'notice-bar' + (open ? ' open' : '')}>
+      <button class="notice-body" onClick=${() => setOpen(!open)} aria-expanded=${open} aria-label=${open ? '공지 접기' : '공지 펼치기'}>
+        <span class="notice-icon">📢</span>
+        ${open ? html`<span class="notice-text full">${notice.body}</span>`
+          : html`<span class="notice-text">${first}${more ? '…' : ''}</span>`}
+        <span class="notice-caret">${open ? '⌃' : '⌄'}</span>
       </button>
-      <button class="icon notice-fold" onClick=${() => fold(true)} aria-label="공지 접기">⌃</button>
+      ${open && html`
+      <div class="notice-foot">
+        <span class="hint small">${notice.by}님이 올린 공지</span>
+        <button class="notice-go" onClick=${() => { setOpen(false); onGo(); }}>글로 가기</button>
+        <button class="notice-hide" onClick=${hide}>숨기기</button>
+      </div>`}
     </div>`;
 }
 
@@ -519,7 +531,7 @@ function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onForward 
         <button onClick=${onReply}>답장</button>
         ${!media && html`<button onClick=${() => run('copy', () => navigator.clipboard.writeText(copyText))}>${isPlace ? '주소 복사' : '복사'}</button>`}
         ${!gone && html`<button onClick=${onForward}>전달</button>`}
-        ${m.kind === 'text' && html`<button onClick=${() => run('notice', () => setNotice(m.room_id, isNotice ? 0 : m.id))} disabled=${!!busy}>${isNotice ? '공지 내리기' : '공지로 올리기'}</button>`}
+        ${m.kind === 'text' && html`<button onClick=${() => run('notice', () => setNotice(m.room_id, isNotice ? 0 : m.id))} disabled=${!!busy}>${isNotice ? '공지 내리기' : '공지 설정'}</button>`}
         ${media && !gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
         <button class="danger" onClick=${() => confirm(`이 ${what} 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
         ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what} 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}
