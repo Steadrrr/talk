@@ -143,7 +143,9 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 .fail .del { color: var(--dim); background: var(--card); border: 1px solid var(--line); }
 .composer { display: flex; align-items: flex-end; gap: 8px; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
 .msg-input { flex: 1; min-width: 0; font-size: max(16px, calc(16px * var(--fs))); color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 9px 14px; line-height: 1.35;
-  max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; cursor: text; }
+  max-height: 120px; overflow-y: hidden; scrollbar-width: none; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; cursor: text; }
+.msg-input.tall { overflow-y: auto; }
+.msg-input::-webkit-scrollbar { display: none; }
 .msg-input:focus { outline: 2px solid var(--acc); outline-offset: -1px; }
 /* 입력칸은 두 개: 보낼 때마다 비어 있는 칸으로 바꿔 씀(room.js). 쉬는 칸은 같은 자리에 투명하게 겹쳐 둠
    (display:none 이면 아이폰이 커서를 못 옮겨 키보드가 내려감) */

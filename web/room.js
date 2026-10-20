@@ -74,6 +74,7 @@ export function Room({ id, onBack }) {
     const next = boxes[1 - cur].current;
     if (old && next) {
       next.textContent = '';
+      fitBox(next);
       next.classList.remove('spare');
       old.classList.add('spare');
       input.current = next;
@@ -123,8 +124,24 @@ export function Room({ id, onBack }) {
     const el = e.currentTarget;
     if (el !== input.current) return;    // 보낸 뒤 쉬는 칸에 늦게 들어온 글자는 무시
     const t = el.innerText.replace(/\n$/, '');
+    fitBox(el);
     setText(t);
     setTyping(id, t.trim() !== '');
+  }
+  // 입력칸 사이 빈틈(＋ 옆 등)을 눌러도 입력칸으로: 빈틈을 누르면 아이폰이 커서를 뺐다 넣었다 하며
+  // 키보드가 내려갔다 올라와 화면이 튀었음 → 누름 자체를 막고, 커서가 없을 때만 입력칸 끝에 커서를 둔다
+  function onGap(e) {
+    if (e.target !== e.currentTarget && !e.target.classList.contains('msg-box')) return;
+    e.preventDefault();
+    const el = input.current;
+    if (e.type !== 'click' || !el || document.activeElement === el) return;   // 키보드는 누름이 끝날 때 열어야 아이폰이 띄움
+    el.focus();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
   }
   // 붙여넣기는 글자만 (plaintext-only 를 모르는 브라우저에서 서식·그림이 들어오지 않게)
   function onPaste(e) {
@@ -227,13 +244,13 @@ export function Room({ id, onBack }) {
           <div class="grow ellipsis"><b>${names.get(replyTo.user_id) || '나간 사람'}</b>에게 답장<br /><span class="hint">${replyPreview(replyTo)}</span></div>
           <button class="icon" onClick=${() => setReplyTo(null)} aria-label="답장 그만두기">✕</button>
         </div>`}
-      <div class="composer">
+      <div class="composer" onPointerDown=${onGap} onClick=${onGap}>
         <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
         <div class="msg-box">
           ${boxes.map((r, i) => html`
             <div key=${i} ref=${r} class=${'msg-input' + (i === cur ? (text ? '' : ' blank') : ' spare')} contentEditable=${CE} role="textbox" aria-multiline="true" aria-label="메시지" data-placeholder="메시지"
               aria-hidden=${i === cur ? null : 'true'} tabIndex=${i === cur ? 0 : -1}
-              autocapitalize="off" spellcheck="false" onInput=${onEdit} onKeyDown=${onKey} onPaste=${onPaste}></div>`)}
+              autocapitalize="off" spellcheck="false" onInput=${onEdit} onScroll=${keepTop} onKeyDown=${onKey} onPaste=${onPaste}></div>`)}
         </div>
         <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label="보내기">↑</button>
       </div>
@@ -334,6 +351,17 @@ function NoticeBar({ notice, roomId, onGo }) {
       </button>
       <button class="icon notice-fold" onClick=${() => fold(true)} aria-label="공지 접기">⌃</button>
     </div>`;
+}
+
+// 입력칸은 다섯 줄을 넘을 때만 스크롤: 한 줄일 때도 글자 높이가 줄 높이보다 몇 px 커서 스크롤할 수 있는 칸이 돼,
+// 커서를 끌면 스크롤바가 생기고 글이 밀려 내려갔음 → 넘치지 않으면 overflow 를 막고 밀린 자리를 되돌림
+function fitBox(el) {
+  el.classList.toggle('tall', el.scrollHeight > el.clientHeight + 8);
+  if (!el.classList.contains('tall')) el.scrollTop = 0;
+}
+function keepTop(e) {
+  const el = e.currentTarget;
+  if (!el.classList.contains('tall') && el.scrollTop) el.scrollTop = 0;
 }
 
 // 글만 받는 편집 칸을 지원하면 그것으로 (사파리·크롬), 아니면 일반 편집 칸
