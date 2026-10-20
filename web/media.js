@@ -27,6 +27,7 @@ export function preview(m) {
   if (!m) return '';
   if (m.kind === 'photo') { const n = mediaItems(m).length; return n > 1 ? `사진 ${n}장` : '사진'; }
   if (m.kind === 'video') return '동영상';
+  if (m.kind === 'place') { try { const p = JSON.parse(m.body || '{}'); return p.here ? '📍 위치: ' + (p.name || '') : '📍 ' + (p.name || '장소'); } catch { return '📍 장소'; } }
   if (m.kind === 'deleted') return '삭제된 메시지';
   return m.body;
 }

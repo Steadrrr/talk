@@ -45,6 +45,7 @@ function talk_backup_download(PDO $pdo, string $format): never {
             $who = $name[(int)$m['user_id']] ?? '나간 사람';
             $body = match ($m['kind']) {
                 'photo' => '[사진]', 'video' => '[동영상]', 'deleted' => '[삭제된 메시지]',
+                'place' => (function ($b) { $b = json_decode($b, true) ?: []; return '[' . (!empty($b['here']) ? '위치' : '장소') . '] ' . trim(($b['name'] ?? '') . ' ' . ($b['road'] ?: ($b['addr'] ?? ''))); })($m['body']),
                 default => str_replace("\n", "\n    ", $m['body']),
             };
             echo $m['kind'] === 'system' ? "{$at} · {$body}\n" : "{$at} {$who}: {$body}\n";

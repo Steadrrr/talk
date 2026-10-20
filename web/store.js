@@ -185,6 +185,7 @@ window.addEventListener('online', () => { if (!stopped) syncNow().then(schedule)
 export async function loadMe() {
   const r = await api('me');
   state.me = r.me;
+  state.naver = r.naver || null;
   syncMyBubble(r.me.bubble);
   state.groups = r.groups;
   state.groupsRev = r.groups_rev || 0;
@@ -418,6 +419,39 @@ export async function send(roomId, body, retry, reply = null) {
   } catch (e) {
     if (e instanceof AuthError) { clearAll(); return; }
     msg.failed = true;
+  }
+  notify();
+}
+
+// 위치·장소 (네이버 지도): 보내기 전 주소 찾기, 장소 검색, 보내기 (서버가 동 이름·지도 사진을 붙임)
+export async function placeLookup(lat, lng) {
+  return (await api('place/lookup', { lat, lng })).place;
+}
+export async function placeSearch(q) {
+  return (await api('place/search?q=' + encodeURIComponent(q))).places;
+}
+export async function sendPlace(roomId, place, retry) {
+  const msg = retry || { id: 0, room_id: roomId, user_id: state.me.id, kind: 'place', body: JSON.stringify({ ...place, map: null }), place,
+    client_id: newClientId(), at: new Date().toISOString(), pending: true };
+  msg.failed = false;
+  msg.error = '';
+  const arr = state.messages[roomId] || (state.messages[roomId] = []);
+  if (!retry) arr.push(msg);
+  notify();
+  try {
+    const r = await api('place/send', { room_id: roomId, ...msg.place, client_id: msg.client_id });
+    mergeMessages([r.message]);
+    const room = state.rooms[roomId];
+    if (room) {
+      room.last = r.message;
+      const mine = room.members.find((m) => m.id === state.me.id);
+      if (mine) mine.last_read_id = Math.max(mine.last_read_id, r.message.id);
+    }
+    saveSoon();
+  } catch (e) {
+    if (e instanceof AuthError) { clearAll(); return; }
+    msg.failed = true;
+    msg.error = e.message;
   }
   notify();
 }

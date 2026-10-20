@@ -179,7 +179,7 @@ function talk_forward(PDO $pdo, array $cfg, int $uid, int $msgId, ?int $index, a
     $st->execute([$msgId]);
     $src = $st->fetch();
     if (!$src || !talk_room_member($pdo, $uid, (int)$src['room_id'])) talk_fail('메시지가 없어요.', 404);
-    if (!in_array($src['kind'], ['text', 'photo', 'video'], true)) talk_fail('전달할 수 없는 메시지예요.');
+    if (!in_array($src['kind'], ['text', 'photo', 'video', 'place'], true)) talk_fail('전달할 수 없는 메시지예요.');
     $gid = (int)$src['group_id'];
     // 받을 곳: 내가 들어가 있는 같은 그룹 방 + 같은 그룹 친구와의 1:1 방
     $targets = [];
@@ -203,6 +203,12 @@ function talk_forward(PDO $pdo, array $cfg, int $uid, int $msgId, ?int $index, a
     if ($src['kind'] === 'text') {
         $out = [];
         foreach (array_keys($targets) as $rid) $out[] = talk_send($pdo, $uid, $rid, (string)$src['body'], '', 0, false);
+        return $out;
+    }
+    if ($src['kind'] === 'place') {
+        $body = json_decode((string)$src['body'], true) ?: [];
+        $out = [];
+        foreach (array_keys($targets) as $rid) $out[] = talk_media_post($pdo, $cfg, $uid, $rid, 'place', $body, [], '', '장소를 보냈어요: ' . ($body['name'] ?? ''));
         return $out;
     }
     $items = talk_media_items(json_decode((string)$src['body'], true) ?: []);

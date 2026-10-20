@@ -81,16 +81,33 @@ const liteServer = http.createServer((rq, rs) => {
 await new Promise((r) => liteServer.listen(0, '127.0.0.1', r));
 const LITE_URL = `http://127.0.0.1:${liteServer.address().port}/saki/api.php/`;
 
-// 가짜 네이버 지도 Reverse Geocoding: 열쇠 머리를 확인하고 공식 응답 모양(results[].region.area1~3)을 돌려준다
+// 가짜 네이버: Maps(Reverse Geocoding·Geocoding·Static Map)와 NAVER API HUB 지역 검색. 열쇠 머리를 확인하고 공식 응답 모양을 돌려준다
 const NAVER = { id: 'testClientId1234', secret: 'testClientSecretABCDEFG' };
+const HUB = { id: 'hubClientId5678', secret: 'hubClientSecretHIJKLMN' };
 const naverCalls = [];
+const FAKE_MAP = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('fake-static-map')]);
 const naverServer = http.createServer((rq, rs) => {
   const u = new URL(rq.url, 'http://x');
-  naverCalls.push({ path: u.pathname, coords: u.searchParams.get('coords') });
+  naverCalls.push({ path: u.pathname, q: Object.fromEntries(u.searchParams) });
   const send = (code, body) => { rs.writeHead(code, { 'Content-Type': 'application/json' }); rs.end(JSON.stringify(body)); };
-  if (rq.headers['x-ncp-apigw-api-key-id'] !== NAVER.id || rq.headers['x-ncp-apigw-api-key'] !== NAVER.secret) return send(401, { error: { errorCode: '200', message: 'Authentication Failed' } });
-  if (u.pathname !== '/map-reversegeocode/v2/gc') return send(404, { error: { message: 'Not Found' } });
-  send(200, { status: { code: 0, name: 'ok', message: 'done' }, results: [{ name: 'legalcode', region: { area0: { name: 'kr' }, area1: { name: '서울특별시' }, area2: { name: '중구' }, area3: { name: '태평로1가' }, area4: { name: '' } } }] });
+  const keys = (k) => rq.headers['x-ncp-apigw-api-key-id'] === k.id && rq.headers['x-ncp-apigw-api-key'] === k.secret;
+  if (u.pathname === '/search/v1/local') {
+    if (!keys(HUB)) return send(401, { errorMessage: 'Authentication failed', errorCode: '024' });
+    return send(200, { lastBuildDate: '', total: 2, start: 1, display: 2, items: [
+      { title: '<b>서울시청</b>', link: '', category: '공공,사회기관>시청', description: '', telephone: '', address: '서울특별시 중구 태평로1가 31', roadAddress: '서울특별시 중구 세종대로 110', mapx: '1269783882', mapy: '375666103' },
+      { title: '바다 위 &amp; 이상한 곳', category: '', address: '', roadAddress: '', mapx: '0', mapy: '0' },
+    ] });
+  }
+  if (!keys(NAVER)) return send(401, { error: { errorCode: '200', message: 'Authentication Failed' } });
+  if (u.pathname === '/map-reversegeocode/v2/gc') return send(200, { status: { code: 0, name: 'ok', message: 'done' }, results: [
+    { name: 'legalcode', region: { area0: { name: 'kr' }, area1: { name: '서울특별시' }, area2: { name: '중구' }, area3: { name: '태평로1가' }, area4: { name: '' } } },
+    { name: 'addr', region: { area1: { name: '서울특별시' }, area2: { name: '중구' }, area3: { name: '태평로1가' }, area4: { name: '' } }, land: { type: '1', number1: '31', number2: '' } },
+    { name: 'roadaddr', region: { area1: { name: '서울특별시' }, area2: { name: '중구' }, area3: { name: '태평로1가' } }, land: { name: '세종대로', number1: '110', number2: '', addition0: { type: 'building', value: '서울특별시청' } } },
+  ] });
+  if (u.pathname === '/map-static/v2/raster') { rs.writeHead(200, { 'Content-Type': 'image/jpeg' }); rs.end(FAKE_MAP); return; }
+  if (u.pathname === '/map-geocode/v2/geocode') return send(200, { status: 'OK', addresses: u.searchParams.get('query').includes('세종대로')
+    ? [{ roadAddress: '서울특별시 중구 세종대로 110 서울특별시청', jibunAddress: '서울특별시 중구 태평로1가 31', x: '126.9783882', y: '37.5666103' }] : [] });
+  send(404, { error: { message: 'Not Found' } });
 });
 await new Promise((r) => naverServer.listen(0, '127.0.0.1', r));
 const NAVER_URL = `http://127.0.0.1:${naverServer.address().port}/`;
@@ -191,11 +208,19 @@ try {
     html = await adminPost({ act: 'naver_key', id: NAVER.id, secret: NAVER.secret });
     assert.match(html, /잘 됨 \(서울시청 → 서울특별시 중구 태평로1가\)/);
     assert.ok(!html.includes(NAVER.secret) && !html.includes(NAVER.id), '열쇠가 화면에 나오면 안 됨');
-    assert.match(html, /열쇠 ····1234/);
-    assert.equal(naverCalls.at(-1).coords, '126.9783882,37.5666103');
+    assert.match(html, /지도 ····1234/);
+    assert.match(html, /지도 사진 잘 됨/);
+    assert.equal(naverCalls.find((c) => c.path === '/map-reversegeocode/v2/gc').q.coords, '126.9783882,37.5666103');
     html = await adminPost({ act: 'naver_key_clear' });
     assert.match(html, /네이버 지도 열쇠를 지웠어요/);
-    assert.match(html, /네이버 지도 <span class="hint">열쇠 없음/);
+    assert.match(html, /네이버 지도 <span class="hint">지도 열쇠 없음/);
+    // 장소 검색 열쇠 (NAVER API HUB)
+    html = await adminPost({ act: 'naver_search_key', id: HUB.id, secret: 'wrongSecret12345' });
+    assert.match(html, /맞지 않아요/);
+    html = await adminPost({ act: 'naver_search_key', id: HUB.id, secret: HUB.secret });
+    assert.match(html, /잘 됨 \(&quot;서울시청&quot; 검색 2개\)/);
+    assert.ok(!html.includes(HUB.secret) && !html.includes(HUB.id));
+    assert.match(html, /검색 ····5678/);
   });
   const inviteOf = (html) => html.match(/초대 코드 <code>([A-Z0-9]{8})<\/code>/)[1];
   const api = async (p, body, token) => {
@@ -1163,11 +1188,77 @@ try {
     assert.equal(sql(`SELECT (SELECT COUNT(*) FROM talk_saki_memory WHERE room_id = ${sakiRoom}) + (SELECT COUNT(*) FROM talk_saki_diary WHERE room_id = ${sakiRoom})`), '0', '방을 지우면 사키 기억·일기도');
   });
 
+  await t('위치·장소: 열쇠 없으면 좌표만, 내 위치는 서버가 동 이름·지도 사진, 장소 검색(이름·주소), 전달, 로그인 없이 지도 사진', async () => {
+    const momId = await idOf(tok.me, '엄마'), f1Id = await idOf(tok.me, '친구1');
+    const dm = (await api('rooms/dm', { user_id: momId }, tok.me)).body.room.id;
+    // 지도 열쇠가 없을 때 (검색 열쇠만): 위치는 좌표만으로 보내짐
+    let r = await api('me', undefined, tok.me);
+    assert.deepEqual(r.body.naver, { map: false, search: true });
+    r = await api('place/send', { room_id: dm, lat: 37.5666103, lng: 126.9783882, here: true, client_id: 'place-nokey-1' }, tok.me);
+    assert.equal(r.status, 200);
+    let p = JSON.parse(r.body.message.body);
+    assert.equal(r.body.message.kind, 'place');
+    assert.equal(p.name, '내 위치');
+    assert.equal(p.map, null);
+    // 지도 열쇠를 넣으면
+    await adminPost({ act: 'naver_key', id: NAVER.id, secret: NAVER.secret });
+    assert.deepEqual((await api('me', undefined, tok.me)).body.naver, { map: true, search: true });
+    r = await api('place/lookup', { lat: 37.5666103, lng: 126.9783882 }, tok.me);
+    assert.equal(r.body.place.area, '서울특별시 중구 태평로1가');
+    assert.equal(r.body.place.road, '서울특별시 중구 세종대로 110 (서울특별시청)');
+    assert.equal((await api('place/lookup', { lat: 0, lng: 0 }, tok.me)).status, 400);
+    // 내 위치: 앱이 보낸 이름은 무시하고 서버가 찾은 동 이름
+    r = await api('place/send', { room_id: dm, lat: 37.5666103, lng: 126.9783882, here: true, name: '<script>', client_id: 'place-here-1' }, tok.me);
+    const here = r.body.message;
+    p = JSON.parse(here.body);
+    assert.equal(p.name, '서울특별시 중구 태평로1가');
+    assert.equal(p.addr, '서울특별시 중구 태평로1가 31');
+    assert.match(p.map, /^[a-f0-9]{24}$/);
+    const img = await req('/api.php/map/' + p.map);
+    assert.equal(img.status, 200);
+    assert.equal(img.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await img.arrayBuffer()), FAKE_MAP);
+    assert.equal((await req('/api.php/map/' + 'a'.repeat(24))).status, 404);
+    const before = naverCalls.length;
+    assert.equal((await api('place/send', { room_id: dm, lat: 37.5, lng: 127, here: true, client_id: 'place-here-1' }, tok.me)).body.message.id, here.id, '재전송은 같은 메시지');
+    assert.equal(naverCalls.length, before, '재전송이면 네이버를 다시 안 부름');
+    // 방 밖 사람은 못 보냄, 이상한 좌표·이름 없는 장소는 거절
+    assert.equal((await api('place/send', { room_id: dm, lat: 37.5, lng: 127, here: true }, tok.f1)).status, 403);
+    assert.equal((await api('place/send', { room_id: dm, lat: 99, lng: 127, here: true }, tok.me)).status, 400);
+    assert.equal((await api('place/send', { room_id: dm, lat: 37.5, lng: 127, here: false }, tok.me)).status, 400);
+    // 장소 검색: 이름(API HUB, 좌표 ÷ 10,000,000, 태그 지움, 이상한 좌표는 뺌) + 주소(Geocoding)
+    r = await api('place/search?q=' + encodeURIComponent('서울시청'), undefined, tok.me);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.places.length, 1);
+    assert.deepEqual(r.body.places[0], { name: '서울시청', cat: '공공,사회기관>시청', addr: '서울특별시 중구 태평로1가 31', road: '서울특별시 중구 세종대로 110', tel: '', lat: 37.5666103, lng: 126.9783882 });
+    r = await api('place/search?q=' + encodeURIComponent('세종대로 110'), undefined, tok.me);
+    assert.equal(r.body.places.at(-1).cat, '주소');
+    assert.equal(r.body.places.at(-1).name, '서울특별시 중구 세종대로 110 서울특별시청');
+    assert.deepEqual((await api('place/search?q=', undefined, tok.me)).body.places, []);
+    // 검색에서 고른 장소 보내기: 이름·주소는 앱이 보낸 것, 알림 글에 장소 이름
+    r = await api('place/send', { room_id: dm, ...r.body.places[0], name: '서울시청', here: false, client_id: 'place-pick-1' }, tok.me);
+    p = JSON.parse(r.body.message.body);
+    assert.equal(p.name, '서울시청');
+    assert.equal(p.here, false);
+    assert.ok(p.map);
+    // 전달: 같은 지도 사진 그대로
+    r = await api('messages/forward', { id: r.body.message.id, room_ids: [], user_ids: [await idOf(tok.me, '아빠')] }, tok.me);
+    assert.equal(r.status, 200);
+    assert.equal(JSON.parse(r.body.messages[0].body).map, p.map);
+    assert.equal(r.body.messages[0].kind, 'place');
+    // 상대 화면 동기화에도 보임
+    const seen = (await api('messages/history?room_id=' + dm + '&before=0', undefined, tok.mom)).body.messages.filter((m) => m.kind === 'place');
+    assert.equal(seen.length, 3);
+    assert.ok(f1Id > 0);
+  });
+
   await t('관리: 백업 내려받기 (읽기용 txt·옮기기용 json, 비밀번호는 안 들어감)', async () => {
     const txt = await adminPost({ act: 'backup_txt' });
     assert.match(txt, /SAKi Talk 대화 백업/);
     assert.match(txt, /김치찌개/);
     assert.match(txt, /\[사진\]/);
+    assert.match(txt, /\[위치\] 서울특별시 중구 태평로1가 서울특별시 중구 세종대로 110/);
+    assert.match(txt, /\[장소\] 서울시청/);
     const raw = await adminPost({ act: 'backup_json' });
     const j = JSON.parse(raw);
     assert.ok(j.messages.length > 5 && j.users.length >= 4 && j.rooms.length >= 2);

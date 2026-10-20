@@ -261,6 +261,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             $msg = '네이버 지도 열쇠를 지웠어요.';
         } elseif ($act === 'naver_status') {
             $msg = '네이버 지도 상태: ' . talk_naver_check($pdo, $cfg);
+        } elseif ($act === 'naver_search_key') {
+            // 장소 검색 열쇠: 네이버 클라우드 NAVER API HUB → Application 인증 정보 (Maps 열쇠와 따로)
+            $id = trim((string)($_POST['id'] ?? ''));
+            $secret = trim((string)($_POST['secret'] ?? ''));
+            if (!preg_match('/^[A-Za-z0-9_-]{4,100}$/', $id) || !preg_match('/^[A-Za-z0-9_-]{8,200}$/', $secret)) throw new RuntimeException('Client ID·Secret 모양이 아니에요. NAVER API HUB 의 인증 정보에서 그대로 복사해 주세요.');
+            $cfg['naver_search_id'] = $id;
+            $cfg['naver_search_secret'] = $secret;
+            talk_write_config($cfg['private_dir'], $cfg);
+            $msg = '장소 검색 열쇠를 저장했어요. 확인 결과: ' . talk_naver_search_check($pdo, $cfg);
+        } elseif ($act === 'naver_search_clear') {
+            unset($cfg['naver_search_id'], $cfg['naver_search_secret']);
+            talk_write_config($cfg['private_dir'], $cfg);
+            talk_meta_set($pdo, 'naver_search_status', '');
+            $msg = '장소 검색 열쇠를 지웠어요. 장소 검색은 주소로만 찾아요.';
+        } elseif ($act === 'naver_search_status') {
+            $msg = '장소 검색 상태: ' . talk_naver_search_check($pdo, $cfg);
         } elseif ($act === 'backup_txt' || $act === 'backup_json') {
             talk_backup_download($pdo, $act === 'backup_json' ? 'json' : 'txt');
         }
@@ -457,8 +473,9 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 </fieldset>
 </details>
 
-<?php $naverId = (string)($cfg['naver_map_id'] ?? ''); $naverOn = talk_naver_ready($cfg); $naverNote = json_decode((string)talk_meta_get($pdo, 'naver_status'), true); ?>
-<details class="menu" id="m-naver"><summary>네이버 지도 <span class="hint"><?= $naverOn ? '열쇠 ····' . h(substr($naverId, -4)) : '열쇠 없음' ?></span></summary>
+<?php $naverId = (string)($cfg['naver_map_id'] ?? ''); $naverOn = talk_naver_ready($cfg); $naverNote = json_decode((string)talk_meta_get($pdo, 'naver_status'), true);
+$searchId = (string)($cfg['naver_search_id'] ?? ''); $searchOn = talk_naver_search_ready($cfg); $searchNote = json_decode((string)talk_meta_get($pdo, 'naver_search_status'), true); ?>
+<details class="menu" id="m-naver"><summary>네이버 지도 <span class="hint"><?= $naverOn ? '지도 ····' . h(substr($naverId, -4)) : '지도 열쇠 없음' ?> · <?= $searchOn ? '검색 ····' . h(substr($searchId, -4)) : '검색 열쇠 없음' ?></span></summary>
 <fieldset><legend>네이버 지도 열쇠</legend>
 <p class="hint">위치 보내기에서 "OO동" 이름과 지도를 받아 올 때 써요. 네이버 클라우드 콘솔 → Services → Application Services → Maps → Application 의 "인증 정보"에 있는 Client ID 와 Client Secret 을 붙여 넣어 주세요. Application 에는 Reverse Geocoding·Static Map·Dynamic Map 을 체크하고, Web 서비스 URL 에 <code>https://mysaki.mycafe24.com</code> 을 넣어 주세요. 저장하면 다시 보여 주지 않아요.</p>
 <p>지금 <?= $naverOn ? 'Client ID <code>····' . h(substr($naverId, -4)) . '</code>' : '<b>열쇠 없음</b>' ?></p>
@@ -469,6 +486,18 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <?php if ($naverOn): ?>
 <form method="post" class="row"><?= $hidden('naver_status') ?><span class="hint"><?= $naverNote ? '마지막 확인 ' . h(kst($naverNote['at'])) . ' · ' . h($naverNote['text']) : '아직 확인한 적 없어요.' ?></span><button type="submit" class="sub">상태 확인</button></form>
 <form method="post" class="row"><?= $hidden('naver_key_clear') ?><span class="hint">열쇠를 지우면 위치 보내기에서 동 이름과 지도가 안 나와요.</span><button type="submit" class="sub">열쇠 지우기</button></form>
+<?php endif; ?>
+</fieldset>
+<fieldset><legend>장소 검색 열쇠 (NAVER API HUB)</legend>
+<p class="hint">가게·건물 이름으로 찾을 때 써요 (없으면 주소로만 찾아요). 네이버 클라우드 콘솔 → Services → Application Services → NAVER API HUB → 이용 신청 → Application 등록에서 "지역 검색" 을 체크하고, 인증 정보의 Client ID 와 Client Secret 을 붙여 넣어 주세요. 하루 25,000번까지 무료예요.</p>
+<p>지금 <?= $searchOn ? 'Client ID <code>····' . h(substr($searchId, -4)) . '</code>' : '<b>열쇠 없음</b>' ?></p>
+<form method="post" autocomplete="off"><?= $hidden('naver_search_key') ?>
+<label>Client ID <input name="id" required autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+<label>Client Secret <input name="secret" type="password" required autocomplete="off" spellcheck="false"></label>
+<button type="submit">저장하고 확인</button></form>
+<?php if ($searchOn): ?>
+<form method="post" class="row"><?= $hidden('naver_search_status') ?><span class="hint"><?= $searchNote ? '마지막 확인 ' . h(kst($searchNote['at'])) . ' · ' . h($searchNote['text']) : '아직 확인한 적 없어요.' ?></span><button type="submit" class="sub">상태 확인</button></form>
+<form method="post" class="row"><?= $hidden('naver_search_clear') ?><span class="hint">지우면 장소 검색은 주소로만 찾아요.</span><button type="submit" class="sub">열쇠 지우기</button></form>
 <?php endif; ?>
 </fieldset>
 </details>

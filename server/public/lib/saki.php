@@ -27,13 +27,20 @@ const TALK_SAKI_APP = 'SAKi Talk: 가족·친구 10명 안쪽이 쓰는 광고 �
     . '친구 프로필의 1:1 대화, 채팅 탭의 + (새 채팅방)에서 한 명을 고르면 1:1, 여러 명이면 단체방. '
     . '글·사진(14일 보관)·영상(3일 보관, 60초까지) 보내기. 사진·영상은 휴대폰에서 줄여서 올림. 사진은 고른 뒤 보내기 전에 크게 보며 빼거나 "편집"(자르기·돌리기·펜으로 그리기·되돌리기)할 수 있음. '
     . '사진을 여러 장 고르면 한 묶음(30장까지)으로 가서 채팅에 콜라주와 장수가 보이고, 누르면 좌우로 넘겨 봄(위에 현재장/총장수), 크게 본 사진은 두 손가락으로 확대·축소, 두 번 누르면 확대·원래대로. 방 설정(☰) 맨 위 "채팅방 사진 보기"에서 이 방 사진을 격자로 모아 보고 눌러 크게·좌우로 넘김. '
-    . '메시지를 길게 누르면 반응·답장·복사·전달·공지로 올리기·삭제(한 줄에 두 개씩), 말풍선을 좌우로 밀어도 바로 답장. 전달은 같은 그룹의 채팅방이나 친구 이름으로만(다른 그룹으로는 안 됨), 크게 본 사진을 길게 눌러 그 한 장만 전달·저장도 됨. 방 안 검색, 입력 중 표시, 메시지 옆 읽지 않은 사람 수. '
+    . '메시지를 길게 누르면 반응·답장·복사·전달·공지로 올리기·삭제(한 줄에 두 개씩), 말풍선을 좌우로 밀어도 바로 답장. 전달은 같은 그룹의 채팅방이나 친구 이름으로만(다른 그룹으로는 안 됨), 크게 본 사진을 길게 눌러 그 한 장만 전달·저장도 됨. 방 안 검색, 입력 중 표시, 읽지 않은 사람 수. '
+    . '입력칸 + 에서 사진·영상, "내 위치"(동 이름·지도와 함께), "장소 검색"(가게·주소, 네이버). 장소 말풍선을 누르면 네이버 지도 앱·길찾기·주소 복사. '
     . '웹 푸시 알림: 방마다 알림 끄기, 설정 탭의 "정신병 방지(연속알림 차단)"를 켜면 한 방에 1분 안에 3개 이상 몰아서 올라올 때부터 조용히 받음. '
     . '방 설정에서 방 사진·이름 바꾸기·친구 초대·나가기, 프로필에서 사진·닉네임 바꾸기. 설정 탭 "채팅방 꾸미기"에서 내 말풍선 색(다른 사람 화면에도 그 색으로 보임, 보는 사람이 "친구가 정한 색으로 보기"를 끄면 자기가 고른 상대 말풍선 색), 배경 색·배경화면 사진(기기마다). 설정 탭 "개인설정" 안에 초대 코드 넣기(다른 그룹 들어가기)·비밀번호 바꾸기·사키 프로필 사진(자기 화면에서만 사키가 그 사진으로 보임, 안 정하면 기본). 채팅 목록 맨 위에 공지사항(바뀐 점). 새 버전은 저절로 새로고침. '
     . '사키: 단체방 설정에서 방장·관리자가 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·반응 달기를 정함. '
     . '방 사람마다 "사키에게 알려 줄 관계"를 적을 수 있음. "사키 기억"을 켜면(기본 끔) 대화를 조금씩 기억하고 날마다 방 일기를 씀, 기억과 일기는 방 설정에서 방 사람 누구나 고치거나 지움. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
     . '"사키야 오늘 무슨 얘기 했어?"처럼 요약·정리를 부탁하면 오늘 대화를 요약함. "사키야 매뉴얼 보여줘"면 사용법 페이지 링크. '
     . '사키는 하루 쓸 수 있는 양이 정해져 있어 다 쓰면 그날은 쉼. 관리자는 일래.';
+
+// 위치·장소 메시지를 사키에게 보일 한 줄
+function talk_saki_place_text(string $body): string {
+    $b = json_decode($body, true) ?: [];
+    return '(' . (!empty($b['here']) ? '내 위치' : '장소') . ': ' . trim(($b['name'] ?? '') . ' ' . ($b['road'] ?: ($b['addr'] ?? ''))) . ')';
+}
 
 // 자동 검증용: php -S 를 띄울 때만 주는 환경 변수 (가짜 Lite 서버 주소, http 허용)
 function talk_saki_test_url(): string { return (string)getenv('TALK_SAKI_TEST_URL'); }
@@ -271,7 +278,7 @@ function talk_saki_chime_due(PDO $pdo, int $roomId, int $bot, int $gapMin): bool
 // → [메시지들, 요약 기간 이름]
 function talk_saki_context(PDO $pdo, int $roomId, int $bot, bool $summary = false): array {
     $sql = "SELECT m.user_id, m.kind, m.body, m.created_at, COALESCE(u.nick, u.name) AS who FROM talk_messages m LEFT JOIN talk_users u ON u.id = m.user_id
-        WHERE m.room_id = ? AND m.kind IN ('text', 'photo', 'video')";
+        WHERE m.room_id = ? AND m.kind IN ('text', 'photo', 'video', 'place')";
     $range = '';
     if ($summary) {
         $day = talk_saki_day();
@@ -294,7 +301,7 @@ function talk_saki_context(PDO $pdo, int $roomId, int $bot, bool $summary = fals
     $out = [];
     $chars = 0;
     foreach ($st->fetchAll() as $m) { // 최근 → 오래된 순서로 담고 나중에 뒤집음
-        $text = $m['kind'] === 'photo' ? '(사진)' : ($m['kind'] === 'video' ? '(영상)' : mb_substr((string)$m['body'], 0, 600));
+        $text = $m['kind'] === 'photo' ? '(사진)' : ($m['kind'] === 'video' ? '(영상)' : ($m['kind'] === 'place' ? talk_saki_place_text((string)$m['body']) : mb_substr((string)$m['body'], 0, 600)));
         if ($summary && $out && ($chars += mb_strlen($text)) > TALK_SAKI_SUMMARY_CHARS) break;
         $one = ['name' => mb_substr((string)($m['who'] ?? '나간 사람'), 0, 20) ?: '나간 사람', 'text' => $text,
             'at' => gmdate('H:i', strtotime($m['created_at'] . ' UTC') + 9 * 3600)];

@@ -11,6 +11,7 @@ require __DIR__ . '/lib/push.php';
 require __DIR__ . '/lib/media.php';
 require __DIR__ . '/lib/notices.php';
 require __DIR__ . '/lib/saki.php';
+require __DIR__ . '/lib/naver.php';
 
 header('X-Robots-Tag: noindex');
 
@@ -75,6 +76,8 @@ $photoBody = function (): array {
 
 // 사진·영상 내려 주기 (로그인 없이 무작위 열쇠로: <img>·<video> 는 머리를 못 붙임)
 if (preg_match('#^media/([a-f0-9]{32})(/thumb)?$#', $route, $mm)) talk_media_serve($pdo, $cfg, $mm[1], !empty($mm[2]));
+// 위치·장소 메시지의 지도 사진
+if (preg_match('#^map/([a-f0-9]{24})$#', $route, $mm)) talk_map_serve($pdo, $mm[1]);
 
 // ───── 로그인 없이 ─────
 if ($route === 'auth/login') {
@@ -127,7 +130,7 @@ $uid = $me['id'];
 
 switch ($route) {
     case 'me':
-        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'saki_photo' => $me['saki_photo'], 'bubble' => $me['bubble'], 'is_admin' => $me['is_admin'], 'push_quiet' => $me['push_quiet']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
+        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'saki_photo' => $me['saki_photo'], 'bubble' => $me['bubble'], 'is_admin' => $me['is_admin'], 'push_quiet' => $me['push_quiet']], 'naver' => ['map' => talk_naver_ready($cfg), 'search' => talk_naver_search_ready($cfg) || talk_naver_ready($cfg)], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
 
     case 'me/nick':
         $need('POST');
@@ -184,6 +187,19 @@ switch ($route) {
         $b = talk_body();
         $idx = isset($b['index']) && $b['index'] !== null ? (int)$b['index'] : null;
         talk_json(['ok' => true, 'messages' => talk_forward($pdo, $cfg, $uid, (int)($b['id'] ?? 0), $idx, (array)($b['room_ids'] ?? []), (array)($b['user_ids'] ?? []))]);
+
+    case 'place/lookup':
+        // 내 위치 보내기 전 미리 보기: 좌표 → 동 이름·주소
+        $need('POST');
+        $b = talk_body();
+        talk_json(['ok' => true, 'place' => talk_place_lookup($cfg, (float)($b['lat'] ?? 0), (float)($b['lng'] ?? 0))]);
+
+    case 'place/search':
+        talk_json(['ok' => true, 'places' => talk_place_search($cfg, (string)$q('q', ''))]);
+
+    case 'place/send':
+        $need('POST');
+        talk_json(['ok' => true, 'message' => talk_place_send($pdo, $cfg, $uid, talk_body())]);
 
     case 'rooms/photos':
         talk_json(['ok' => true, 'messages' => talk_room_photos($pdo, $uid, (int)$q('room_id', 0))]);

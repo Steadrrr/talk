@@ -7,6 +7,7 @@ import { html, Avatar, time, dateLine } from './html.js';
 import { state, roomTitle, sortedRooms, forward, roomPhotos, isHidden, person, photoOf } from './store.js';
 import { mediaUrl, mediaItems, saveMedia } from './media.js';
 import { nickOf } from './names.js';
+import { PlaceCard, placeInfo } from './place.js';
 
 // 길게 누르기(0.5초): 손가락을 떼기 전에 메뉴. 그냥 누르면 onTap. 움직이면(스크롤·넘기기) 취소
 export function useLongPress(onLong, onTap) {
@@ -249,6 +250,7 @@ export function MenuPreview({ m, item, mine, style, name }) {
   const media = m.kind === 'photo' || m.kind === 'video';
   let body;
   if (item) body = html`<img class="pv-media" src=${mediaUrl(item.key)} alt="" />`;
+  else if (m.kind === 'place') body = html`<${PlaceCard} p=${placeInfo(m)} m=${m} />`;
   else if (!media) body = html`<div class="bubble" style=${style}>${m.body}</div>`;
   else {
     const items = viewItems(m);
@@ -359,7 +361,7 @@ export function ForwardSheet({ m, index = null, onClose }) {
     setBusy(true); setErr('');
     try { await forward(m, index, pickRooms, pickUsers); setDone(true); setTimeout(onClose, 900); } catch (e) { setErr(e.message || '전달하지 못했어요.'); } finally { setBusy(false); }
   }
-  const what = m.kind === 'photo' ? (index === null && mediaItems(m).length > 1 ? `사진 ${viewItems(m).length}장` : '사진') : m.kind === 'video' ? '동영상' : '메시지';
+  const what = m.kind === 'photo' ? (index === null && mediaItems(m).length > 1 ? `사진 ${viewItems(m).length}장` : '사진') : m.kind === 'video' ? '동영상' : m.kind === 'place' ? '장소' : '메시지';
   return html`
     <div class="sheet-bg top" onClick=${backdrop}>
       <div class="sheet forward-sheet">

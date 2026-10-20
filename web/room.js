@@ -1,13 +1,14 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, time, dateLine, dayKey } from './html.js';
-import { state, photoOf, roomTitle, loadOlder, send, sendMedia, sendAlbum, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
+import { state, photoOf, roomTitle, loadOlder, send, sendMedia, sendAlbum, sendPlace, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
 import { mediaUrl, mediaInfo, mediaItems, saveMedia } from './media.js';
 import { useLongPress, useBackdrop, Collage, MediaViewer, Gallery, ForwardSheet, MenuPreview, viewItems } from './gallery.js';
 import { nickOf } from './names.js';
 import { bubbleStyle } from './chattheme.js';
 import { RoomSettings } from './roomsettings.js';
 import { SendPreview } from './photoedit.js';
+import { PlaceBubble, PlaceSheet, AttachSheet, HereSheet, PlaceSearch, placeInfo } from './place.js';
 
 export function Room({ id, onBack }) {
   const room = state.rooms[id];
@@ -26,6 +27,8 @@ export function Room({ id, onBack }) {
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState(null); // 보내기 전에 보는 사진들 (편집 가능)
+  const [attach, setAttach] = useState('');   // ＋ 메뉴: 'menu' | 'here' (내 위치) | 'search' (장소 검색)
+  const [place, setPlace] = useState(null);   // 눌러서 연 장소 메시지
   const input = useRef(null);           // 지금 쓰는 입력칸 (아래 두 칸 중 하나)
   const boxes = [useRef(null), useRef(null)];
   const [cur, setCur] = useState(0);
@@ -273,6 +276,7 @@ export function Room({ id, onBack }) {
         <div class="msg-col">
           <div class="msg-line">
             ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig({ items: viewItems(m), start: 0 })} onMenu=${() => setMenu(m)} />`
+              : m.kind === 'place' ? html`<${PlaceBubble} m=${m} onOpen=${() => setPlace(m)} onMenu=${() => setMenu(m)} />`
               : m.kind === 'deleted' ? html`<div class="bubble gone">삭제된 메시지예요</div>`
               : html`<${TextBubble} m=${m} names=${names} style=${mine ? null : bubbleStyle(byId.get(m.user_id))} onMenu=${() => setMenu(m)} onJump=${jumpTo} />`}
             <div class="meta">
@@ -283,7 +287,7 @@ export function Room({ id, onBack }) {
           </div>
           ${m.kind === 'text' && m.links?.length > 0 && html`<${LinkCards} links=${m.links} />`}
           ${m.kind !== 'deleted' && m.reactions?.length > 0 && html`<${Reactions} m=${m} names=${names} />`}
-          ${m.failed && html`<div class="fail"><button class="del" onClick=${() => confirm('보내지 못한 것을 지울까요?') && discard(id, m)}>지우기</button><button class="retry" onClick=${() => m.kind === 'text' ? send(id, null, m) : m.album ? sendAlbum(id, null, m) : sendMedia(id, null, m)}>재전송</button></div>`}
+          ${m.failed && html`<div class="fail"><button class="del" onClick=${() => confirm('보내지 못한 것을 지울까요?') && discard(id, m)}>지우기</button><button class="retry" onClick=${() => m.kind === 'text' ? send(id, null, m) : m.kind === 'place' ? sendPlace(id, null, m) : m.album ? sendAlbum(id, null, m) : sendMedia(id, null, m)}>재전송</button></div>`}
         </div>
       </div>` });
   });
@@ -319,7 +323,7 @@ export function Room({ id, onBack }) {
           <button class="icon" onClick=${() => setReplyTo(null)} aria-label="답장 그만두기">✕</button>
         </div>`}
       <div class="composer" onPointerDown=${onGap} onClick=${onGap}>
-        <label class="attach" aria-label="사진·영상 보내기">＋<input type="file" accept="image/*,video/*" multiple hidden onChange=${pickFiles} /></label>
+        <button type="button" class="attach" onClick=${() => setAttach('menu')} aria-label="사진·위치 보내기">＋</button>
         <div class="msg-box">
           ${boxes.map((r, i) => html`
             <div key=${i} ref=${r} class=${'msg-input' + (i === cur ? (text ? '' : ' blank') : ' spare')} contentEditable=${CE} role="textbox" aria-multiline="true" aria-label="메시지" data-placeholder="메시지"
@@ -333,6 +337,10 @@ export function Room({ id, onBack }) {
       ${big && html`<${MediaViewer} items=${big.items} start=${big.start} names=${names} onClose=${() => setBig(null)} />`}
       ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => setPhotos(false)} />`}
       ${picked && html`<${SendPreview} files=${picked} onSend=${sendPhotos} onClose=${() => setPicked(null)} />`}
+      ${attach === 'menu' && html`<${AttachSheet} onFiles=${pickFiles} onHere=${() => setAttach('here')} onSearch=${() => setAttach('search')} onClose=${() => setAttach('')} />`}
+      ${attach === 'here' && html`<${HereSheet} roomId=${id} onSent=${() => { atBottom.current = true; setAttach(''); }} onClose=${() => setAttach('')} />`}
+      ${attach === 'search' && html`<${PlaceSearch} roomId=${id} onSent=${() => { atBottom.current = true; setAttach(''); }} onClose=${() => setAttach('')} />`}
+      ${place && html`<${PlaceSheet} m=${place} onClose=${() => setPlace(null)} />`}
       ${fwd && html`<${ForwardSheet} m=${fwd} onClose=${() => setFwd(null)} />`}
       ${searching && html`<${RoomSearch} roomId=${id} names=${names} onClose=${() => setSearching(false)} onPick=${goTo} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} onPhotos=${() => { setSettings(false); setPhotos(true); }} />`}
@@ -445,7 +453,7 @@ function keepTop(e) {
 const CE = (() => { try { const d = document.createElement('div'); d.contentEditable = 'plaintext-only'; return d.contentEditable === 'plaintext-only' ? 'plaintext-only' : 'true'; } catch { return 'true'; } })();
 
 // 답장 미리보기 한 줄
-const replyPreview = (r) => r.kind === 'photo' ? '사진' : r.kind === 'video' ? '동영상' : r.kind === 'deleted' ? '삭제된 메시지' : r.body;
+const replyPreview = (r) => r.kind === 'photo' ? '사진' : r.kind === 'video' ? '동영상' : r.kind === 'place' ? '📍 장소' : r.kind === 'deleted' ? '삭제된 메시지' : r.body;
 
 // 글 말풍선: 길게 누르면 메뉴, 답장이면 위에 원래 글
 function TextBubble({ m, names, style, onMenu, onJump }) {
@@ -489,7 +497,9 @@ function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onForward 
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const media = m.kind === 'photo' || m.kind === 'video';
-  const what = m.kind === 'photo' ? '사진을' : m.kind === 'video' ? '영상을' : '메시지를';
+  const isPlace = m.kind === 'place';
+  const what = m.kind === 'photo' ? '사진을' : m.kind === 'video' ? '영상을' : isPlace ? '장소를' : '메시지를';
+  const copyText = isPlace ? (() => { const p = placeInfo(m); return p.road || p.addr || `${p.lat}, ${p.lng}`; })() : m.body;
   async function run(label, fn) {
     setErr(''); setBusy(label);
     try { await fn(); onClose(); } catch (e) { setErr(e.message || '하지 못했어요.'); } finally { setBusy(''); }
@@ -507,9 +517,9 @@ function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onForward 
         ${err && html`<p class="err">${err}</p>`}
         <div class="action-grid">
         <button onClick=${onReply}>답장</button>
-        ${!media && html`<button onClick=${() => run('copy', () => navigator.clipboard.writeText(m.body))}>복사</button>`}
+        ${!media && html`<button onClick=${() => run('copy', () => navigator.clipboard.writeText(copyText))}>${isPlace ? '주소 복사' : '복사'}</button>`}
         ${!gone && html`<button onClick=${onForward}>전달</button>`}
-        ${!media && html`<button onClick=${() => run('notice', () => setNotice(m.room_id, isNotice ? 0 : m.id))} disabled=${!!busy}>${isNotice ? '공지 내리기' : '공지로 올리기'}</button>`}
+        ${m.kind === 'text' && html`<button onClick=${() => run('notice', () => setNotice(m.room_id, isNotice ? 0 : m.id))} disabled=${!!busy}>${isNotice ? '공지 내리기' : '공지로 올리기'}</button>`}
         ${media && !gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
         <button class="danger" onClick=${() => confirm(`이 ${what} 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
         ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what} 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}
