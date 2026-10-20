@@ -1,4 +1,4 @@
-// 채팅방 관리: 채팅방 공지(상단 공지·일정 공지) → 채팅방 설정(사진·방 이름·사키·알림·위에 고정) → 대화 상대(초대) → 나가기
+// 채팅방 관리: 채팅방 공지(누르면 상단 공지·일정 공지 화면) → 채팅방 설정(방 사진·방 이름·알림·위에 고정) → 사진·영상(모아보기) → 사키 설정 → 대화 상대(초대) → 나가기
 import { useState, useEffect } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
@@ -14,8 +14,7 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [viewing, setViewing] = useState(false);
-  const [sched, setSched] = useState(null); // 일정 올리기({}) ·고치기(일정)
-  const [place, setPlace] = useState(null); // 일정 장소 누르면 지도 시트
+  const [noticeOpen, setNoticeOpen] = useState(false); // 채팅방 공지 화면 (상단 공지·일정 공지)
   const [sakiOpen, setSakiOpen] = useState(false); // 사키 설정 화면
   const schedules = upcoming(room.schedules);
   const isGroup = room.kind === 'group';
@@ -71,24 +70,9 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
           ${err && html`<p class="err pad">${err}</p>`}
           ${msg && html`<p class="ok pad">${msg}</p>`}
           <h2 class="manage-head">채팅방 공지</h2>
-          <div class="section">
-            <h3>상단 공지</h3>
-            ${room.notice
-              ? html`<div class="manage-card manage-notice"><div class="notice-full-text">📢 ${room.notice.body}</div>
-                  <div class="manage-btns"><span class="hint small grow">${room.notice.by}님이 올린 공지</span>
-                    <button class="text dim" onClick=${() => confirm('공지를 내릴까요? 모두에게서 사라져요.') && run(() => setNotice(room.id, 0), '공지를 내렸어요.')}>공지 내리기</button></div></div>`
-              : html`<p class="hint">메시지를 길게 눌러 "공지 설정"을 고르면 방 위쪽에 걸려요.</p>`}
-          </div>
-          <div class="section">
-            <h3>일정 공지 ${schedules.length || ''}</h3>
-            ${schedules.length > 0 && html`<div class="manage-card"><ul class="schedule-list">
-              ${schedules.map((x) => html`<${ScheduleItem} s=${x} onPlace=${setPlace}>
-                <div class="manage-btns"><button class="text" onClick=${() => setSched(x)}>고치기</button></div></${ScheduleItem}>`)}
-            </ul></div>`}
-            <button class="text left" onClick=${() => setSched({})}>＋ 일정 추가</button>
-          </div>
+          <button class="person notice-open" onClick=${() => setNoticeOpen(true)}><span class="avatar multi" style="width:52px;height:52px;font-size:24px">📢</span>
+            <span class="grow"><b>채팅방 공지</b><br /><span class="hint small">${[room.notice ? '상단 공지 있음' : '상단 공지 없음', schedules.length ? `일정 ${schedules.length}개` : '일정 없음'].join(' · ')}</span></span><span class="hint">›</span></button>
           <h2 class="manage-head">채팅방 설정</h2>
-          <button class="person photos-open" onClick=${onPhotos}><span class="avatar multi" style="width:52px;height:52px;font-size:24px">🖼️</span><span class="grow">채팅방 사진 보기</span><span class="hint">›</span></button>
           <div class="section room-photo">
             ${room.photo
               ? html`<button class="tap" onClick=${() => setViewing(true)} aria-label="사진 크게 보기"><${Avatar} photo=${room.photo} size=${88} /></button>
@@ -122,6 +106,8 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
             <label class="switch-row"><span class="grow">대화 목록 위에 고정</span>
               <input type="checkbox" class="switch" checked=${!!room.pinned} onChange=${(e) => run(() => roomPrefs(room.id, { pinned: e.target.checked }))} /></label>
           </div>
+          <h2 class="manage-head">사진·영상</h2>
+          <button class="person photos-open" onClick=${onPhotos}><span class="avatar multi" style="width:52px;height:52px;font-size:24px">🖼️</span><span class="grow">채팅방 사진 보기</span><span class="hint">›</span></button>
           ${showSaki && html`
             <h2 class="manage-head">사키</h2>
             <button class="person saki-open" onClick=${() => setSakiOpen(true)}><span class="avatar multi" style="width:52px;height:52px;font-size:24px">🤖</span>
@@ -142,14 +128,54 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
       </div>
       ${draft && html`<${PhotoCrop} img=${draft} size=${640} title=${room.photo ? '이 사진으로 바꿀까요? 현재 사진은 삭제됩니다.' : '채팅방 사진으로 할까요?'} busy=${busy} onCancel=${() => setDraft(null)} onOk=${confirmPhoto} />`}
       ${sakiOpen && html`<${SakiPage} room=${room} onClose=${() => setSakiOpen(false)} />`}
-      ${sched && html`<${ScheduleSheet} roomId=${room.id} edit=${sched.id ? sched : null} onClose=${() => setSched(null)} />`}
-      ${place && html`<${PlaceSheet} m=${{ body: JSON.stringify(place) }} onClose=${() => setPlace(null)} />`}
+      ${noticeOpen && html`<${NoticePage} room=${room} onClose=${() => setNoticeOpen(false)} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
     </div>
   `;
 }
 
 const PERSONALITIES = [['calm', '차분'], ['lively', '활발'], ['quiet', '조용'], ['tsundere', '츤데레']];
+// 채팅방 공지 화면: 채팅방 관리에서 눌러 들어감. 상단 공지(내리기)와 일정 공지(추가·고치기·내리기)
+function NoticePage({ room, onClose }) {
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+  const [sched, setSched] = useState(null); // 일정 올리기({}) ·고치기(일정)
+  const [place, setPlace] = useState(null); // 일정 장소 누르면 지도 시트
+  const schedules = upcoming(room.schedules);
+  const run = async (fn, done = '') => {
+    setErr(''); setMsg('');
+    try { await fn(); if (done) setMsg(done); } catch (e) { setErr(e.message); }
+  };
+  return html`
+    <div class="sheet-bg" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="sheet notice-page">
+        <header class="bar"><button class="icon" onClick=${onClose} aria-label="뒤로">‹</button><h2 class="ellipsis">채팅방 공지</h2></header>
+        <div class="scroll">
+          ${err && html`<p class="err pad">${err}</p>`}
+          ${msg && html`<p class="ok pad">${msg}</p>`}
+          <div class="section">
+            <h3>상단 공지</h3>
+            ${room.notice
+              ? html`<div class="manage-card manage-notice"><div class="notice-full-text">📢 ${room.notice.body}</div>
+                  <div class="manage-btns"><span class="hint small grow">${room.notice.by}님이 올린 공지</span>
+                    <button class="text dim" onClick=${() => confirm('공지를 내릴까요? 모두에게서 사라져요.') && run(() => setNotice(room.id, 0), '공지를 내렸어요.')}>공지 내리기</button></div></div>`
+              : html`<p class="hint">메시지를 길게 눌러 "공지 설정"을 고르면 방 위쪽에 걸려요.</p>`}
+          </div>
+          <div class="section">
+            <h3>일정 공지 ${schedules.length || ''}</h3>
+            ${schedules.length > 0 && html`<div class="manage-card"><ul class="schedule-list">
+              ${schedules.map((x) => html`<${ScheduleItem} s=${x} onPlace=${setPlace}>
+                <div class="manage-btns"><button class="text" onClick=${() => setSched(x)}>고치기</button></div></${ScheduleItem}>`)}
+            </ul></div>`}
+            <button class="text left" onClick=${() => setSched({})}>＋ 일정 추가</button>
+          </div>
+        </div>
+      </div>
+      ${sched && html`<${ScheduleSheet} roomId=${room.id} edit=${sched.id ? sched : null} onClose=${() => setSched(null)} />`}
+      ${place && html`<${PlaceSheet} m=${{ body: JSON.stringify(place) }} onClose=${() => setPlace(null)} />`}
+    </div>`;
+}
+
 // 채팅방 관리의 "사키 설정" 줄에 보이는 지금 상태
 function sakiSummary(s) {
   if (!s?.on) return '꺼짐 · 눌러서 초대하기';
