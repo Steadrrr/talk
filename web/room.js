@@ -228,7 +228,7 @@ export function Room({ id, onBack }) {
     const { uid, items } = group;
     const mine = uid === state.me.id;
     const first = items[0];
-    rows.push(mine ? html`<div class="msg-group mine" key=${'g' + (first.id || first.client_id)}>${items.map((x) => x.row)}</div>`
+    rows.push(mine ? html`<div class="msg-group mine" key=${'g' + (first.id || first.client_id)}><div class="who">나</div>${items.map((x) => x.row)}</div>`
       : html`
       <div class="msg-group theirs" key=${'g' + (first.id || first.client_id)}>
         <div class="who tap" onClick=${() => showProfile(uid)}>${names.get(uid) || '나간 사람'}</div>

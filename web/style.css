@@ -131,6 +131,7 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 /* 한 사람이 이어 보낸 묶음: 사진은 말풍선들의 세로 가운데, 대화명은 맨 위에 한 번 */
 .msg-group { margin-top: 8px; }
 .msg-group.theirs > .who { margin-left: 64px; width: fit-content; }
+.msg-group.mine > .who { text-align: right; margin: 0 2px 4px 0; }
 .grp-body { display: flex; gap: 8px; align-items: center; }
 .grp-face { flex: none; align-self: center; }
 .grp-rows { flex: 1; min-width: 0; }
