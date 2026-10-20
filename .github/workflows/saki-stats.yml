@@ -1,0 +1,27 @@
+# 한 번 쓰는 읽기 전용 집계: 집계 파일을 잠깐 올려 읽고 바로 지운다 (main 배포와 무관)
+name: 사키 방별 사용량 집계 (임시)
+on:
+  push:
+    branches: [claude/project-thread-f0mf63]
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FH: ${{ secrets.TALK_FTP_HOST }}
+      FU: ${{ secrets.TALK_FTP_USER }}
+      FP: ${{ secrets.TALK_FTP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 올리기
+        run: |
+          sudo apt-get install -y -q lftp >/dev/null
+          TOKEN=$(openssl rand -hex 16); NAME="_stats_$(openssl rand -hex 8).php"
+          echo "TOKEN=$TOKEN" >> $GITHUB_ENV; echo "NAME=$NAME" >> $GITHUB_ENV
+          sed "s/__TOKEN__/$TOKEN/" .github/stats/saki-stats.php > "$NAME"
+          lftp -u "$FU,$FP" -e "set ssl:verify-certificate no; cd /www/talk; put $NAME; bye" "$FH"
+      - name: 읽기
+        run: curl -sS -m 60 "https://mysaki.mycafe24.com/talk/$NAME?t=$TOKEN"
+      - name: 지우기
+        if: always()
+        run: lftp -u "$FU,$FP" -e "set ssl:verify-certificate no; cd /www/talk; rm -f $NAME; cls -1 _stats_*; bye" "$FH" || true
