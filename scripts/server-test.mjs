@@ -81,7 +81,21 @@ const liteServer = http.createServer((rq, rs) => {
 await new Promise((r) => liteServer.listen(0, '127.0.0.1', r));
 const LITE_URL = `http://127.0.0.1:${liteServer.address().port}/saki/api.php/`;
 
-const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX, TALK_SAKI_TEST_URL: LITE_URL } });
+// 가짜 네이버 지도 Reverse Geocoding: 열쇠 머리를 확인하고 공식 응답 모양(results[].region.area1~3)을 돌려준다
+const NAVER = { id: 'testClientId1234', secret: 'testClientSecretABCDEFG' };
+const naverCalls = [];
+const naverServer = http.createServer((rq, rs) => {
+  const u = new URL(rq.url, 'http://x');
+  naverCalls.push({ path: u.pathname, coords: u.searchParams.get('coords') });
+  const send = (code, body) => { rs.writeHead(code, { 'Content-Type': 'application/json' }); rs.end(JSON.stringify(body)); };
+  if (rq.headers['x-ncp-apigw-api-key-id'] !== NAVER.id || rq.headers['x-ncp-apigw-api-key'] !== NAVER.secret) return send(401, { error: { errorCode: '200', message: 'Authentication Failed' } });
+  if (u.pathname !== '/map-reversegeocode/v2/gc') return send(404, { error: { message: 'Not Found' } });
+  send(200, { status: { code: 0, name: 'ok', message: 'done' }, results: [{ name: 'legalcode', region: { area0: { name: 'kr' }, area1: { name: '서울특별시' }, area2: { name: '중구' }, area3: { name: '태평로1가' }, area4: { name: '' } } }] });
+});
+await new Promise((r) => naverServer.listen(0, '127.0.0.1', r));
+const NAVER_URL = `http://127.0.0.1:${naverServer.address().port}/`;
+
+const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX, TALK_SAKI_TEST_URL: LITE_URL, TALK_NAVER_TEST_URL: NAVER_URL } });
 let phpLog = '';
 php.stderr.on('data', (d) => { phpLog += d; });
 
@@ -168,6 +182,21 @@ try {
     const html = await (await req('/setup.php')).text();
     return (await req('/setup.php', form({ csrf: csrfOf(html), ...data }))).text();
   };
+
+  await t('관리 화면: 네이버 지도 열쇠 저장·확인·지우기 (열쇠는 다시 안 보임)', async () => {
+    let html = await adminPost({ act: 'naver_key', id: 'bad id', secret: 'x' });
+    assert.match(html, /모양이 아니에요/);
+    html = await adminPost({ act: 'naver_key', id: NAVER.id, secret: 'wrongSecret12345' });
+    assert.match(html, /맞지 않아요/);
+    html = await adminPost({ act: 'naver_key', id: NAVER.id, secret: NAVER.secret });
+    assert.match(html, /잘 됨 \(서울시청 → 서울특별시 중구 태평로1가\)/);
+    assert.ok(!html.includes(NAVER.secret) && !html.includes(NAVER.id), '열쇠가 화면에 나오면 안 됨');
+    assert.match(html, /열쇠 ····1234/);
+    assert.equal(naverCalls.at(-1).coords, '126.9783882,37.5666103');
+    html = await adminPost({ act: 'naver_key_clear' });
+    assert.match(html, /네이버 지도 열쇠를 지웠어요/);
+    assert.match(html, /네이버 지도 <span class="hint">열쇠 없음/);
+  });
   const inviteOf = (html) => html.match(/초대 코드 <code>([A-Z0-9]{8})<\/code>/)[1];
   const api = async (p, body, token) => {
     const headers = token ? { 'X-Talk-Token': token } : {};
@@ -1261,5 +1290,6 @@ try {
   php.kill();
   pushServer.close();
   liteServer.close();
+  naverServer.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 }

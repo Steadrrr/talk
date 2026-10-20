@@ -13,6 +13,7 @@ require __DIR__ . '/lib/push.php';
 require __DIR__ . '/lib/notices.php';
 require __DIR__ . '/lib/backup.php';
 require __DIR__ . '/lib/saki.php';
+require __DIR__ . '/lib/naver.php';
 
 // DB 시각(UTC) → 한국 시간으로 보여 주기 (한국은 서머타임 없음)
 function kst(?string $utc): string { return $utc ? gmdate('Y-m-d H:i:s', strtotime($utc . ' UTC') + 9 * 3600) : ''; }
@@ -244,6 +245,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             $msg = 'SAKi Lite 열쇠를 지웠어요. 사키를 초대한 방에서도 사키가 조용히 쉬어요.';
         } elseif ($act === 'saki_status') {
             $msg = 'SAKi Lite 상태: ' . talk_saki_status_text(talk_saki_check($pdo, $cfg));
+        } elseif ($act === 'naver_key') {
+            // 네이버 지도 Client ID·Secret: 네이버 클라우드 콘솔 Maps → Application 인증 정보. 설정 파일에만 두고 다시 보여 주지 않는다
+            $id = trim((string)($_POST['id'] ?? ''));
+            $secret = trim((string)($_POST['secret'] ?? ''));
+            if (!preg_match('/^[A-Za-z0-9_-]{4,100}$/', $id) || !preg_match('/^[A-Za-z0-9_-]{8,200}$/', $secret)) throw new RuntimeException('Client ID·Secret 모양이 아니에요. 네이버 클라우드 콘솔의 인증 정보에서 그대로 복사해 주세요.');
+            $cfg['naver_map_id'] = $id;
+            $cfg['naver_map_secret'] = $secret;
+            talk_write_config($cfg['private_dir'], $cfg);
+            $msg = '네이버 지도 열쇠를 저장했어요. 확인 결과: ' . talk_naver_check($pdo, $cfg);
+        } elseif ($act === 'naver_key_clear') {
+            unset($cfg['naver_map_id'], $cfg['naver_map_secret']);
+            talk_write_config($cfg['private_dir'], $cfg);
+            talk_meta_set($pdo, 'naver_status', '');
+            $msg = '네이버 지도 열쇠를 지웠어요.';
+        } elseif ($act === 'naver_status') {
+            $msg = '네이버 지도 상태: ' . talk_naver_check($pdo, $cfg);
         } elseif ($act === 'backup_txt' || $act === 'backup_json') {
             talk_backup_download($pdo, $act === 'backup_json' ? 'json' : 'txt');
         }
@@ -436,6 +453,22 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 </fieldset>
 <form method="post" class="row"><?= $hidden('saki_status') ?><span class="hint"><?= $sakiNote ? '마지막 ' . h($sakiNote['what'] === 'status' ? '상태 확인' : '대답') . ' ' . h(kst($sakiNote['at'])) . ' · ' . h(talk_saki_status_text($sakiNote)) : '아직 부른 적 없어요.' ?></span><button type="submit" class="sub">상태 확인</button></form>
 <form method="post" class="row"><?= $hidden('saki_key_clear') ?><span class="hint">열쇠를 지우면 사키가 모든 방에서 조용히 쉬어요.</span><button type="submit" class="sub">열쇠 지우기</button></form>
+<?php endif; ?>
+</fieldset>
+</details>
+
+<?php $naverId = (string)($cfg['naver_map_id'] ?? ''); $naverOn = talk_naver_ready($cfg); $naverNote = json_decode((string)talk_meta_get($pdo, 'naver_status'), true); ?>
+<details class="menu" id="m-naver"><summary>네이버 지도 <span class="hint"><?= $naverOn ? '열쇠 ····' . h(substr($naverId, -4)) : '열쇠 없음' ?></span></summary>
+<fieldset><legend>네이버 지도 열쇠</legend>
+<p class="hint">위치 보내기에서 "OO동" 이름과 지도를 받아 올 때 써요. 네이버 클라우드 콘솔 → Services → Application Services → Maps → Application 의 "인증 정보"에 있는 Client ID 와 Client Secret 을 붙여 넣어 주세요. Application 에는 Reverse Geocoding·Static Map·Dynamic Map 을 체크하고, Web 서비스 URL 에 <code>https://mysaki.mycafe24.com</code> 을 넣어 주세요. 저장하면 다시 보여 주지 않아요.</p>
+<p>지금 <?= $naverOn ? 'Client ID <code>····' . h(substr($naverId, -4)) . '</code>' : '<b>열쇠 없음</b>' ?></p>
+<form method="post" autocomplete="off"><?= $hidden('naver_key') ?>
+<label>Client ID <input name="id" required autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+<label>Client Secret <input name="secret" type="password" required autocomplete="off" spellcheck="false"></label>
+<button type="submit">저장하고 확인</button></form>
+<?php if ($naverOn): ?>
+<form method="post" class="row"><?= $hidden('naver_status') ?><span class="hint"><?= $naverNote ? '마지막 확인 ' . h(kst($naverNote['at'])) . ' · ' . h($naverNote['text']) : '아직 확인한 적 없어요.' ?></span><button type="submit" class="sub">상태 확인</button></form>
+<form method="post" class="row"><?= $hidden('naver_key_clear') ?><span class="hint">열쇠를 지우면 위치 보내기에서 동 이름과 지도가 안 나와요.</span><button type="submit" class="sub">열쇠 지우기</button></form>
 <?php endif; ?>
 </fieldset>
 </details>
