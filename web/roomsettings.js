@@ -16,8 +16,10 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
   const [viewing, setViewing] = useState(false);
   const [sched, setSched] = useState(null); // 일정 올리기({}) ·고치기(일정)
   const [place, setPlace] = useState(null); // 일정 장소 누르면 지도 시트
+  const [sakiOpen, setSakiOpen] = useState(false); // 사키 설정 화면
   const schedules = upcoming(room.schedules);
   const isGroup = room.kind === 'group';
+  const showSaki = isGroup && (state.sakiReady || room.saki?.ready || room.saki?.on > 0);
   const inRoom = new Set(room.members.map((m) => m.id));
   const group = state.groups.find((g) => g.id === room.group_id);
   const candidates = (group?.members || []).filter((m) => !inRoom.has(m.id));
@@ -113,7 +115,6 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
               <h3>방 이름 <span class="hint">(모두에게 보여요, 비우면 사람 이름으로)</span></h3>
               <div class="inline"><input value=${name} onInput=${(e) => setName(e.target.value)} maxlength="40" placeholder=${roomTitle({ ...room, name: '' })} /><button class="primary" type="submit" disabled=${name.trim() === (room.name || '')}>저장</button></div>
             </form>`}
-          ${isGroup && (state.sakiReady || room.saki?.ready || room.saki?.on > 0) && html`<${SakiSection} room=${room} run=${run} />`}
           <div class="section">
             <h3>나에게만</h3>
             <label class="switch-row"><span class="grow">새 메시지 알림</span>
@@ -121,6 +122,10 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
             <label class="switch-row"><span class="grow">대화 목록 위에 고정</span>
               <input type="checkbox" class="switch" checked=${!!room.pinned} onChange=${(e) => run(() => roomPrefs(room.id, { pinned: e.target.checked }))} /></label>
           </div>
+          ${showSaki && html`
+            <h2 class="manage-head">사키</h2>
+            <button class="person saki-open" onClick=${() => setSakiOpen(true)}><span class="avatar multi" style="width:52px;height:52px;font-size:24px">🤖</span>
+              <span class="grow"><b>사키 설정</b><br /><span class="hint small">${sakiSummary(room.saki)}</span></span><span class="hint">›</span></button>`}
           <h2 class="manage-head">대화 상대 ${room.members.length}</h2>
           ${room.members.map((m) => html`
             <button class="person" onClick=${() => showProfile(m.id)}><${Avatar} name=${nickOf(m)} id=${m.id} photo=${photoOf(m)} size=${60} /><span>${nickOf(m)}${m.id === state.me.id ? ' (나)' : ''}</span></button>`)}
@@ -136,6 +141,7 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
         </div>
       </div>
       ${draft && html`<${PhotoCrop} img=${draft} size=${640} title=${room.photo ? '이 사진으로 바꿀까요? 현재 사진은 삭제됩니다.' : '채팅방 사진으로 할까요?'} busy=${busy} onCancel=${() => setDraft(null)} onOk=${confirmPhoto} />`}
+      ${sakiOpen && html`<${SakiPage} room=${room} onClose=${() => setSakiOpen(false)} />`}
       ${sched && html`<${ScheduleSheet} roomId=${room.id} edit=${sched.id ? sched : null} onClose=${() => setSched(null)} />`}
       ${place && html`<${PlaceSheet} m=${{ body: JSON.stringify(place) }} onClose=${() => setPlace(null)} />`}
       ${viewing && room.photo && html`<${PhotoViewer} photo=${room.photo} caption=${`${room.photo_by}님이 게시한 사진입니다.`} onClose=${() => setViewing(false)} />`}
@@ -143,8 +149,36 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
   `;
 }
 
-// 사키(SAKi Lite 봇): 단체방에서 방장·관리자가 초대하고 성격·말투·대답 빈도를 정함. 다른 사람은 보기만
 const PERSONALITIES = [['calm', '차분'], ['lively', '활발'], ['quiet', '조용'], ['tsundere', '츤데레']];
+// 채팅방 관리의 "사키 설정" 줄에 보이는 지금 상태
+function sakiSummary(s) {
+  if (!s?.on) return '꺼짐 · 눌러서 초대하기';
+  const p = PERSONALITIES.find(([v]) => v === s.personality)?.[1] || '';
+  return ['켜짐', p, s.polite ? '존댓말' : '', s.freq === 'chime' ? '가끔 끼어들기' : '부를 때만', s.memory ? '기억 켬' : ''].filter(Boolean).join(' · ');
+}
+
+// 사키 설정 화면: 채팅방 관리에서 눌러 들어가는 따로 된 화면 (초대·성격·말투·빈도·반응·기억·관계)
+function SakiPage({ room, onClose }) {
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+  const run = async (fn, done = '') => {
+    setErr(''); setMsg('');
+    try { await fn(); if (done) setMsg(done); } catch (e) { setErr(e.message); }
+  };
+  return html`
+    <div class="sheet-bg" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="sheet saki-page">
+        <header class="bar"><button class="icon" onClick=${onClose} aria-label="뒤로">‹</button><h2 class="ellipsis">사키 설정</h2></header>
+        <div class="scroll">
+          ${err && html`<p class="err pad">${err}</p>`}
+          ${msg && html`<p class="ok pad">${msg}</p>`}
+          <${SakiSection} room=${room} run=${run} />
+        </div>
+      </div>
+    </div>`;
+}
+
+// 사키(SAKi Lite 봇): 단체방에서 방장·관리자가 초대하고 성격·말투·대답 빈도를 정함. 다른 사람은 보기만
 function SakiSection({ room, run }) {
   // 사키가 생기기 전에 받아 둔 방 정보에는 saki 가 없음: 기본값(끔)으로
   const s = room.saki || { on: 0, personality: 'lively', polite: 0, freq: 'called', gap: 10, react: 1 };
