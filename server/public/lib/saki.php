@@ -10,8 +10,8 @@ if (!defined('TALK')) { http_response_code(403); exit; }
 
 const TALK_SAKI_URL = 'https://mysaki.mycafe24.com/saki/api.php/';
 const TALK_SAKI_PERSONALITIES = ['calm' => '차분', 'lively' => '활발', 'quiet' => '조용', 'tsundere' => '츤데레'];
-// 방 설정 기본값: 끔, 활발, 반말, 부를 때만, 끼어들기 최소 간격 10분, 반응 달기 켬
-const TALK_SAKI_DEFAULTS = ['on' => 0, 'personality' => 'lively', 'polite' => 0, 'freq' => 'called', 'gap' => 10, 'react' => 1];
+// 방 설정 기본값: 끔, 활발, 반말, 부를 때만, 끼어들기 최소 간격 10분, 반응 달기 켬, 사키 기억 끔
+const TALK_SAKI_DEFAULTS = ['on' => 0, 'personality' => 'lively', 'polite' => 0, 'freq' => 'called', 'gap' => 10, 'react' => 1, 'memory' => 0];
 const TALK_SAKI_CONTEXT = 30;      // Lite 에 보내는 최근 메시지 수 (Lite 가 받는 최대 30개, 글은 모두 합쳐 약 6000자까지만 읽음)
 const TALK_SAKI_BUSY_SECONDS = 60; // 한 방에 동시에 하나만: 부르는 중 표시가 이보다 오래되면 무효
 const TALK_SAKI_SUMMARY_MAX = 300;      // 하루 요약 때 보내는 메시지 수 (Lite 가 summary 때 받는 최대)
@@ -31,7 +31,7 @@ const TALK_SAKI_APP = 'SAKi Talk: 가족·친구 10명 안쪽이 쓰는 광고 �
     . '웹 푸시 알림: 방마다 알림 끄기, 설정 탭의 "정신병 방지(연속알림 차단)"를 켜면 한 방에 1분 안에 3개 이상 몰아서 올라올 때부터 조용히 받음. '
     . '방 설정에서 방 사진·이름 바꾸기·친구 초대·나가기, 프로필에서 사진·닉네임 바꾸기. 설정 탭 "채팅방 꾸미기"에서 내 말풍선 색(다른 사람 화면에도 그 색으로 보임, 보는 사람이 "친구가 정한 색으로 보기"를 끄면 자기가 고른 상대 말풍선 색), 배경 색·배경화면 사진(기기마다). 설정 탭 "개인설정" 안에 초대 코드 넣기(다른 그룹 들어가기)·비밀번호 바꾸기·사키 프로필 사진(자기 화면에서만 사키가 그 사진으로 보임, 안 정하면 기본). 채팅 목록 맨 위에 공지사항(바뀐 점). 새 버전은 저절로 새로고침. '
     . '사키: 단체방 설정에서 방장·관리자가 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·반응 달기를 정함. '
-    . '방 사람마다 "사키에게 알려 줄 관계"를 적을 수 있음. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
+    . '방 사람마다 "사키에게 알려 줄 관계"를 적을 수 있음. "사키 기억"을 켜면(기본 끔) 대화를 조금씩 기억하고 날마다 방 일기를 씀, 기억과 일기는 방 설정에서 방 사람 누구나 고치거나 지움. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
     . '"사키야 오늘 무슨 얘기 했어?"처럼 요약·정리를 부탁하면 오늘 대화를 요약함. "사키야 매뉴얼 보여줘"면 사용법 페이지 링크. '
     . '사키는 하루 쓸 수 있는 양이 정해져 있어 다 쓰면 그날은 쉼. 관리자는 일래.';
 
@@ -60,6 +60,7 @@ function talk_saki_settings(?string $json): array {
         'freq' => $s['freq'] === 'chime' ? 'chime' : 'called',
         'gap' => max(5, min(120, (int)$s['gap'])),
         'react' => $s['react'] ? 1 : 0,
+        'memory' => $s['memory'] ? 1 : 0,
     ];
 }
 
@@ -109,11 +110,22 @@ function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
         $new['freq'] = $b['freq'];
     }
     if (array_key_exists('gap', $b)) $new['gap'] = max(5, min(120, (int)$b['gap']));
-    foreach (['polite', 'react'] as $k) if (array_key_exists($k, $b)) $new[$k] = $b[$k] ? 1 : 0;
+    foreach (['polite', 'react', 'memory'] as $k) if (array_key_exists($k, $b)) $new[$k] = $b[$k] ? 1 : 0;
     if ($new['on'] && !$old['on'] && !talk_saki_ready()) talk_fail('아직 사키를 부를 수 없어요. 관리자가 관리 화면에 SAKi Lite 열쇠를 넣어야 해요.', 503);
     $bot = talk_saki_bot($pdo);
     $pdo->beginTransaction();
     $pdo->prepare('UPDATE talk_rooms SET saki = ? WHERE id = ?')->execute([json_encode($new), $roomId]);
+    // 사키 기억을 켜면 지금부터의 대화만 기억한다 (예전 대화를 한꺼번에 정리하지 않게). 끌 때 "기억도 지울까요?"에 예면 forget
+    if ($new['memory'] && !$old['memory']) {
+        $st = $pdo->prepare('SELECT COALESCE(MAX(id), 0) FROM talk_messages WHERE room_id = ?');
+        $st->execute([$roomId]);
+        $pdo->prepare("INSERT INTO talk_saki_memory (room_id, memory, upto, day, updated_at) VALUES (?, '', ?, ?, ?)
+            ON DUPLICATE KEY UPDATE upto = VALUES(upto), day = VALUES(day)")->execute([$roomId, (int)$st->fetchColumn(), talk_saki_day(), talk_now()]);
+    }
+    if (!$new['memory'] && !empty($b['forget'])) {
+        $pdo->prepare('DELETE FROM talk_saki_memory WHERE room_id = ?')->execute([$roomId]);
+        $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ?')->execute([$roomId]);
+    }
     if ($new['on'] !== $old['on']) {
         if ($new['on']) {
             $st = $pdo->prepare('SELECT COALESCE(MAX(id), 0) FROM talk_messages WHERE room_id = ?');
@@ -188,10 +200,11 @@ function talk_saki_after_send(PDO $pdo, int $roomId, int $uid, int $msgId, strin
     }
     // "사키야 오늘 무슨 얘기 했어?", "사키 정리해 줘": 하루 요약
     $mode = $called ? (talk_saki_wants_summary($body) ? 'summary' : 'called') : ($s['freq'] === 'chime' ? 'chime' : '');
-    if ($mode === '') return;
     $cfg = talk_config();
     if ((string)($cfg['saki_lite_key'] ?? '') === '') return;
-    talk_after_response(fn() => talk_saki_run($pdo, $cfg, $roomId, $bot, $msgId, $mode, $s, (string)$room['name']));
+    if ($mode !== '') talk_after_response(fn() => talk_saki_run($pdo, $cfg, $roomId, $bot, $msgId, $mode, $s, (string)$room['name']));
+    // 사키 기억 정리는 대답 뒤에 (같은 응답 뒤 일에서 차례로)
+    if ($s['memory']) talk_after_response(fn() => talk_saki_remember($pdo, $cfg, $roomId, $bot, $s, (string)$room['name']));
 }
 
 // 조용할 때 대답 ("가끔 끼어들기" 방): 사람이 글을 올리고 5분 동안 아무도 말이 없으면 그 대화를 보고 한 번 대답한다.
@@ -431,6 +444,7 @@ function talk_saki_run(PDO $pdo, array $cfg, int $roomId, int $bot, int $msgId, 
         ];
         if ($members = talk_saki_members($pdo, $roomId)) $req['members'] = $members;
         if ($mode === 'summary') $req['range'] = $range;
+        if ($s['memory']) $req += talk_saki_memory_load($pdo, $roomId);
         if ($mode === 'called') {
             $req['app'] = TALK_SAKI_APP;
             // 하루 사용량 90% 안내: 방마다 하루 한 번만 (안내를 붙였다는 답을 받으면 그날은 그만)
@@ -485,4 +499,164 @@ function talk_saki_post(PDO $pdo, int $roomId, int $bot, int $msgId, string $tex
     }
     $pdo->commit();
     if (function_exists('talk_push_message')) talk_push_message($pdo, $roomId, $bot, $text);
+}
+
+// ───── 방별 기억 (연동 문서 10절): 저장은 여기(talk_saki_memory·talk_saki_diary), Lite 는 고쳐 써서 돌려줄 뿐 ─────
+const TALK_SAKI_MEMORY_MAX = 2000;   // 기억 글
+const TALK_SAKI_MEMORY_EVERY = 40;   // 사람 메시지가 이만큼 쌓이면 정리
+const TALK_SAKI_MEMORY_BATCH = 100;  // 한 번에 보내는 메시지 (넘으면 오래된 쪽부터 나눠서)
+const TALK_SAKI_MEMORY_BUSY = 120;   // 정리 중 표시가 이보다 오래되면 무효
+const TALK_SAKI_DIARY_KEEP = 30;     // 일기 보관 날 수
+const TALK_SAKI_DIARY_SEND = 7;      // 부를 때 싣는 최근 일기
+
+function talk_saki_memory_row(PDO $pdo, int $roomId): ?array {
+    $st = $pdo->prepare('SELECT memory, upto, day, busy FROM talk_saki_memory WHERE room_id = ?');
+    $st->execute([$roomId]);
+    return $st->fetch() ?: null;
+}
+
+// 부를 때 싣기: room_memory(저장된 글 그대로)·room_diary(최근 7일, 오래된 것 → 최근, 날짜 "10/19")
+function talk_saki_memory_load(PDO $pdo, int $roomId): array {
+    $out = [];
+    $m = talk_saki_memory_row($pdo, $roomId);
+    if ($m && trim((string)$m['memory']) !== '') $out['room_memory'] = (string)$m['memory'];
+    $st = $pdo->prepare('SELECT day, body FROM talk_saki_diary WHERE room_id = ? ORDER BY day DESC LIMIT ' . TALK_SAKI_DIARY_SEND);
+    $st->execute([$roomId]);
+    $diary = array_map(fn($d) => ['day' => (int)substr($d['day'], 5, 2) . '/' . (int)substr($d['day'], 8, 2), 'text' => $d['body']], array_reverse($st->fetchAll()));
+    if ($diary) $out['room_diary'] = $diary;
+    return $out;
+}
+
+// 한국 날짜 0시의 UTC 시각 ("Y-m-d H:i:s")
+function talk_saki_day_start(string $day): string { return gmdate('Y-m-d H:i:s', strtotime("$day 00:00:00 UTC") - 9 * 3600); }
+function talk_saki_day_name(string $day): string { return (int)substr($day, 5, 2) . '월 ' . (int)substr($day, 8, 2) . '일'; }
+
+// 정리할 차례인지 보고 remember 를 부른다 (사람 메시지를 보낸 뒤, 대답 다음에)
+//  - 같은 날: 정리 안 된 사람 메시지가 40개 이상이면 그 메시지들(100개까지)
+//  - 날이 바뀜: 정리 안 된 메시지가 있으면, 지난 날 것만 diary(그날 이름)와 함께. 지난 날 것이 100개 넘게 남았으면 먼저 100개만(일기 없이)
+function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $s, string $roomName): void {
+    @set_time_limit(90);
+    $m = talk_saki_memory_row($pdo, $roomId);
+    if (!$m) return;
+    $today = talk_saki_day();
+    $upto = (int)$m['upto'];
+    $newDay = $m['day'] !== $today;
+    $kinds = "kind IN ('text', 'photo', 'video')";
+    if ($newDay) {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND id > ? AND $kinds");
+        $st->execute([$roomId, $upto]);
+        if ((int)$st->fetchColumn() < 1) return;
+    } else {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND id > ? AND user_id <> ? AND $kinds");
+        $st->execute([$roomId, $upto, $bot]);
+        if ((int)$st->fetchColumn() < TALK_SAKI_MEMORY_EVERY) return;
+    }
+    // 방마다 동시에 하나 (2분 지난 표시는 무효)
+    $now = time();
+    $st = $pdo->prepare('UPDATE talk_saki_memory SET busy = ? WHERE room_id = ? AND busy < ?');
+    $st->execute([$now, $roomId, $now - TALK_SAKI_MEMORY_BUSY]);
+    if ($st->rowCount() < 1) return;
+    try {
+        $sql = "SELECT m.id, m.user_id, m.kind, m.body, m.created_at, COALESCE(u.nick, u.name) AS who FROM talk_messages m LEFT JOIN talk_users u ON u.id = m.user_id
+            WHERE m.room_id = ? AND m.id > ? AND m.$kinds";
+        $diaryDay = '';
+        if ($newDay) {
+            // 지난 날(오늘 0시 전) 남은 메시지만. 가장 오래된 남은 메시지의 날짜가 그 일기 날짜
+            $st = $pdo->prepare("$sql AND m.created_at < ? ORDER BY m.id LIMIT " . (TALK_SAKI_MEMORY_BATCH + 1));
+            $st->execute([$roomId, $upto, talk_saki_day_start($today)]);
+            $rows = $st->fetchAll();
+            if ($rows) {
+                $first = gmdate('Y-m-d', strtotime($rows[0]['created_at'] . ' UTC') + 9 * 3600);
+                $rows = array_values(array_filter($rows, fn($r) => $r['created_at'] < talk_saki_day_start(gmdate('Y-m-d', strtotime("$first 00:00:00 UTC") + 86400))));
+                $diaryDay = count($rows) > TALK_SAKI_MEMORY_BATCH ? '' : $first;
+                $rows = array_slice($rows, 0, TALK_SAKI_MEMORY_BATCH);
+            } else {
+                // 지난 날 것은 40개씩 이미 다 정리됨: 그날 일기가 아직 없으면 그날 마지막 대화(이미 넣은 것)를 흐름 삼아 일기만 받는다
+                $prev = (string)$m['day'];
+                $st = $pdo->prepare('SELECT 1 FROM talk_saki_diary WHERE room_id = ? AND day = ?');
+                $st->execute([$roomId, $prev]);
+                if ($prev !== '' && !$st->fetchColumn()) {
+                    $st = $pdo->prepare("SELECT * FROM (SELECT m.id, m.user_id, m.kind, m.body, m.created_at, COALESCE(u.nick, u.name) AS who FROM talk_messages m LEFT JOIN talk_users u ON u.id = m.user_id
+                        WHERE m.room_id = ? AND m.$kinds AND m.created_at >= ? AND m.created_at < ? ORDER BY m.id DESC LIMIT " . TALK_SAKI_MEMORY_EVERY . ") x ORDER BY id");
+                    $st->execute([$roomId, talk_saki_day_start($prev), talk_saki_day_start(gmdate('Y-m-d', strtotime("$prev 00:00:00 UTC") + 86400))]);
+                    $rows = $st->fetchAll();
+                }
+                if (!$rows) {
+                    $pdo->prepare('UPDATE talk_saki_memory SET day = ? WHERE room_id = ?')->execute([$today, $roomId]);
+                    return;
+                }
+                $diaryDay = $prev;
+            }
+        } else {
+            $st = $pdo->prepare("$sql ORDER BY m.id LIMIT " . TALK_SAKI_MEMORY_BATCH);
+            $st->execute([$roomId, $upto]);
+            $rows = $st->fetchAll();
+        }
+        if (!$rows) return;
+        $messages = [];
+        foreach ($rows as $r) {
+            $one = ['name' => mb_substr((string)($r['who'] ?? '나간 사람'), 0, 20) ?: '나간 사람',
+                'text' => $r['kind'] === 'photo' ? '(사진)' : ($r['kind'] === 'video' ? '(영상)' : mb_substr((string)$r['body'], 0, 600)),
+                'at' => gmdate('H:i', strtotime($r['created_at'] . ' UTC') + 9 * 3600)];
+            if ((int)$r['user_id'] === $bot) $one['bot'] = true;
+            $messages[] = $one;
+        }
+        $lastId = (int)end($rows)['id'];
+        $req = ['mode' => 'remember', 'personality' => $s['personality'], 'polite' => (bool)$s['polite'],
+            'name' => mb_substr(talk_display_name($pdo, $bot), 0, 20), 'room' => mb_substr($roomName, 0, 40), 'memory' => (string)$m['memory']];
+        if ($diaryDay !== '') $req['diary'] = talk_saki_day_name($diaryDay);
+        if ($members = talk_saki_members($pdo, $roomId)) $req['members'] = $members;
+        $req['messages'] = $messages;
+        $r = talk_saki_call($cfg, 'reply', $req);
+        talk_saki_note($pdo, $cfg, 'remember', $r);
+        [$code, $res, $err] = $r;
+        // 실패·상한·오류면 아무것도 안 바꿈 (다음 메시지 때 다시)
+        if ($code !== 200 || !$res || empty($res['ok']) || !empty($res['limited']) || !empty($res['why']) || !is_string($res['memory'] ?? null)) {
+            if ($code !== 200) error_log("talk saki remember: 방 $roomId HTTP $code " . mb_substr((string)($res['error'] ?? $err), 0, 200));
+            return;
+        }
+        $memory = mb_substr(trim(str_replace("\r", '', $res['memory'])), 0, TALK_SAKI_MEMORY_MAX);
+        // 그사이 사람이 설정 화면에서 기억을 고쳤으면 그 글이 이긴다 (다음 정리 때 반영) — 보낸 글과 같을 때만 바꿈
+        // 날짜: 같은 날 정리면 그대로(오늘), 일기를 받았으면 더 지난 날 남은 것이 없을 때 오늘로 (있으면 그 일기 날짜로 두고 다음에 이어서)
+        $day = $m['day'];
+        if (!$newDay) $day = $today;
+        elseif ($diaryDay !== '') {
+            $st = $pdo->prepare("SELECT 1 FROM talk_messages WHERE room_id = ? AND id > ? AND $kinds AND created_at < ? LIMIT 1");
+            $st->execute([$roomId, max($upto, $lastId), talk_saki_day_start($today)]);
+            $day = $st->fetchColumn() ? $diaryDay : $today;
+        }
+        $pdo->prepare('UPDATE talk_saki_memory SET memory = IF(memory = ?, ?, memory), upto = GREATEST(upto, ?), day = ?, updated_at = ? WHERE room_id = ?')
+            ->execute([(string)$m['memory'], $memory, $lastId, $day, talk_now(), $roomId]);
+        $diary = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($res['diary'] ?? ''))), 0, 300);
+        if ($diaryDay !== '' && $diary !== '') {
+            $pdo->prepare('REPLACE INTO talk_saki_diary (room_id, day, body) VALUES (?, ?, ?)')->execute([$roomId, $diaryDay, $diary]);
+            $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ? AND day < ?')->execute([$roomId, gmdate('Y-m-d', strtotime("$today 00:00:00 UTC") - TALK_SAKI_DIARY_KEEP * 86400)]);
+        }
+    } finally {
+        $pdo->prepare('UPDATE talk_saki_memory SET busy = 0 WHERE room_id = ?')->execute([$roomId]);
+    }
+}
+
+// 방 설정 "사키가 기억하는 것"·일기: 방 사람 누구나 보고 고치고 지움 (사키가 틀리게 기억하면 사람이 바로잡는 곳)
+//  - memory: 기억 글 통째로 바꾸기 (빈 글이면 지우기)
+//  - diary_day + diary_text: 그날 일기 고치기 (빈 글이면 지우기)
+function talk_saki_memory_edit(PDO $pdo, array $me, int $roomId, array $b): array {
+    $room = talk_room_row($pdo, $me['id'], $roomId);
+    if ($room['kind'] !== 'group') talk_fail('사키는 단체방에만 있어요.');
+    if (array_key_exists('memory', $b)) {
+        $text = mb_substr(trim(str_replace("\r", '', (string)$b['memory'])), 0, TALK_SAKI_MEMORY_MAX);
+        $pdo->prepare("INSERT INTO talk_saki_memory (room_id, memory, day, updated_at) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE memory = VALUES(memory), updated_at = VALUES(updated_at)")
+            ->execute([$roomId, $text, talk_saki_day(), talk_now()]);
+    }
+    if (isset($b['diary_day'])) {
+        $day = (string)$b['diary_day'];
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) talk_fail('날짜를 다시 골라 주세요.');
+        $text = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($b['diary_text'] ?? ''))), 0, 300);
+        if ($text === '') $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ? AND day = ?')->execute([$roomId, $day]);
+        else $pdo->prepare('UPDATE talk_saki_diary SET body = ? WHERE room_id = ? AND day = ?')->execute([$text, $roomId, $day]);
+    }
+    $m = talk_saki_memory_row($pdo, $roomId);
+    $st = $pdo->prepare('SELECT day, body AS text FROM talk_saki_diary WHERE room_id = ? ORDER BY day DESC');
+    $st->execute([$roomId]);
+    return ['memory' => $m ? (string)$m['memory'] : '', 'diary' => $st->fetchAll()];
 }

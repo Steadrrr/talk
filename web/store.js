@@ -255,6 +255,11 @@ export async function setSakiRelation(roomId, userId, relation) {
   try { await api('rooms/saki', { room_id: roomId, relation_user: userId, relation }); } finally { await syncNow(); }
 }
 
+// 사키가 기억하는 것·방 일기 (방 사람 누구나 고침): changes 가 없으면 보기만. → { memory, diary: [{ day, text }] }
+export async function sakiMemory(roomId, changes = {}) {
+  return api('rooms/saki_memory', { room_id: roomId, ...changes });
+}
+
 // 공지 올리기(메시지 번호)·내리기(0)
 export async function setNotice(roomId, msgId) {
   await api('rooms/notice', { room_id: roomId, message_id: msgId || 0 });

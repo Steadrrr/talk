@@ -1,8 +1,8 @@
 // 채팅방 설정: 방 이름(여럿 방), 알림·위에 고정(나에게만), 사람 목록·초대, 나가기
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
-import { state, photoOf, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation } from './store.js';
+import { state, photoOf, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation, sakiMemory } from './store.js';
 
 export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
   const [name, setName] = useState(room.name || '');
@@ -127,6 +127,8 @@ function SakiSection({ room, run }) {
   const s = room.saki || { on: 0, personality: 'lively', polite: 0, freq: 'called', gap: 10, react: 1 };
   const can = room.created_by === state.me.id || !!state.me.is_admin;
   const set = (changes) => run(() => setSaki(room.id, changes));
+  // 기억을 끌 때: 기억도 지울지 묻는다 (아니요면 남겨 두고, 다시 켜면 이어서)
+  const setMemory = (on) => set(on ? { memory: true } : { memory: false, forget: confirm('사키 기억을 껐어요. 기억한 것과 일기도 지울까요?\n[확인] 지우기 · [취소] 남겨 두기') });
   const seg = (items, value, key) => html`
     <div class="seg">${items.map(([v, label]) => html`<button type="button" class=${value === v ? 'on' : ''} disabled=${!can} onClick=${() => value !== v && set({ [key]: v })}>${label}</button>`)}</div>`;
   return html`
@@ -149,8 +151,46 @@ function SakiSection({ room, run }) {
             </select></label>`}
         <label class="switch-row"><span class="grow">반응 달기<br /><span class="hint">사키를 부른 메시지에 표정 이모지</span></span>
           <input type="checkbox" class="switch" checked=${!!s.react} disabled=${!can} onChange=${(e) => set({ react: e.target.checked })} /></label>
+        <label class="switch-row"><span class="grow">사키 기억<br /><span class="hint">대화를 조금씩 기억해 두었다가 다음에 알아봐요. 기억한 것은 방 사람 누구나 고치거나 지울 수 있어요</span></span>
+          <input type="checkbox" class="switch" checked=${!!s.memory} disabled=${!can} onChange=${(e) => setMemory(e.target.checked)} /></label>
+        ${s.memory > 0 && html`<${SakiMemory} room=${room} run=${run} />`}
         <p class="hint">사키에게 알려 줄 관계 <span class="hint">(예: 엄마, 일래의 동생. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>
         ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}`}
+    </div>`;
+}
+
+// 사키가 기억하는 것(글 통째로)과 방 일기: 방 사람 누구나 고치고 지움 (사키가 틀리게 기억하면 바로잡는 곳)
+function SakiMemory({ room, run }) {
+  const [data, setData] = useState(null);
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState('');  // 고치는 중인 일기 날짜
+  const [draft, setDraft] = useState('');
+  const load = (r) => { setData(r); setText(r.memory); };
+  useEffect(() => { sakiMemory(room.id).then(load).catch(() => {}); }, [room.id]);
+  if (!data) return html`<p class="hint">사키 기억을 불러오는 중…</p>`;
+  const save = (changes, ok) => run(async () => { load(await sakiMemory(room.id, changes)); setEditing(''); }, ok);
+  const label = (d) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8, 10))}일`;
+  return html`
+    <div class="saki-memory">
+      <p class="hint">사키가 기억하는 것 <span class="hint">(대화가 40개쯤 쌓이거나 날이 바뀌면 사키가 고쳐 써요)</span></p>
+      <textarea rows="6" maxlength="2000" autocomplete="off" placeholder="아직 기억한 게 없어요" value=${text} onInput=${(e) => setText(e.target.value)} />
+      ${text !== data.memory && html`<div class="inline"><button class="text" onClick=${() => setText(data.memory)}>되돌리기</button><span class="grow"></span>
+        <button class="primary" onClick=${() => save({ memory: text }, '사키 기억을 고쳤어요.')}>저장</button></div>`}
+      ${data.memory && text === data.memory && html`<div class="inline"><span class="grow"></span>
+        <button class="text danger-text" onClick=${() => confirm('사키가 기억한 것을 모두 지울까요?') && save({ memory: '' }, '사키 기억을 지웠어요.')}>모두 지우기</button></div>`}
+      <p class="hint">사키 일기</p>
+      ${!data.diary.length && html`<p class="hint">아직 일기가 없어요. 날이 바뀌면 그날 일을 두세 줄로 써요.</p>`}
+      ${data.diary.map((d) => html`
+        <div class="diary" key=${d.day}>
+          <b>${label(d.day)}</b>
+          ${editing === d.day
+            ? html`<textarea rows="3" maxlength="300" autocomplete="off" value=${draft} onInput=${(e) => setDraft(e.target.value)} />
+              <div class="inline"><button class="text" onClick=${() => setEditing('')}>그만두기</button><span class="grow"></span>
+                <button class="primary" onClick=${() => save({ diary_day: d.day, diary_text: draft }, draft.trim() ? '일기를 고쳤어요.' : '일기를 지웠어요.')}>저장</button></div>`
+            : html`<p>${d.text}</p>
+              <div class="inline"><span class="grow"></span><button class="text" onClick=${() => { setEditing(d.day); setDraft(d.text); }}>고치기</button>
+                <button class="text danger-text" onClick=${() => confirm(`${label(d.day)} 일기를 지울까요?`) && save({ diary_day: d.day, diary_text: '' }, '일기를 지웠어요.')}>지우기</button></div>`}
+        </div>`)}
     </div>`;
 }
 

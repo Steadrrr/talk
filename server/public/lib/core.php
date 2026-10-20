@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 21;
+const TALK_SERVER_VERSION = 22;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -157,6 +157,14 @@ function talk_migrate(PDO $pdo): void {
     $q[] = "INSERT IGNORE INTO talk_media_uses (mkey, message_id, room_id) SELECT mkey, message_id, room_id FROM talk_media WHERE done = 1 AND deleted = 0 AND message_id IS NOT NULL";
     // 21: 사키 프로필 사진을 사람마다 따로 (그 사람 화면에만 보임, 비우면 기본 사진)
     $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS saki_photo MEDIUMBLOB NULL, ADD COLUMN IF NOT EXISTS saki_photo_key VARCHAR(24) NULL";
+    // 22: 사키 방별 기억 (기억 글·어디까지 넣었는지·마지막 정리 날짜·정리 중 표시) + 방 일기 (날짜마다 300자, 30일)
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_saki_memory (
+        room_id INT PRIMARY KEY, memory TEXT NOT NULL, upto BIGINT NOT NULL DEFAULT 0, day CHAR(10) NOT NULL DEFAULT '',
+        busy INT NOT NULL DEFAULT 0, updated_at DATETIME NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_saki_diary (
+        room_id INT NOT NULL, day CHAR(10) NOT NULL, body VARCHAR(300) NOT NULL, PRIMARY KEY (room_id, day)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);

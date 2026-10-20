@@ -41,7 +41,7 @@ const PUSH_PREFIX = `http://127.0.0.1:${pushServer.address().port}/push/`;
 
 // 가짜 SAKi Lite: X-Saki-Lite-Key 를 확인하고 문서(saki-lite-연동.md)의 응답 모양을 돌려준다. lite.mode 로 pass·limited·401·503 흉내
 const SAKI_KEY = crypto.randomBytes(36).toString('base64url'); // 48자
-const lite = { mode: 'reply', calls: [], pathInfo: true, budget: false }; // budget: 90% 를 넘은 척 (budget_notice 를 받으면 안내를 붙였다고 답함)
+const lite = { mode: 'reply', calls: [], pathInfo: true, budget: false, remember: 'ok' }; // remember: ok·limited·error // budget: 90% 를 넘은 척 (budget_notice 를 받으면 안내를 붙였다고 답함)
 const liteServer = http.createServer((rq, rs) => {
   const chunks = [];
   rq.on('data', (c) => chunks.push(c));
@@ -57,10 +57,17 @@ const liteServer = http.createServer((rq, rs) => {
     if (lite.mode === 'off') return send(503, { ok: false, error: 'SAKi Lite 가 꺼져 있어요.' });
     if (rq.headers['x-saki-lite-key'] !== SAKI_KEY || lite.mode === 'badkey') return send(401, { ok: false, error: '열쇠가 맞지 않아요.' });
     if (!body) return send(400, { ok: false, error: 'JSON 이 아니에요.' });
-    if (route === 'lite/status') return send(200, { ok: true, on: true, model: 'claude-haiku-5-5', features: ['members', 'budget_notice', 'summary', 'app'], personalities: [], emotions: [], day: '2026-10-18', spent: 0.0123, requests: 3, cap: 0.2 });
+    if (route === 'lite/status') return send(200, { ok: true, on: true, model: 'claude-haiku-5-5', features: ['members', 'budget_notice', 'summary', 'app', 'memory'], personalities: [], emotions: [], day: '2026-10-18', spent: 0.0123, requests: 3, cap: 0.2 });
     if (route !== 'lite/reply') return send(404, { ok: false, error: '없는 주소' });
     const base = { ok: true, mode: body.mode, pass: false, emotion: 'neutral', reaction: '', links: [], limited: false, spent: 0.01, cap: 0.2,
       budget_noticed: !!(lite.budget && body.budget_notice && body.mode === 'called') };
+    if (body.mode === 'remember') {
+      // 방 기억 고쳐 쓰기: 실패·상한이면 보낸 기억 그대로
+      if (lite.remember === 'limited') return send(200, { ok: true, mode: 'remember', memory: body.memory, diary: '', limited: true, why: 'daily-cap', spent: 0.3, cap: 0.3 });
+      if (lite.remember === 'error') return send(200, { ok: true, mode: 'remember', memory: body.memory, diary: '', limited: false, why: 'claude-error', spent: 0.1, cap: 0.3 });
+      return send(200, { ok: true, mode: 'remember', memory: `[사람]\n- 기억 ${lite.calls.length} (${body.messages.length}개)\n[약속·일정]\n[오늘]`,
+        diary: body.diary ? `${body.diary}에는 ${body.messages.map((m) => m.text).join(', ')}` : '', limited: false, spent: 0.05, cap: 0.3 });
+    }
     if (lite.mode === 'pass') return send(200, { ...base, pass: true, text: '' });
     if (lite.mode === 'limited') return send(200, { ...base, limited: true, why: 'daily-cap', text: '오늘은 여기까지 할게…' });
     send(200, { ...base, text: '흥, 내일은 맑대. …사키가 알려 준 거야.', emotion: 'happy', reaction: '😊', links: [
@@ -410,7 +417,7 @@ try {
     assert.equal((await api('me', undefined, tok.dad)).body.me.bubble, null);
   });
 
-  const sql = (q) => execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '-N', '-D', dbName, '-e', q]).toString().trim();
+  const sql = (q) => execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '--default-character-set=utf8mb4', '-r', '-N', '-D', dbName, '-e', q]).toString().trim();
 
   await t('알림: 받는 사람 기기로 암호화해 보냄, 그 방을 보고 있거나 끄면 안 보냄, 시험 알림', async () => {
     const ecdh = crypto.createECDH('prime256v1');
@@ -836,7 +843,7 @@ try {
     assert.equal((await api('rooms/saki', { room_id: dm2, on: true }, tok.mom)).status, 400, '1:1 방은 안 됨');
     const r = await api('rooms/saki', { room_id: sakiRoom, on: true, personality: 'tsundere', polite: true }, tok.mom);
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.saki, { on: 1, personality: 'tsundere', polite: 1, freq: 'called', gap: 10, react: 1 });
+    assert.deepEqual(r.body.saki, { on: 1, personality: 'tsundere', polite: 1, freq: 'called', gap: 10, react: 1, memory: 0 });
     const room = await roomOf(tok.dad);
     const bot = room.members.find((m) => m.bot);
     assert.ok(bot && bot.nick === '사키');
@@ -981,6 +988,101 @@ try {
     sql(`DELETE FROM talk_messages WHERE room_id = ${sakiRoom} AND body LIKE '수다 %'`); // 아래 시험의 기록 한 쪽(최근 메시지)을 밀어내지 않게
   });
 
+  await t('사키: 방별 기억 — 켜야만 정리·싣기, 40개마다 한 번, 날이 바뀌면 지난 날 것만 일기와, 실패면 그대로, 누구나 고침', async () => {
+    const dad = await idOf(tok.mom, '아빠');
+    const remembers = () => lite.calls.filter((c) => c.route === 'lite/reply' && c.body?.mode === 'remember');
+    const talks = () => lite.calls.filter((c) => c.route === 'lite/reply' && c.body?.mode !== 'remember');
+    const chat = (n, at = 'UTC_TIMESTAMP()') => sql(`INSERT INTO talk_messages (room_id, user_id, kind, body, created_at) SELECT ${sakiRoom}, ${dad}, 'text', CONCAT('잡담 ', seq), ${at} FROM seq_1_to_${n}`);
+    const mem = () => sql(`SELECT CONCAT(upto, '|', day, '|', memory) FROM talk_saki_memory WHERE room_id = ${sakiRoom}`);
+    // 기억 꺼짐(기본): 40개가 넘어도 안 부르고, 부를 때 안 실음
+    assert.equal((await roomOf(tok.mom)).saki.memory, 0);
+    chat(45);
+    await say({ body: '사키야 안녕' }, tok.dad);
+    assert.equal(remembers().length, 0);
+    assert.equal(talks().at(-1).body.room_memory, undefined);
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.dad)).status, 403, '켜고 끄기는 방장·관리자');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.mom)).body.saki.memory, 1);
+    // 켠 뒤부터 센다 (예전 대화는 안 넣음): 39개 → 안 부름, 40개째 → 한 번
+    chat(38);
+    await say({ body: '하나' }, tok.dad);
+    assert.equal(remembers().length, 0);
+    await say({ body: '둘' }, tok.mom);
+    assert.equal(remembers().length, 1);
+    let c = remembers()[0].body;
+    assert.equal(c.memory, '');
+    assert.equal(c.diary, undefined);
+    assert.equal(c.messages.length, 40);
+    assert.equal(c.messages.at(-1).text, '둘');
+    assert.ok(c.messages.every((m) => /^\d\d:\d\d$/.test(m.at)));
+    let [upto, , memory] = mem().split('|');
+    assert.match(memory, /^\[사람\]/);
+    await say({ body: '셋' }, tok.mom);
+    assert.equal(remembers().length, 1, '정리 뒤로는 다시 40개가 쌓여야');
+    // 부를 때 기억을 실음
+    await say({ body: '사키야 나 기억해?' }, tok.dad);
+    assert.equal(talks().at(-1).body.room_memory, memory);
+    // 방 사람 누구나 고침 → 다음 부르기에 실림
+    let r = await api('rooms/saki_memory', { room_id: sakiRoom }, tok.dad);
+    assert.equal(r.body.memory, memory);
+    r = await api('rooms/saki_memory', { room_id: sakiRoom, memory: '[사람]\n- 아빠: 등산 좋아함' }, tok.dad);
+    assert.equal(r.status, 200);
+    await say({ body: '사키 등산 갈래?' }, tok.dad);
+    assert.equal(talks().at(-1).body.room_memory, '[사람]\n- 아빠: 등산 좋아함');
+    // 상한·오류면 아무것도 안 바뀌고 다음 메시지 때 다시
+    const before = mem();
+    lite.remember = 'limited';
+    chat(45);
+    await say({ body: '넷' }, tok.mom);
+    assert.equal(remembers().length, 2);
+    assert.equal(mem(), before);
+    lite.remember = 'error';
+    await say({ body: '다섯' }, tok.mom);
+    assert.equal(remembers().length, 3);
+    assert.equal(mem(), before);
+    lite.remember = 'ok';
+    await say({ body: '여섯' }, tok.mom);
+    assert.equal(remembers().length, 4);
+    assert.equal(remembers().at(-1).body.memory, '[사람]\n- 아빠: 등산 좋아함', '고친 기억을 바탕으로 고쳐 씀');
+    assert.notEqual(mem(), before);
+    // 날이 바뀜: 지난 날 남은 메시지만 + diary(그날 이름) → 일기 저장, 오늘 것은 다음으로
+    const kst = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
+    const yday = kst(Date.now() - 86400e3);
+    sql(`UPDATE talk_saki_memory SET day = '${yday}' WHERE room_id = ${sakiRoom}`);
+    sql(`INSERT INTO talk_messages (room_id, user_id, kind, body, created_at) VALUES (${sakiRoom}, ${dad}, 'text', '어제 삼겹살', '${yday} 03:00:00'), (${sakiRoom}, ${dad}, 'photo', '', '${yday} 03:01:00')`);
+    await say({ body: '오늘 첫 글' }, tok.mom);
+    assert.equal(remembers().length, 5);
+    c = remembers().at(-1).body;
+    assert.equal(c.diary, `${Number(yday.slice(5, 7))}월 ${Number(yday.slice(8, 10))}일`);
+    assert.deepEqual(c.messages.map((m) => m.text), ['어제 삼겹살', '(사진)'], '지난 날 것만');
+    assert.equal(mem().split('|')[1], kst(Date.now()), '정리한 날짜는 오늘로');
+    r = await api('rooms/saki_memory', { room_id: sakiRoom }, tok.mom);
+    assert.deepEqual(r.body.diary.map((d) => d.day), [yday]);
+    assert.match(r.body.diary[0].text, /어제 삼겹살/);
+    await say({ body: '사키야 어제 뭐 먹었지?' }, tok.dad);
+    assert.deepEqual(talks().at(-1).body.room_diary, [{ day: `${Number(yday.slice(5, 7))}/${Number(yday.slice(8, 10))}`, text: r.body.diary[0].text }]);
+    assert.equal(remembers().length, 5, '오늘 것은 40개가 쌓여야');
+    // 일기 고치기·지우기 (누구나)
+    r = await api('rooms/saki_memory', { room_id: sakiRoom, diary_day: yday, diary_text: '삼겹살 먹은 날' }, tok.dad);
+    assert.equal(r.body.diary[0].text, '삼겹살 먹은 날');
+    // 끄면 정리도 싣기도 안 함, forget 이 없으면 기억은 남음
+    await api('rooms/saki', { room_id: sakiRoom, memory: false }, tok.mom);
+    chat(45);
+    await say({ body: '사키야 아직 기억해?' }, tok.dad);
+    assert.equal(remembers().length, 5);
+    assert.equal(talks().at(-1).body.room_memory, undefined);
+    assert.equal(talks().at(-1).body.room_diary, undefined);
+    assert.ok(mem() !== '', '지우기를 고르지 않으면 남겨 둠');
+    // 다시 켜고 "지우기"로 끄면 기억·일기 모두 없어짐
+    await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.mom);
+    await api('rooms/saki', { room_id: sakiRoom, memory: false, forget: true }, tok.mom);
+    assert.equal(mem(), '');
+    assert.equal(sql(`SELECT COUNT(*) FROM talk_saki_diary WHERE room_id = ${sakiRoom}`), '0');
+    // 다음 시험을 위해 남은 기억 하나 (방을 지우면 같이 지워지는지)
+    sql(`INSERT INTO talk_saki_memory (room_id, memory, updated_at) VALUES (${sakiRoom}, '남은 기억', UTC_TIMESTAMP())`);
+    sql(`INSERT INTO talk_saki_diary (room_id, day, body) VALUES (${sakiRoom}, '${yday}', '남은 일기')`);
+    sql(`DELETE FROM talk_messages WHERE room_id = ${sakiRoom} AND body LIKE '잡담 %'`);
+  });
+
   await t('사키: 하루 상한 거절 말은 방마다 하루 한 번만, 401·503 이면 조용히 쉬고 관리 화면에 보임', async () => {
     lite.mode = 'limited';
     const before = (await botMsgs()).length;
@@ -1022,6 +1124,7 @@ try {
     assert.ok(await roomOf(tok.mom));
     await api('rooms/leave', { room_id: sakiRoom }, tok.me);
     assert.equal(await roomOf(tok.mom), undefined);
+    assert.equal(sql(`SELECT (SELECT COUNT(*) FROM talk_saki_memory WHERE room_id = ${sakiRoom}) + (SELECT COUNT(*) FROM talk_saki_diary WHERE room_id = ${sakiRoom})`), '0', '방을 지우면 사키 기억·일기도');
   });
 
   await t('관리: 백업 내려받기 (읽기용 txt·옮기기용 json, 비밀번호는 안 들어감)', async () => {
@@ -1133,7 +1236,7 @@ try {
   });
 
   await t('DB 표는 talk_ 로 시작', async () => {
-    const out = execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '-N', '-e', `SHOW TABLES FROM ${dbName}`]).toString().trim().split('\n');
+    const out = execFileSync('mariadb', [`-u${dbUser}`, `-p${dbPass}`, '--default-character-set=utf8mb4', '-r', '-N', '-e', `SHOW TABLES FROM ${dbName}`]).toString().trim().split('\n');
     assert.ok(out.length > 0 && out.every((n) => n.startsWith('talk_')), out.join(','));
   });
 

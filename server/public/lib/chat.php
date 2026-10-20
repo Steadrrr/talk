@@ -398,6 +398,8 @@ function talk_room_destroy(PDO $pdo, array $cfg, int $roomId): void {
     $pdo->prepare('DELETE r FROM talk_reactions r JOIN talk_messages m ON m.id = r.message_id WHERE m.room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_messages WHERE room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_room_members WHERE room_id = ?')->execute([$roomId]);
+    $pdo->prepare('DELETE FROM talk_saki_memory WHERE room_id = ?')->execute([$roomId]); // 사키 기억·일기는 방 것이라 같이
+    $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_rooms WHERE id = ?')->execute([$roomId]);
 }
 

@@ -405,3 +405,7 @@ img.avatar { object-fit: cover; background: var(--line); }
 
 /* 전달 */
 .forward-sheet .forward-go { border-top: 1px solid var(--line); padding: 12px 16px; align-items: center; }
+.saki-memory textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px; resize: vertical; }
+.saki-memory .diary { padding: 6px 0; border-top: 1px solid var(--line); }
+.saki-memory .diary p { margin: 4px 0 0; white-space: pre-wrap; }
+.saki-memory .text.danger-text { color: var(--bad); }

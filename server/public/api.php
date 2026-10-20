@@ -223,6 +223,12 @@ switch ($route) {
         talk_room_notice($pdo, $uid, (int)($b['room_id'] ?? 0), (int)($b['message_id'] ?? 0));
         talk_json(['ok' => true]);
 
+    case 'rooms/saki_memory':
+        // 사키가 기억하는 것·일기 보기 (방 사람 누구나 고치고 지움): memory 나 diary_day+diary_text 가 있으면 바꾸고, 지금 것을 돌려줌
+        $need('POST');
+        $b = talk_body();
+        talk_json(['ok' => true] + talk_saki_memory_edit($pdo, $me, (int)($b['room_id'] ?? 0), $b));
+
     case 'rooms/saki':
         // 사키 설정 (방장·관리자만): on·personality·polite·freq·gap·react 중 바꿀 것만
         $need('POST');
