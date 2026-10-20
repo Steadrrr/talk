@@ -374,7 +374,12 @@ img.avatar { object-fit: cover; background: var(--line); }
 /* 길게 누른 메시지·사진을 메뉴 위에 같이 */
 .sheet-bg.with-preview { flex-direction: column; align-items: center; justify-content: flex-end; background: rgba(0,0,0,.45); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .menu-preview { flex: 1; min-height: 0; width: 100%; max-width: 640px; margin: 0; padding: calc(env(safe-area-inset-top) + 16px) 16px 14px; display: flex; align-items: flex-end; pointer-events: none; }
-.menu-preview > * { max-height: 100%; max-width: 80%; overflow: hidden; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+.menu-preview > :not(.pv-row), .menu-preview .pv-col > :not(.who) { max-height: 100%; max-width: 80%; overflow: hidden; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+.menu-preview .pv-row { display: flex; gap: 8px; align-items: flex-start; width: 100%; max-height: 100%; min-height: 0; }
+.menu-preview .pv-row > .avatar { flex: none; }
+.menu-preview .pv-col { flex: 1; min-width: 0; max-height: 100%; display: flex; flex-direction: column; align-items: flex-start; }
+.menu-preview .pv-col > :not(.who) { max-width: 90%; min-height: 0; }
+.menu-preview .who { color: #fff; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
 .menu-preview .bubble { font-size: calc(16px * var(--fs)); }
 .menu-preview .pv-media { display: block; max-width: 100%; max-height: 100%; border-radius: 14px; object-fit: contain; }
 .menu-preview .pv-video { position: relative; display: block; border-radius: 14px; }

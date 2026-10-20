@@ -4,7 +4,7 @@
 //  - 길게 누르면 전달·저장. 전달은 같은 그룹의 채팅방·친구에게만 (서버도 막음)
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, time, dateLine } from './html.js';
-import { state, roomTitle, sortedRooms, forward, roomPhotos, isHidden } from './store.js';
+import { state, roomTitle, sortedRooms, forward, roomPhotos, isHidden, person, photoOf } from './store.js';
 import { mediaUrl, mediaItems, saveMedia } from './media.js';
 import { nickOf } from './names.js';
 
@@ -225,7 +225,8 @@ function Slide({ it, active, onGrab, onMenu, onTap }) {
 
 // 길게 누른 것을 메뉴 위 빈 곳에 같이 보여 줌 (무엇을 누른 건지 알게). 누르면 뒤 어두운 곳을 누른 것과 같음
 //  item: 사진 한 장만 (모아보기), 없으면 메시지 그대로 (묶음은 콜라주)
-export function MenuPreview({ m, item, mine, style }) {
+//  다른 사람이 보낸 것이면 채팅처럼 왼쪽에 프로필 사진, 위에 대화명
+export function MenuPreview({ m, item, mine, style, name }) {
   const media = m.kind === 'photo' || m.kind === 'video';
   let body;
   if (item) body = html`<img class="pv-media" src=${mediaUrl(item.key)} alt="" />`;
@@ -240,11 +241,20 @@ export function MenuPreview({ m, item, mine, style }) {
         : html`<span class="pv-video">${it.thumb ? html`<img class="pv-media" src=${mediaUrl(it.key, true)} alt="" />` : html`<span class="media-blank"></span>`}<span class="play">▶</span></span>`;
     }
   }
-  return html`<div class=${'menu-preview msg ' + (mine ? 'mine' : 'theirs')}>${body}</div>`;
+  if (mine) return html`<div class="menu-preview msg mine">${body}</div>`;
+  const p = person(m.user_id);
+  const nick = name || nickOf(p) || '나간 사람';
+  return html`
+    <div class="menu-preview msg theirs first">
+      <div class="pv-row">
+        <${Avatar} name=${nick} id=${m.user_id} photo=${photoOf(p)} size=${54} />
+        <div class="pv-col"><div class="who">${nick}</div>${body}</div>
+      </div>
+    </div>`;
 }
 
 // 사진 한 장 메뉴 (크게 보기·모아보기에서 길게 누름): 전달·저장
-function ItemMenu({ it, preview, onClose, onForward }) {
+function ItemMenu({ it, preview, names, onClose, onForward }) {
   const backdrop = useBackdrop(onClose);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -254,7 +264,7 @@ function ItemMenu({ it, preview, onClose, onForward }) {
   }
   return html`
     <div class=${'sheet-bg top' + (preview ? ' with-preview' : '')} onClick=${backdrop}>
-      ${preview && html`<${MenuPreview} m=${it.m} item=${it} mine=${it.m.user_id === state.me.id} />`}
+      ${preview && html`<${MenuPreview} m=${it.m} item=${it} mine=${it.m.user_id === state.me.id} name=${names?.get(it.m.user_id)} />`}
       <div class="sheet action-sheet" role="menu">
         ${err && html`<p class="err">${err}</p>`}
         <div class="action-grid">
@@ -292,7 +302,7 @@ export function Gallery({ room, names, onClose }) {
         </div>
       </div>
       ${big !== null && html`<${MediaViewer} items=${items} start=${big} names=${names} onClose=${() => setBig(null)} />`}
-      ${menu && html`<${ItemMenu} it=${menu} preview onClose=${() => setMenu(null)} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
+      ${menu && html`<${ItemMenu} it=${menu} preview names=${names} onClose=${() => setMenu(null)} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
       ${fwd && html`<${ForwardSheet} m=${fwd.m} index=${mediaItems(fwd.m).length > 1 ? fwd.i : null} onClose=${() => setFwd(null)} />`}
     </div>`;
 }

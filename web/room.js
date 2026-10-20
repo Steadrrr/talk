@@ -298,7 +298,7 @@ export function Room({ id, onBack }) {
         </div>
         <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label="보내기">↑</button>
       </div>
-      ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} bubble=${menu.user_id === state.me.id ? null : bubbleStyle(byId.get(menu.user_id))} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
+      ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} bubble=${menu.user_id === state.me.id ? null : bubbleStyle(byId.get(menu.user_id))} name=${names.get(menu.user_id)} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
         onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
       ${big && html`<${MediaViewer} items=${big.items} start=${big.start} names=${names} onClose=${() => setBig(null)} />`}
       ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => setPhotos(false)} />`}
@@ -454,7 +454,7 @@ function Reactions({ m, names }) {
 }
 
 // 메시지 메뉴(길게 누르기): 반응, 답장, 복사(글)·전달(같은 그룹 방·친구)·저장(사진·영상, 묶음은 전부), 삭제(이 기기에서 숨김), 모두에게 삭제(내가 보낸 것만)
-function MsgMenu({ m, mine, bubble, isNotice, onClose, onReply, onForward }) {
+function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onForward }) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const media = m.kind === 'photo' || m.kind === 'video';
@@ -468,7 +468,7 @@ function MsgMenu({ m, mine, bubble, isNotice, onClose, onReply, onForward }) {
   const backdrop = useBackdrop(onClose);
   return html`
     <div class="sheet-bg with-preview" onClick=${backdrop}>
-      <${MenuPreview} m=${m} mine=${mine} style=${bubble} />
+      <${MenuPreview} m=${m} mine=${mine} style=${bubble} name=${name} />
       <div class="sheet action-sheet" role="menu">
         <div class="react-pick">
           ${REACTIONS.map((e) => html`<button class=${e === myReaction ? 'on' : ''} onClick=${() => run('react', () => react(m, e))} aria-label=${'반응 ' + e}>${e}</button>`)}
