@@ -996,20 +996,27 @@ try {
     const mem = () => sql(`SELECT CONCAT(upto, '|', day, '|', memory) FROM talk_saki_memory WHERE room_id = ${sakiRoom}`);
     // 기억 꺼짐(기본): 40개가 넘어도 안 부르고, 부를 때 안 실음
     assert.equal((await roomOf(tok.mom)).saki.memory, 0);
-    chat(45);
+    chat(120);
     await say({ body: '사키야 안녕' }, tok.dad);
     assert.equal(remembers().length, 0);
     assert.equal(talks().at(-1).body.room_memory, undefined);
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.dad)).status, 403, '켜고 끄기는 방장·관리자');
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.mom)).body.saki.memory, 1);
-    // 켠 뒤부터 센다 (예전 대화는 안 넣음): 39개 → 안 부름, 40개째 → 한 번
+    // 켜면 바로 최근 100개로 한 번에 시작
+    await fetch(BASE + '/api.php/health');
+    assert.equal(remembers().length, 1);
+    let c0 = remembers()[0].body;
+    assert.equal(c0.memory, '');
+    assert.equal(c0.messages.length, 100);
+    assert.equal(c0.messages.at(-1).text, (await msgsOf(tok.mom)).filter((m) => ['text', 'photo', 'video'].includes(m.kind)).at(-1).body, '최근 것까지');
+    // 그 뒤로는 사람 메시지 39개 → 안 부름, 40개째 → 한 번
     chat(38);
     await say({ body: '하나' }, tok.dad);
-    assert.equal(remembers().length, 0);
-    await say({ body: '둘' }, tok.mom);
     assert.equal(remembers().length, 1);
-    let c = remembers()[0].body;
-    assert.equal(c.memory, '');
+    await say({ body: '둘' }, tok.mom);
+    assert.equal(remembers().length, 2);
+    let c = remembers()[1].body;
+    assert.notEqual(c.memory, '', '처음 정리한 기억 위에 이어 씀');
     assert.equal(c.diary, undefined);
     assert.equal(c.messages.length, 40);
     assert.equal(c.messages.at(-1).text, '둘');
@@ -1017,7 +1024,7 @@ try {
     let [upto, , memory] = mem().split('|');
     assert.match(memory, /^\[사람\]/);
     await say({ body: '셋' }, tok.mom);
-    assert.equal(remembers().length, 1, '정리 뒤로는 다시 40개가 쌓여야');
+    assert.equal(remembers().length, 2, '정리 뒤로는 다시 40개가 쌓여야');
     // 부를 때 기억을 실음
     await say({ body: '사키야 나 기억해?' }, tok.dad);
     assert.equal(talks().at(-1).body.room_memory, memory);
@@ -1033,15 +1040,15 @@ try {
     lite.remember = 'limited';
     chat(45);
     await say({ body: '넷' }, tok.mom);
-    assert.equal(remembers().length, 2);
+    assert.equal(remembers().length, 3);
     assert.equal(mem(), before);
     lite.remember = 'error';
     await say({ body: '다섯' }, tok.mom);
-    assert.equal(remembers().length, 3);
+    assert.equal(remembers().length, 4);
     assert.equal(mem(), before);
     lite.remember = 'ok';
     await say({ body: '여섯' }, tok.mom);
-    assert.equal(remembers().length, 4);
+    assert.equal(remembers().length, 5);
     assert.equal(remembers().at(-1).body.memory, '[사람]\n- 아빠: 등산 좋아함', '고친 기억을 바탕으로 고쳐 씀');
     assert.notEqual(mem(), before);
     // 날이 바뀜: 지난 날 남은 메시지만 + diary(그날 이름) → 일기 저장, 오늘 것은 다음으로
@@ -1050,7 +1057,7 @@ try {
     sql(`UPDATE talk_saki_memory SET day = '${yday}' WHERE room_id = ${sakiRoom}`);
     sql(`INSERT INTO talk_messages (room_id, user_id, kind, body, created_at) VALUES (${sakiRoom}, ${dad}, 'text', '어제 삼겹살', '${yday} 03:00:00'), (${sakiRoom}, ${dad}, 'photo', '', '${yday} 03:01:00')`);
     await say({ body: '오늘 첫 글' }, tok.mom);
-    assert.equal(remembers().length, 5);
+    assert.equal(remembers().length, 6);
     c = remembers().at(-1).body;
     assert.equal(c.diary, `${Number(yday.slice(5, 7))}월 ${Number(yday.slice(8, 10))}일`);
     assert.deepEqual(c.messages.map((m) => m.text), ['어제 삼겹살', '(사진)'], '지난 날 것만');
@@ -1060,7 +1067,7 @@ try {
     assert.match(r.body.diary[0].text, /어제 삼겹살/);
     await say({ body: '사키야 어제 뭐 먹었지?' }, tok.dad);
     assert.deepEqual(talks().at(-1).body.room_diary, [{ day: `${Number(yday.slice(5, 7))}/${Number(yday.slice(8, 10))}`, text: r.body.diary[0].text }]);
-    assert.equal(remembers().length, 5, '오늘 것은 40개가 쌓여야');
+    assert.equal(remembers().length, 6, '오늘 것은 40개가 쌓여야');
     // 일기 고치기·지우기 (누구나)
     r = await api('rooms/saki_memory', { room_id: sakiRoom, diary_day: yday, diary_text: '삼겹살 먹은 날' }, tok.dad);
     assert.equal(r.body.diary[0].text, '삼겹살 먹은 날');
@@ -1068,7 +1075,7 @@ try {
     await api('rooms/saki', { room_id: sakiRoom, memory: false }, tok.mom);
     chat(45);
     await say({ body: '사키야 아직 기억해?' }, tok.dad);
-    assert.equal(remembers().length, 5);
+    assert.equal(remembers().length, 6);
     assert.equal(talks().at(-1).body.room_memory, undefined);
     assert.equal(talks().at(-1).body.room_diary, undefined);
     assert.ok(mem() !== '', '지우기를 고르지 않으면 남겨 둠');

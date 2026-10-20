@@ -151,7 +151,7 @@ function SakiSection({ room, run }) {
             </select></label>`}
         <label class="switch-row"><span class="grow">반응 달기<br /><span class="hint">사키를 부른 메시지에 표정 이모지</span></span>
           <input type="checkbox" class="switch" checked=${!!s.react} disabled=${!can} onChange=${(e) => set({ react: e.target.checked })} /></label>
-        <label class="switch-row"><span class="grow">사키 기억<br /><span class="hint">대화를 조금씩 기억해 두었다가 다음에 알아봐요. 기억한 것은 방 사람 누구나 고치거나 지울 수 있어요</span></span>
+        <label class="switch-row"><span class="grow">사키 기억<br /><span class="hint">켜면 최근 대화 100개로 바로 시작하고, 그 뒤로 대화를 조금씩 기억해 다음에 알아봐요. 기억한 것은 방 사람 누구나 고치거나 지울 수 있어요</span></span>
           <input type="checkbox" class="switch" checked=${!!s.memory} disabled=${!can} onChange=${(e) => setMemory(e.target.checked)} /></label>
         ${s.memory > 0 && html`<${SakiMemory} room=${room} run=${run} />`}
         <p class="hint">사키에게 알려 줄 관계 <span class="hint">(예: 엄마, 일래의 동생. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>

@@ -115,9 +115,10 @@ function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
     $bot = talk_saki_bot($pdo);
     $pdo->beginTransaction();
     $pdo->prepare('UPDATE talk_rooms SET saki = ? WHERE id = ?')->execute([json_encode($new), $roomId]);
-    // 사키 기억을 켜면 지금부터의 대화만 기억한다 (예전 대화를 한꺼번에 정리하지 않게). 끌 때 "기억도 지울까요?"에 예면 forget
-    if ($new['memory'] && !$old['memory']) {
-        $st = $pdo->prepare('SELECT COALESCE(MAX(id), 0) FROM talk_messages WHERE room_id = ?');
+    // 사키 기억을 켜면 최근 100개 대화로 한 번에 시작한다 (응답 뒤 바로 정리). 끌 때 "기억도 지울까요?"에 예면 forget
+    $start = $new['memory'] && !$old['memory'];
+    if ($start) {
+        $st = $pdo->prepare("SELECT COALESCE(MIN(id) - 1, 0) FROM (SELECT id FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video') ORDER BY id DESC LIMIT " . TALK_SAKI_MEMORY_BATCH . ') x');
         $st->execute([$roomId]);
         $pdo->prepare("INSERT INTO talk_saki_memory (room_id, memory, upto, day, updated_at) VALUES (?, '', ?, ?, ?)
             ON DUPLICATE KEY UPDATE upto = VALUES(upto), day = VALUES(day)")->execute([$roomId, (int)$st->fetchColumn(), talk_saki_day(), talk_now()]);
@@ -139,6 +140,10 @@ function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
     }
     talk_event($pdo, $roomId, 'room');
     $pdo->commit();
+    $cfg = talk_config();
+    if ($start && $new['on'] && (string)($cfg['saki_lite_key'] ?? '') !== '') {
+        talk_after_response(fn() => talk_saki_remember($pdo, $cfg, $roomId, $bot, $new, (string)$room['name'], true));
+    }
     return $new;
 }
 
@@ -534,7 +539,8 @@ function talk_saki_day_name(string $day): string { return (int)substr($day, 5, 2
 // 정리할 차례인지 보고 remember 를 부른다 (사람 메시지를 보낸 뒤, 대답 다음에)
 //  - 같은 날: 정리 안 된 사람 메시지가 40개 이상이면 그 메시지들(100개까지)
 //  - 날이 바뀜: 정리 안 된 메시지가 있으면, 지난 날 것만 diary(그날 이름)와 함께. 지난 날 것이 100개 넘게 남았으면 먼저 100개만(일기 없이)
-function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $s, string $roomName): void {
+// $start: 기억을 막 켰을 때 — 40개를 기다리지 않고 최근 100개로 바로 시작
+function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $s, string $roomName, bool $start = false): void {
     @set_time_limit(90);
     $m = talk_saki_memory_row($pdo, $roomId);
     if (!$m) return;
@@ -549,7 +555,7 @@ function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $
     } else {
         $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND id > ? AND user_id <> ? AND $kinds");
         $st->execute([$roomId, $upto, $bot]);
-        if ((int)$st->fetchColumn() < TALK_SAKI_MEMORY_EVERY) return;
+        if ((int)$st->fetchColumn() < ($start ? 1 : TALK_SAKI_MEMORY_EVERY)) return;
     }
     // 방마다 동시에 하나 (2분 지난 표시는 무효)
     $now = time();
