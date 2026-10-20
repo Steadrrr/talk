@@ -401,8 +401,12 @@ function talk_room_destroy(PDO $pdo, array $cfg, int $roomId): void {
     $keys = $st->fetchAll(PDO::FETCH_COLUMN);
     $pdo->prepare('DELETE FROM talk_media_uses WHERE room_id = ?')->execute([$roomId]);
     talk_media_release($pdo, $cfg, $keys);
+    $st = $pdo->prepare("SELECT body FROM talk_messages WHERE room_id = ? AND kind = 'place'");
+    $st->execute([$roomId]);
+    $maps = talk_map_keys($st->fetchAll(PDO::FETCH_COLUMN));
     $pdo->prepare('DELETE r FROM talk_reactions r JOIN talk_messages m ON m.id = r.message_id WHERE m.room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_messages WHERE room_id = ?')->execute([$roomId]);
+    talk_maps_release($pdo, $maps);   // 위치 지도 사진도 (다른 방에 전달된 것은 남김)
     $pdo->prepare('DELETE FROM talk_room_members WHERE room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_saki_memory WHERE room_id = ?')->execute([$roomId]); // 사키 기억·일기는 방 것이라 같이
     $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ?')->execute([$roomId]);
@@ -448,7 +452,7 @@ function talk_schedule_save(PDO $pdo, int $uid, array $b): array {
         $p = $b['place'];
         $str = fn($k, $n) => mb_substr(trim((string)($p[$k] ?? '')), 0, $n);
         $lat = (float)($p['lat'] ?? 0); $lng = (float)($p['lng'] ?? 0);
-        if ($str('name', 60) === '' || abs($lat) > 90 || abs($lng) > 180) talk_fail('장소를 다시 골라 주세요.');
+        if ($str('name', 60) === '' || !talk_place_ok($lat, $lng)) talk_fail('장소를 다시 골라 주세요.');
         $place = json_encode(['name' => $str('name', 60), 'addr' => $str('addr', 120), 'road' => $str('road', 120), 'cat' => $str('cat', 40),
             'lat' => round($lat, 7), 'lng' => round($lng, 7)], JSON_UNESCAPED_UNICODE);
     }

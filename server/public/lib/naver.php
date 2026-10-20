@@ -180,6 +180,25 @@ function talk_place_send(PDO $pdo, array $cfg, int $uid, array $b): array {
     return talk_media_post($pdo, $cfg, $uid, $roomId, 'place', $body, [], $clientId, $text);
 }
 
+// 장소 메시지 본문들의 지도 사진 열쇠
+function talk_map_keys(array $bodies): array {
+    $keys = [];
+    foreach ($bodies as $b) {
+        $k = json_decode((string)$b, true)['map'] ?? null;
+        if (is_string($k) && preg_match('/^[a-f0-9]{24}$/', $k)) $keys[$k] = true;
+    }
+    return array_keys($keys);
+}
+// 지도 사진은 아무 장소 메시지도 안 쓰게 되면 지움 (전달한 곳은 같은 열쇠를 같이 씀)
+function talk_maps_release(PDO $pdo, array $keys): void {
+    $used = $pdo->prepare("SELECT 1 FROM talk_messages WHERE kind = 'place' AND body LIKE ? LIMIT 1");
+    $del = $pdo->prepare('DELETE FROM talk_maps WHERE mkey = ?');
+    foreach ($keys as $k) {
+        $used->execute(['%"map":"' . $k . '"%']);
+        if (!$used->fetchColumn()) $del->execute([$k]);
+    }
+}
+
 // 지도 사진 내려 주기 (로그인 없이 무작위 열쇠로: <img> 는 머리를 못 붙임)
 function talk_map_serve(PDO $pdo, string $key): never {
     $st = $pdo->prepare('SELECT data FROM talk_maps WHERE mkey = ?');

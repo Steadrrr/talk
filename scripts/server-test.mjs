@@ -414,6 +414,7 @@ try {
     assert.equal((await api('rooms/schedule', { room_id: room, day: day(-1), title: '어제' }, tok.dad)).status, 400);
     assert.equal((await api('rooms/schedule', { room_id: room, day: '2026-02-30', title: 'x' }, tok.dad)).status, 400);
     assert.equal((await api('rooms/schedule', { room_id: room, day: day(1), title: ' ' }, tok.dad)).status, 400);
+    assert.equal((await api('rooms/schedule', { room_id: room, day: day(1), title: 'x', place: { name: '좌표 없음' } }, tok.dad)).status, 400, '좌표 없는 장소');
     assert.equal((await api('rooms/schedule', { room_id: room, day: day(1), title: '남' }, tok.f1)).status, 403);
     assert.equal((await api('rooms/schedule', { room_id: room, id: far, day: day(2), title: '가족 여행 (앞당김)' }, tok.me)).status, 200);
     fam = (await api('sync?since=0', undefined, tok.me)).body.rooms.find((x) => x.id === room);
@@ -1269,6 +1270,15 @@ try {
     assert.equal(r.status, 200);
     assert.equal(JSON.parse(r.body.messages[0].body).map, p.map);
     assert.equal(r.body.messages[0].kind, 'place');
+    // 지도 사진은 쓰는 메시지가 다 지워져야 지워짐 (전달한 곳이 남으면 그대로)
+    const extra = (await api('place/send', { room_id: dm, lat: 37.5, lng: 127, here: true, client_id: 'place-del-1' }, tok.me)).body.message;
+    const ek = JSON.parse(extra.body).map;
+    const fw = (await api('messages/forward', { id: extra.id, room_ids: [], user_ids: [await idOf(tok.me, '아빠')] }, tok.me)).body.messages[0];
+    await api('messages/delete', { id: extra.id }, tok.me);
+    assert.equal((await req('/api.php/map/' + ek)).status, 200, '전달한 곳이 쓰는 중');
+    await api('messages/delete', { id: fw.id }, tok.me);
+    assert.equal((await req('/api.php/map/' + ek)).status, 404, '아무도 안 쓰면 지움');
+    assert.equal((await req('/api.php/map/' + p.map)).status, 200, '다른 지도 사진은 그대로');
     // 상대 화면 동기화에도 보임
     const seen = (await api('messages/history?room_id=' + dm + '&before=0', undefined, tok.mom)).body.messages.filter((m) => m.kind === 'place');
     assert.equal(seen.length, 3);

@@ -342,7 +342,7 @@ img.avatar { object-fit: cover; background: var(--line); }
 .theme-preview .bubble { max-width: 75%; }
 .theme-label { font-size: calc(14px * var(--fs)); color: var(--dim); margin-top: 4px; }
 .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
-.swatch { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); flex: none; position: relative; margin: 0; cursor: pointer; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(128, 128, 128, .5); flex: none; position: relative; margin: 0; cursor: pointer; }
 .swatch.on { outline: 3px solid var(--acc); outline-offset: 2px; }
 .swatch.def { width: auto; padding: 0 12px; border-radius: 17px; background: var(--bg); color: var(--fg); font-size: calc(13px * var(--fs)); }
 .swatch.pick { background: conic-gradient(#f66, #fd5, #6d6, #5cf, #a7f, #f6c, #f66); overflow: hidden; }

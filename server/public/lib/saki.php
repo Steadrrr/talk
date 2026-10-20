@@ -125,7 +125,7 @@ function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
     // 사키 기억을 켜면 최근 100개 대화로 한 번에 시작한다 (응답 뒤 바로 정리). 끌 때 "기억도 지울까요?"에 예면 forget
     $start = $new['memory'] && !$old['memory'];
     if ($start) {
-        $st = $pdo->prepare("SELECT COALESCE(MIN(id) - 1, 0) FROM (SELECT id FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video') ORDER BY id DESC LIMIT " . TALK_SAKI_MEMORY_BATCH . ') x');
+        $st = $pdo->prepare("SELECT COALESCE(MIN(id) - 1, 0) FROM (SELECT id FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video', 'place') ORDER BY id DESC LIMIT " . TALK_SAKI_MEMORY_BATCH . ') x');
         $st->execute([$roomId]);
         $pdo->prepare("INSERT INTO talk_saki_memory (room_id, memory, upto, day, updated_at) VALUES (?, '', ?, ?, ?)
             ON DUPLICATE KEY UPDATE upto = VALUES(upto), day = VALUES(day)")->execute([$roomId, (int)$st->fetchColumn(), talk_saki_day(), talk_now()]);
@@ -235,7 +235,7 @@ function talk_saki_quiet_check(PDO $pdo, int $uid): void {
     $bot = talk_saki_bot($pdo);
     foreach ($rooms as $r) {
         $rid = (int)$r['id'];
-        $st = $pdo->prepare("SELECT id, user_id, created_at FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video') ORDER BY id DESC LIMIT 1");
+        $st = $pdo->prepare("SELECT id, user_id, created_at FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video', 'place') ORDER BY id DESC LIMIT 1");
         $st->execute([$rid]);
         $last = $st->fetch();
         if (!$last || (int)$last['user_id'] === $bot) continue; // 마지막이 사키 말이면 이미 대답함
@@ -267,7 +267,7 @@ function talk_saki_chime_due(PDO $pdo, int $roomId, int $bot, int $gapMin): bool
     $lastBot = $st->fetch() ?: ['id' => 0, 'created_at' => null];
     $last = max($lastBot['created_at'] ? strtotime($lastBot['created_at'] . ' UTC') : 0, (int)talk_meta_get($pdo, "saki_chime:$roomId"));
     if ($last > time() - $gapMin * 60) return false;
-    $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND id > ? AND user_id <> ? AND kind IN ('text', 'photo', 'video') AND created_at >= ?");
+    $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND id > ? AND user_id <> ? AND kind IN ('text', 'photo', 'video', 'place') AND created_at >= ?");
     $st->execute([$roomId, (int)$lastBot['id'], $bot, gmdate('Y-m-d H:i:s', $last)]);
     return (int)$st->fetchColumn() >= 3;
 }
@@ -283,7 +283,7 @@ function talk_saki_context(PDO $pdo, int $roomId, int $bot, bool $summary = fals
     if ($summary) {
         $day = talk_saki_day();
         $dayStart = gmdate('Y-m-d H:i:s', strtotime("$day 00:00:00 UTC") - 9 * 3600);
-        $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video') AND created_at >= ?");
+        $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND kind IN ('text', 'photo', 'video', 'place') AND created_at >= ?");
         $st->execute([$roomId, $dayStart]);
         if ((int)$st->fetchColumn() >= TALK_SAKI_SUMMARY_MIN) {
             $since = $dayStart;
@@ -554,7 +554,7 @@ function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $
     $today = talk_saki_day();
     $upto = (int)$m['upto'];
     $newDay = $m['day'] !== $today;
-    $kinds = "kind IN ('text', 'photo', 'video')";
+    $kinds = "kind IN ('text', 'photo', 'video', 'place')";
     if ($newDay) {
         $st = $pdo->prepare("SELECT COUNT(*) FROM talk_messages WHERE room_id = ? AND id > ? AND $kinds");
         $st->execute([$roomId, $upto]);
@@ -609,7 +609,7 @@ function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $
         $messages = [];
         foreach ($rows as $r) {
             $one = ['name' => mb_substr((string)($r['who'] ?? '나간 사람'), 0, 20) ?: '나간 사람',
-                'text' => $r['kind'] === 'photo' ? '(사진)' : ($r['kind'] === 'video' ? '(영상)' : mb_substr((string)$r['body'], 0, 600)),
+                'text' => $r['kind'] === 'photo' ? '(사진)' : ($r['kind'] === 'video' ? '(영상)' : ($r['kind'] === 'place' ? talk_saki_place_text((string)$r['body']) : mb_substr((string)$r['body'], 0, 600))),
                 'at' => gmdate('H:i', strtotime($r['created_at'] . ' UTC') + 9 * 3600)];
             if ((int)$r['user_id'] === $bot) $one['bot'] = true;
             $messages[] = $one;

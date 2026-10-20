@@ -343,7 +343,7 @@ function talk_media_serve(PDO $pdo, array $cfg, string $key, bool $thumb): never
 
 // 모두에게 삭제: 보낸 사람만. 파일도 지우고, 메시지는 "삭제된 메시지" 로 바뀐다 (모두의 화면에 같은 번호로 다시 내려감)
 function talk_message_delete(PDO $pdo, array $cfg, int $uid, int $msgId): void {
-    $st = $pdo->prepare('SELECT id, room_id, user_id, kind FROM talk_messages WHERE id = ?');
+    $st = $pdo->prepare('SELECT id, room_id, user_id, kind, body FROM talk_messages WHERE id = ?');
     $st->execute([$msgId]);
     $m = $st->fetch();
     if (!$m || !talk_room_member($pdo, $uid, (int)$m['room_id'])) talk_fail('메시지가 없어요.', 404);
@@ -357,6 +357,7 @@ function talk_message_delete(PDO $pdo, array $cfg, int $uid, int $msgId): void {
     $pdo->prepare('DELETE FROM talk_media_uses WHERE message_id = ?')->execute([$msgId]);
     talk_media_release($pdo, $cfg, $keys);
     $pdo->prepare("UPDATE talk_messages SET kind = 'deleted', body = '' WHERE id = ?")->execute([$msgId]);
+    if ($m['kind'] === 'place') talk_maps_release($pdo, talk_map_keys([$m['body']]));
     $u = $pdo->prepare('UPDATE talk_rooms SET notice_id = NULL, notice_by = NULL WHERE notice_id = ?');
     $u->execute([$msgId]);
     if ($u->rowCount() > 0) talk_event($pdo, (int)$m['room_id'], 'room');   // 공지였으면 공지도 내림

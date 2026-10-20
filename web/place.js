@@ -161,7 +161,7 @@ export function PlaceSearch({ roomId, onSent, onPick, onClose }) {
   const seq = useRef(0);
   useEffect(() => {
     const word = q.trim();
-    if (word.length < 2) { setRes(null); setErr(''); return; }
+    if (word.length < 2) { ++seq.current; setRes(null); setErr(''); setBusy(false); return; }
     const n = ++seq.current;
     const t = setTimeout(() => {
       setBusy(true);

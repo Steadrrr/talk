@@ -29,11 +29,13 @@ async function arrived(build) {
   return true;
 }
 
-// 쓰는 중이면 나중에: 사진 고르는 중, 입력칸에 커서가 있음, 보내는 중인 메시지가 있음, 3초 안에 만짐
+// 쓰는 중이면 나중에: 사진 고르는 중, 입력칸에 커서가 있음(메시지 칸은 글이 있을 때), 보낼 사진·편집 화면이 떠 있음, 보내는 중인 메시지가 있음, 3초 안에 만짐
 function busy(state) {
   if (Date.now() < pickingUntil) return true;
   const el = document.activeElement;
   if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type !== 'checkbox'))) return true;
+  if (el?.isContentEditable && el.textContent.trim()) return true;
+  if (document.querySelector('.send-preview, .photo-editor')) return true;
   if (Date.now() - lastTouch < 3000) return true;
   return Object.values(state.messages).some((l) => l.some((m) => m.pending && !m.failed));
 }

@@ -114,7 +114,7 @@ function App() {
       <button class="primary" onClick=${start}>다시 시도</button><button class="text" onClick=${clearAll}>로그아웃</button></main>`;
   }
   const profile = html`${state.profile && html`<${Profile} key=${state.profile} onOpen=${open} />`}${ask && html`<${PushPrompt} state=${ask} onClose=${() => setAsk('')} />`}${state.notices && html`<${NoticeBoard} />`}${toast && html`<div class="update-toast" onClick=${() => { setToast(''); showNotices(true); }}>${toast} · 바뀐 점 보기</div>`}`;
-  if (state.openRoom) return html`<${Room} id=${state.openRoom} onBack=${back} />${profile}`;
+  if (state.openRoom) return html`<${Room} key=${state.openRoom} id=${state.openRoom} onBack=${back} />${profile}`;
   return html`<${Home} tab=${tab} setTab=${setTab} onOpen=${open} />${profile}`;
 }
 

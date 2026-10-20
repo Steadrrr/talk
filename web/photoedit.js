@@ -58,6 +58,8 @@ const loadImage = (url) => new Promise((ok, no) => {
   i.onerror = () => no(new Error('사진을 열지 못했어요.'));
   i.src = url;
 });
+// 다 쓴 복사본 캔버스의 메모리를 바로 놓아줌
+const free = (c) => { c.width = c.height = 0; };
 function copyOf(c) {
   const d = document.createElement('canvas');
   d.width = c.width; d.height = c.height;
@@ -83,6 +85,7 @@ export function PhotoEditor({ file, onDone, onCancel }) {
   const pen = useRef(null);
   const drag = useRef(null);
 
+  useEffect(() => () => { undo.current.forEach(free); undo.current = []; }, []);
   useEffect(() => {
     const url = URL.createObjectURL(file);
     loadImage(url).then((img) => {
@@ -96,12 +99,12 @@ export function PhotoEditor({ file, onDone, onCancel }) {
 
   function remember() {
     undo.current.push(copyOf(cv.current));
-    if (undo.current.length > 20) undo.current.shift();
+    if (undo.current.length > 8) free(undo.current.shift());   // 아이폰 캔버스 메모리 상한 때문에 조금만 둠
     setSteps(undo.current.length);
   }
   function back() {
     const prev = undo.current.pop();
-    if (prev) paint(cv.current, prev);
+    if (prev) { paint(cv.current, prev); free(prev); }
     setSteps(undo.current.length);
   }
 
