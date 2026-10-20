@@ -337,7 +337,7 @@ export function Room({ id, onBack }) {
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} bubble=${menu.user_id === state.me.id ? null : bubbleStyle(byId.get(menu.user_id))} name=${names.get(menu.user_id)} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
         onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
       ${big && html`<${MediaViewer} items=${big.items} start=${big.start} names=${names} onClose=${() => setBig(null)} />`}
-      ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => setPhotos(false)} />`}
+      ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => { setPhotos(false); setSettings(true); }} />`}
       ${picked && html`<${SendPreview} files=${picked} onSend=${sendPhotos} onClose=${() => setPicked(null)} />`}
       ${attach === 'menu' && html`<${AttachSheet} onFiles=${pickFiles} onHere=${() => setAttach('here')} onSearch=${() => setAttach('search')} onSchedule=${() => setAttach('schedule')} onClose=${() => setAttach('')} />`}
       ${attach === 'schedule' && html`<${ScheduleSheet} roomId=${id} onClose=${() => setAttach('')} />`}

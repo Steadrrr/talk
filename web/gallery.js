@@ -310,7 +310,7 @@ export function Gallery({ room, names, onClose }) {
   return html`
     <div class="sheet-bg" onClick=${(e) => e.target === e.currentTarget && onClose()}>
       <div class="sheet">
-        <header class="bar"><button class="icon" onClick=${onClose} aria-label="닫기">✕</button>
+        <header class="bar"><button class="icon" onClick=${onClose} aria-label="뒤로">‹</button>
           <h2 class="ellipsis">채팅방 사진${items?.length ? html` <span class="hint">${items.length}</span>` : ''}</h2></header>
         <div class="scroll">
           ${err && html`<p class="err pad">${err}</p>`}
