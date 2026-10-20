@@ -409,3 +409,41 @@ img.avatar { object-fit: cover; background: var(--line); }
 .saki-memory .diary { padding: 6px 0; border-top: 1px solid var(--line); }
 .saki-memory .diary p { margin: 4px 0 0; white-space: pre-wrap; }
 .saki-memory .text.danger-text { color: var(--bad); }
+
+/* 사진 보내기 전 미리 보기·편집 */
+.send-preview, .photo-editor { background: #111; justify-content: space-between; padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px); gap: 10px; }
+.pe-top { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pe-title { color: #fff; font-size: calc(15px * var(--fs)); }
+.pe-btn { color: #fff; font-size: calc(17px * var(--fs)); padding: 8px 12px; min-width: 52px; min-height: 44px; border-radius: 10px; }
+.pe-btn:disabled { opacity: .35; }
+.pe-edit, .pe-done { color: var(--acc); font-weight: 700; }
+.pe-stage { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+.send-preview .pe-stage img { max-width: 100%; max-height: 100%; border-radius: 6px; object-fit: contain; }
+.pe-wrap { position: relative; line-height: 0; user-select: none; -webkit-user-select: none; }
+.pe-wrap canvas { max-width: calc(100vw - 24px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 220px); display: block; }
+.pe-wrap canvas.drawing { touch-action: none; cursor: crosshair; }
+.pe-crop { position: absolute; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); outline: 2px solid #fff; touch-action: none; cursor: move; }
+.pe-wrap:has(.pe-crop) { overflow: hidden; }
+.pe-h { position: absolute; width: 28px; height: 28px; border: 4px solid #fff; touch-action: none; }
+.pe-h.nw { left: -4px; top: -4px; border-right: 0; border-bottom: 0; cursor: nwse-resize; }
+.pe-h.ne { right: -4px; top: -4px; border-left: 0; border-bottom: 0; cursor: nesw-resize; }
+.pe-h.sw { left: -4px; bottom: -4px; border-right: 0; border-top: 0; cursor: nesw-resize; }
+.pe-h.se { right: -4px; bottom: -4px; border-left: 0; border-top: 0; cursor: nwse-resize; }
+.pe-colors { display: flex; gap: 12px; justify-content: center; }
+.pe-color { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); padding: 0; }
+.pe-color.on { outline: 3px solid #fff; outline-offset: 2px; }
+.pe-tools { display: flex; gap: 10px; justify-content: center; width: 100%; }
+.pe-tool { flex: 1; max-width: 120px; min-height: 52px; color: #fff; background: rgba(255,255,255,.12); border-radius: 12px; font-size: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.pe-tool span { font-size: calc(12px * var(--fs)); }
+.pe-tool.on { background: var(--acc); color: var(--acc-fg); }
+.pe-tool:disabled { opacity: .35; }
+.pe-apply { font-size: calc(16px * var(--fs)); font-weight: 700; }
+.pe-tools button:not(:has(span)) { font-size: calc(16px * var(--fs)); }
+.sp-strip { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; padding: 8px; touch-action: pan-x; }
+.sp-thumb { position: relative; flex: none; }
+.sp-pick { width: 56px; height: 56px; padding: 0; border-radius: 8px; overflow: hidden; border: 2px solid transparent; display: block; }
+.sp-thumb.on .sp-pick { border-color: var(--acc); }
+.sp-pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sp-del { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.75); color: #fff; font-size: 12px; line-height: 22px; padding: 0; }
+.sp-mark { position: absolute; left: 3px; bottom: 3px; font-size: 12px; color: #fff; background: rgba(0,0,0,.6); border-radius: 6px; padding: 0 4px; line-height: 16px; pointer-events: none; }
+.sp-send { width: 100%; max-width: 420px; min-height: 52px; border-radius: 14px; background: var(--acc); color: var(--acc-fg); font-size: calc(17px * var(--fs)); font-weight: 700; }

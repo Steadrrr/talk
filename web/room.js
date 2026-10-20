@@ -7,6 +7,7 @@ import { useLongPress, useBackdrop, Collage, MediaViewer, Gallery, ForwardSheet,
 import { nickOf } from './names.js';
 import { bubbleStyle } from './chattheme.js';
 import { RoomSettings } from './roomsettings.js';
+import { SendPreview } from './photoedit.js';
 
 export function Room({ id, onBack }) {
   const room = state.rooms[id];
@@ -24,6 +25,7 @@ export function Room({ id, onBack }) {
   const [menu, setMenu] = useState(null); // 길게 눌러 연 메시지 메뉴
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
   const [searching, setSearching] = useState(false);
+  const [picked, setPicked] = useState(null); // 보내기 전에 보는 사진들 (편집 가능)
   const input = useRef(null);           // 지금 쓰는 입력칸 (아래 두 칸 중 하나)
   const boxes = [useRef(null), useRef(null)];
   const [cur, setCur] = useState(0);
@@ -89,17 +91,23 @@ export function Room({ id, onBack }) {
     setReplyTo(null);
   }
 
-  // 사진·영상 고르기: 사진 여러 장은 한 묶음(30장씩)으로, 영상은 하나씩. 모두 바로 화면에 올리고 차례로 보냄
+  // 사진·영상 고르기: 사진은 먼저 크게 보며 빼거나 편집한 뒤 보내기, 영상은 하나씩 바로 보냄
   function pickFiles(e) {
     const files = [...(e.target.files || [])].slice(0, 60);
     e.target.value = '';
     atBottom.current = true;
     const photos = files.filter((f) => !f.type.startsWith('video/'));
+    if (photos.length) setPicked(photos);
+    for (const f of files.filter((f) => f.type.startsWith('video/'))) sendMedia(id, f);
+  }
+  // 여러 장은 한 묶음(30장씩)으로. 모두 바로 화면에 올리고 차례로 보냄
+  function sendPhotos(photos) {
+    setPicked(null);
+    atBottom.current = true;
     for (let i = 0; i < photos.length; i += 30) {
       const part = photos.slice(i, i + 30);
       if (part.length > 1) sendAlbum(id, part); else sendMedia(id, part[0]);
     }
-    for (const f of files.filter((f) => f.type.startsWith('video/'))) sendMedia(id, f);
   }
 
   function onKey(e) {
@@ -324,6 +332,7 @@ export function Room({ id, onBack }) {
         onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
       ${big && html`<${MediaViewer} items=${big.items} start=${big.start} names=${names} onClose=${() => setBig(null)} />`}
       ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => setPhotos(false)} />`}
+      ${picked && html`<${SendPreview} files=${picked} onSend=${sendPhotos} onClose=${() => setPicked(null)} />`}
       ${fwd && html`<${ForwardSheet} m=${fwd} onClose=${() => setFwd(null)} />`}
       ${searching && html`<${RoomSearch} roomId=${id} names=${names} onClose=${() => setSearching(false)} onPick=${goTo} />`}
       ${settings && html`<${RoomSettings} room=${room} onClose=${() => setSettings(false)} onLeft=${onBack} onPhotos=${() => { setSettings(false); setPhotos(true); }} />`}
