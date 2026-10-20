@@ -106,50 +106,61 @@ function mergeRooms(rooms, full) {
 // 나간 방·닫힌 그룹의 방: 기기에서도 지운다
 function dropRooms(ids) {
   const keep = new Set(ids);
+  let dropped = false;
   for (const id of Object.keys(state.rooms).map(Number)) {
     if (keep.has(id)) continue;
     delete state.rooms[id];
     delete state.messages[id];
     if (state.openRoom === id) state.openRoom = null;
+    dropped = true;
   }
+  return dropped;
 }
 
 // ───── 동기화 ─────
 let syncing = null;
 let timer = 0;
 let stopped = true;
+let drawnAt = 0;
 
 export async function syncNow() {
   if (syncing) return syncing;
   syncing = (async () => {
     let app = null;
+    // 바뀐 것이 없으면 화면을 다시 그리지 않고 기기에 저장도 안 한다 (방을 보고 있으면 2초마다 부르므로)
+    let changed = !state.online;
     try {
       let more = true;
       while (more) {
         const asked = document.hidden ? 0 : state.openRoom || 0;
         const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1&room=' + asked));
-        state.typing = asked && asked === state.openRoom ? r.typing || [] : [];
+        const typing = asked && asked === state.openRoom ? r.typing || [] : [];
+        if (typing.join() !== state.typing.join()) changed = true;
+        state.typing = typing;
+        if (r.full || r.rooms.length || r.messages.length || r.cursor !== state.cursor) changed = true;
         if (r.full) state.messages = Object.fromEntries(Object.entries(state.messages).map(([k, v]) => [k, v.filter((m) => m.pending)]));
         mergeRooms(r.rooms, r.full);
         mergeMessages(r.messages);
-        if (r.room_ids) dropRooms(r.room_ids);
+        if (r.room_ids && dropRooms(r.room_ids)) changed = true;
         state.cursor = r.cursor;
         more = r.more;
         if (r.groups_rev !== undefined && r.groups_rev !== state.groupsRev) await loadMe();
-        if (r.notice !== undefined) state.notice = r.notice;
-        if (r.saki_ready !== undefined) state.sakiReady = r.saki_ready;
+        if (r.notice !== undefined && JSON.stringify(r.notice) !== JSON.stringify(state.notice)) { state.notice = r.notice; changed = true; }
+        if (r.saki_ready !== undefined && r.saki_ready !== state.sakiReady) { state.sakiReady = r.saki_ready; changed = true; }
         app = r.app;
       }
       state.online = true;
       markReadIfOpen();
-      saveSoon();
+      if (changed) saveSoon();
       checkUpdate(app, state);
     } catch (e) {
       if (e instanceof AuthError) { clearAll(); return; }
+      if (state.online) changed = true;
       state.online = false;
     } finally {
       syncing = null;
-      notify();
+      // 그래도 1분에 한 번은 다시 그린다 (목록의 "어제" 같은 날짜 글이 날이 바뀌면 고쳐지게)
+      if (changed || Date.now() - drawnAt > 60000) { drawnAt = Date.now(); notify(); }
     }
   })();
   return syncing;

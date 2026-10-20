@@ -11,6 +11,18 @@ self.addEventListener('activate', (e) => {
   })());
 });
 
+// 새 판의 파일(이름-해시8자.js)을 받으면 같은 이름의 예전 판 파일은 캐시에서 지운다 (배포가 잦아서 안 지우면 기기에 계속 쌓임)
+const ASSET = /\/assets\/(.+)-[A-Za-z0-9_-]{8}\.(\w+)$/;
+async function prune(c, path) {
+  const m = path.match(ASSET);
+  if (!m) return;
+  for (const k of await c.keys()) {
+    const p = new URL(k.url).pathname;
+    const o = p.match(ASSET);
+    if (o && p !== path && o[1] === m[1] && o[2] === m[2]) await c.delete(k);
+  }
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
@@ -20,7 +32,7 @@ self.addEventListener('fetch', (e) => {
       const hit = await c.match(req);
       if (hit) return hit;
       const res = await fetch(req);
-      if (res.ok) c.put(req, res.clone());
+      if (res.ok) { await c.put(req, res.clone()); prune(c, url.pathname); }
       return res;
     }));
     return;

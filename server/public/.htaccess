@@ -14,3 +14,15 @@ DirectoryIndex index.html
     Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>
+<IfModule mod_headers.c>
+  <FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
+# 화면 파일은 압축해서 보냄 (js·css 180KB → 57KB). api.php 의 JSON 은 압축하지 않는다:
+# 응답 길이를 먼저 알려 주고 그 뒤에 알림·사키 일을 하는데, 압축하면 그 일이 끝날 때까지 앱이 기다리게 됨
+<IfModule mod_deflate.c>
+  <FilesMatch "\.(html|js|css|webmanifest|svg)$">
+    SetOutputFilter DEFLATE
+  </FilesMatch>
+</IfModule>
