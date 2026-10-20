@@ -56,9 +56,11 @@ export function Collage({ m, press }) {
 const STACK_ICON = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="7" y="3" width="14" height="14" rx="2" /><path d="M17 21H5a2 2 0 0 1-2-2V7" /></svg>`;
 
 // 크게 보기: 좌우로 밀어서 넘김 (컴퓨터는 ‹ › 단추·화살표 키), 위에 현재장/총장수, 길게 누르면 전달·저장
+//  원래 크기에서 위로 밀면 아래에 ✕ 가 나타나고, 더 올려서 놓으면 닫힘 (확대 중에는 끌면 사진이 옮겨지므로 안 됨)
 export function MediaViewer({ items, start = 0, names, onClose }) {
   const [i, setI] = useState(Math.min(start, Math.max(0, items.length - 1)));
   const [dx, setDx] = useState(0);
+  const [dy, setDy] = useState(0);  // 위로 민 거리 (0 이하)
   const [anim, setAnim] = useState(false);
   const [menu, setMenu] = useState(null);
   const [fwd, setFwd] = useState(null);
@@ -82,24 +84,39 @@ export function MediaViewer({ items, start = 0, names, onClose }) {
   });
   if (!n) return null;
   const cur = items[i];
-  const down = (e) => { dragged.current = false; if (!anim && n > 1) drag.current = { x: e.clientX, y: e.clientY, moved: false }; };
+  const closeAt = () => Math.min(160, (stage.current?.clientHeight || innerHeight) * 0.22);   // 이만큼 올리면 닫힘
+  const down = (e) => { dragged.current = false; if (!anim && e.isPrimary) drag.current = { x: e.clientX, y: e.clientY, moved: false, dir: '' }; };
   const move = (e) => {
     const d = drag.current;
     if (!d) return;
-    const x = e.clientX - d.x;
-    if (!d.moved && Math.abs(x) > 10 && Math.abs(x) > Math.abs(e.clientY - d.y)) d.moved = dragged.current = true;
+    const x = e.clientX - d.x, y = e.clientY - d.y;
+    if (!d.moved) {
+      if (n > 1 && Math.abs(x) > 10 && Math.abs(x) > Math.abs(y)) d.dir = 'x';
+      else if (y < -10 && -y > Math.abs(x)) d.dir = 'y';
+      else return;
+      d.moved = dragged.current = true;
+    }
     // 처음·끝에서는 덜 따라오게
-    if (d.moved) setDx((i === 0 && x > 0) || (i === n - 1 && x < 0) ? x / 3 : x);
+    if (d.dir === 'x') setDx((i === 0 && x > 0) || (i === n - 1 && x < 0) ? x / 3 : x);
+    else {
+      if ((dy > -closeAt()) !== (y > -closeAt())) navigator.vibrate?.(10);
+      setDy(Math.min(0, y));
+    }
   };
   const up = () => {
     const d = drag.current;
     drag.current = null;
     if (!d?.moved) return;
+    if (d.dir === 'y') {
+      if (dy <= -closeAt()) { onClose(); return; }
+      setAnim(true); setDy(0); setTimeout(() => setAnim(false), 200);
+      return;
+    }
     const w = stage.current?.clientWidth || innerWidth;
     if (dx < -Math.min(80, w / 5)) go(1); else if (dx > Math.min(80, w / 5)) go(-1); else go(0);
   };
   // 사진을 두 손가락으로 잡거나 확대한 채 끌면 넘기기는 그만
-  const grab = () => { if (drag.current) { drag.current = null; setDx(0); } };
+  const grab = () => { if (drag.current) { drag.current = null; setDx(0); setDy(0); } };
   const slide = (k) => {
     const it = items[k];
     if (!it) return null;
@@ -119,9 +136,10 @@ export function MediaViewer({ items, start = 0, names, onClose }) {
       </div>
       <div class="viewer-stage" ref=${stage} onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up}
         onClick=${(e) => e.target === e.currentTarget && onClose()}>
-        <div class=${'viewer-track' + (anim ? ' anim' : '')} style=${{ transform: `translateX(${dx}px)` }}>
+        <div class=${'viewer-track' + (anim ? ' anim' : '')} style=${{ transform: `translate(${dx}px, ${dy}px)` }}>
           ${slide(i - 1)}${slide(i)}${slide(i + 1)}
         </div>
+        ${dy < 0 && html`<span class=${'viewer-pull' + (dy <= -closeAt() ? ' ready' : '')} style=${{ opacity: Math.min(1, -dy / closeAt()) }} aria-hidden="true">✕</span>`}
         ${n > 1 && i > 0 && html`<button class="viewer-nav prev" onClick=${() => go(-1)} aria-label="이전 사진">‹</button>`}
         ${n > 1 && i < n - 1 && html`<button class="viewer-nav next" onClick=${() => go(1)} aria-label="다음 사진">›</button>`}
       </div>
