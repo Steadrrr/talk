@@ -23,7 +23,7 @@ async function run(mode, fn) {
     t.onerror = () => no(t.error);
   });
 }
-export const keepPending = (m) => run('readwrite', (s) => s.put({ client_id: m.client_id, room_id: m.room_id, kind: m.kind, at: m.at, file: m.file })).catch(() => {});
+export const keepPending = (m) => run('readwrite', (s) => s.put({ client_id: m.client_id, room_id: m.room_id, kind: m.kind, at: m.at, file: m.file, files: m.files })).catch(() => {});
 export const dropPending = (clientId) => run('readwrite', (s) => s.delete(clientId)).catch(() => {});
 export const listPending = () => run('readonly', (s) => s.getAll()).catch(() => []);
 export const clearPending = () => run('readwrite', (s) => s.clear()).catch(() => {});

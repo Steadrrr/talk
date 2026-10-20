@@ -694,6 +694,74 @@ try {
     assert.equal(JSON.parse(msgs.at(-1).body).gone, true, '메시지에 지워짐 표시');
   });
 
+  await t('사진 묶음·채팅방 사진 모아보기·전달(같은 그룹만, 같은 파일), 묶음 한 장만 지워짐', async () => {
+    const up = async (room, token, bytes = 4) => {
+      const buf = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBytes(bytes)]);
+      const r = await api('media/start', { room_id: room, kind: 'photo', mime: 'image/jpeg', size: buf.length, w: 800, h: 600 }, token);
+      await req(`/api.php/media/chunk?key=${r.body.key}&offset=0`, { method: 'POST', headers: { 'X-Talk-Token': token, 'Content-Type': 'application/octet-stream' }, body: buf });
+      return r.body.key;
+    };
+    const momId = await idOf(tok.me, '엄마'), dadId = await idOf(tok.me, '아빠'), f1Id = await idOf(tok.me, '친구1');
+    const dm = (await api('rooms/dm', { user_id: momId }, tok.me)).body.room.id;
+    const keys = [await up(dm, tok.me), await up(dm, tok.me), await up(dm, tok.me)];
+    let r = await api('media/album', { keys: [keys[0]], client_id: 'album-test-1' }, tok.me);
+    assert.equal(r.status, 400, '한 장은 묶음이 아님');
+    r = await api('media/album', { keys, client_id: 'album-test-1' }, tok.mom);
+    assert.equal(r.status, 404, '남이 올린 사진은 못 묶음');
+    r = await api('media/album', { keys, client_id: 'album-test-1' }, tok.me);
+    assert.equal(r.status, 200);
+    const album = r.body.message;
+    assert.equal(album.kind, 'photo');
+    assert.deepEqual(JSON.parse(album.body).items.map((x) => x.key), keys);
+    assert.equal((await api('media/album', { keys, client_id: 'album-test-1' }, tok.me)).body.message.id, album.id, '다시 보내도 메시지 하나');
+
+    // 채팅방 사진 모아보기
+    r = await api('rooms/photos?room_id=' + dm, undefined, tok.mom);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.messages[0].id, album.id, '최근 것부터');
+    assert.equal((await api('rooms/photos?room_id=' + dm, undefined, tok.f1)).status, 403, '방 밖 사람');
+
+    // 전달: 같은 그룹(가족)의 방·친구에게만
+    assert.equal((await api('messages/forward', { id: album.id, user_ids: [f1Id] }, tok.me)).status, 403, '다른 그룹 친구에게는 안 됨');
+    const friendsRoom = (await api('rooms/dm', { user_id: f1Id }, tok.me)).body.room.id;
+    assert.equal((await api('messages/forward', { id: album.id, room_ids: [friendsRoom] }, tok.me)).status, 403, '다른 그룹 방에는 안 됨');
+    assert.equal((await api('messages/forward', { id: album.id, user_ids: [dadId] }, tok.f1)).status, 404, '못 보는 메시지');
+    assert.equal((await api('messages/forward', { id: album.id }, tok.me)).status, 400, '받을 곳 없음');
+    r = await api('messages/forward', { id: album.id, user_ids: [dadId], index: 1 }, tok.me);
+    assert.equal(r.status, 200);
+    const one = r.body.messages[0];
+    assert.equal(JSON.parse(one.body).key, keys[1], '묶음의 한 장만, 같은 파일');
+    const fam = (await api('sync?since=0', undefined, tok.me)).body.rooms.find((x) => x.name === '우리 가족').id;
+    r = await api('messages/forward', { id: album.id, room_ids: [fam], user_ids: [dadId] }, tok.me);
+    assert.equal(r.status, 200);
+    const fwd = r.body.messages;
+    assert.deepEqual(fwd.map((m) => m.room_id), [fam, one.room_id]);
+    assert.equal(JSON.parse(fwd[0].body).items.length, 3, '묶음 통째로');
+    r = await api('messages/send', { room_id: dm, body: '전달할 글' }, tok.me);
+    r = await api('messages/forward', { id: r.body.message.id, user_ids: [dadId] }, tok.me);
+    assert.equal(r.body.messages[0].body, '전달할 글');
+
+    // 원래 묶음을 모두에게 삭제해도 전달한 곳의 파일은 남음
+    assert.equal((await api('messages/delete', { id: album.id }, tok.me)).status, 200);
+    for (const k of keys) assert.equal((await req('/api.php/media/' + k)).status, 200, '전달한 곳이 쓰고 있어서 남음');
+    // 전달한 묶음도 다 지우면 그제야 지워짐 (한 장만 전달한 keys[1] 은 남음)
+    for (const m of fwd) assert.equal((await api('messages/delete', { id: m.id }, tok.me)).status, 200);
+    assert.equal((await req('/api.php/media/' + keys[0])).status, 404);
+    assert.equal((await req('/api.php/media/' + keys[2])).status, 404);
+    assert.equal((await req('/api.php/media/' + keys[1])).status, 200);
+
+    // 보관 기간: 묶음의 한 장만 지나면 그 한 장만 gone
+    const k2 = [await up(dm, tok.me), await up(dm, tok.me)];
+    const a2 = (await api('media/album', { keys: k2, client_id: 'album-test-2' }, tok.me)).body.message;
+    execFileSync('mariadb', ['-h', dbHost, '-u', dbUser, `-p${dbPass}`, dbName, '-e', `UPDATE talk_media SET created_at = NOW() - INTERVAL 20 DAY WHERE mkey = '${k2[0]}'`]);
+    await api('media/album', { keys: [await up(dm, tok.me), await up(dm, tok.me)], client_id: 'album-test-3' }, tok.me);
+    await new Promise((ok) => setTimeout(ok, 300));
+    const b2 = JSON.parse((await api('rooms/photos?room_id=' + dm, undefined, tok.mom)).body.messages.find((m) => m.id === a2.id).body);
+    assert.equal(b2.items[0].gone, true);
+    assert.ok(!b2.items[1].gone && !b2.gone, '나머지는 그대로');
+    assert.equal((await req('/api.php/media/' + k2[0])).status, 404);
+  });
+
   await t('이미 가입한 사람이 초대 코드로 다른 그룹에 들어감', async () => {
     const inv = inviteOf(await adminPost({ act: 'invite', group: friends, uses: '1', days: '1' }));
     let r = await api('groups/join', { invite: inv }, tok.mom);

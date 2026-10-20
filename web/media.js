@@ -16,10 +16,16 @@ export function mediaInfo(m) {
   try { return JSON.parse(m.body) || {}; } catch { return {}; }
 }
 
+// 사진·영상 메시지의 파일들: 묶음이면 items, 아니면 본문 하나. gone 은 보관 기간이 지나 지워진 것
+export function mediaItems(m) {
+  const info = mediaInfo(m);
+  return Array.isArray(info.items) ? info.items : info.key ? [info] : [];
+}
+
 // 목록·알림에 보일 한 줄
 export function preview(m) {
   if (!m) return '';
-  if (m.kind === 'photo') return '사진';
+  if (m.kind === 'photo') { const n = mediaItems(m).length; return n > 1 ? `사진 ${n}장` : '사진'; }
   if (m.kind === 'video') return '동영상';
   if (m.kind === 'deleted') return '삭제된 메시지';
   return m.body;
@@ -185,8 +191,19 @@ async function putChunk(key, offset, blob) {
   return data.received;
 }
 
-// 올리기 → 메시지. onProgress(0~1). 끊기면 조각마다 3번까지 다시
+// 올리기 → 메시지. onProgress(0~1)
 export async function upload(roomId, p, clientId, onProgress) {
+  const key = await uploadFile(roomId, p, onProgress);
+  return (await api('media/finish', { key, client_id: clientId })).message;
+}
+
+// 사진 묶음: 따로 올린 열쇠들을 메시지 하나로
+export async function finishAlbum(keys, clientId) {
+  return (await api('media/album', { keys, client_id: clientId })).message;
+}
+
+// 파일만 올리기 (메시지는 아직). 끊기면 조각마다 3번까지 다시. 열쇠를 돌려줌
+export async function uploadFile(roomId, p, onProgress) {
   const { key } = await api('media/start', { room_id: roomId, kind: p.kind, mime: p.mime, size: p.blob.size, w: p.w, h: p.h, dur: p.dur });
   // 미리보기는 따로 그대로 보낸다 (JSON 안 base64 는 카페24 웹 방화벽이 막을 수 있어서). 실패해도 영상은 보냄
   if (p.thumb) await api(`media/thumb?key=${key}`, b64Blob(p.thumb)).catch(() => {});
@@ -201,23 +218,29 @@ export async function upload(roomId, p, clientId, onProgress) {
     }
     onProgress?.(off / p.blob.size);
   }
-  return (await api('media/finish', { key, client_id: clientId })).message;
+  return key;
 }
 
-// 저장: 휴대폰은 공유 창(→ "이미지 저장"/"비디오 저장")으로, 컴퓨터는 내려받기로
-export async function saveMedia(m) {
-  const info = mediaInfo(m);
-  const res = await fetch(mediaUrl(info.key));
-  if (!res.ok) throw new Error('파일을 받지 못했어요.');
-  const blob = await res.blob();
-  const ext = (blob.type.split('/')[1] || (m.kind === 'photo' ? 'jpg' : 'mp4')).replace('quicktime', 'mov').replace('jpeg', 'jpg');
-  const file = new File([blob], `SAKiTalk-${m.id}.${ext}`, { type: blob.type });
-  if (navigator.canShare?.({ files: [file] }) && matchMedia('(pointer: coarse)').matches) {
-    try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; }
+// 저장: 휴대폰은 공유 창(→ "이미지 저장"/"비디오 저장")으로, 컴퓨터는 내려받기로. 묶음은 index 가 없으면 전부
+export async function saveMedia(m, index = null) {
+  const items = mediaItems(m).map((it, i) => ({ it, i })).filter(({ it, i }) => !it.gone && (index === null || i === index));
+  if (!items.length) throw new Error('보관 기간이 지나 지워졌어요.');
+  const files = [];
+  for (const { it, i } of items) {
+    const res = await fetch(mediaUrl(it.key));
+    if (!res.ok) throw new Error('파일을 받지 못했어요.');
+    const blob = await res.blob();
+    const ext = (blob.type.split('/')[1] || (m.kind === 'photo' ? 'jpg' : 'mp4')).replace('quicktime', 'mov').replace('jpeg', 'jpg');
+    files.push(new File([blob], `SAKiTalk-${m.id}${items.length > 1 || index !== null ? '-' + (i + 1) : ''}.${ext}`, { type: blob.type }));
   }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(file);
-  a.download = file.name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  if (navigator.canShare?.({ files }) && matchMedia('(pointer: coarse)').matches) {
+    try { await navigator.share({ files }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  for (const file of files) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
 }

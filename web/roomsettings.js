@@ -4,7 +4,7 @@ import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
 import { state, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation } from './store.js';
 
-export function RoomSettings({ room, onClose, onLeft }) {
+export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
   const [name, setName] = useState(room.name || '');
   const [inviting, setInviting] = useState(false);
   const [picked, setPicked] = useState([]);
@@ -63,6 +63,7 @@ export function RoomSettings({ room, onClose, onLeft }) {
         <div class="scroll">
           ${err && html`<p class="err pad">${err}</p>`}
           ${msg && html`<p class="ok pad">${msg}</p>`}
+          <button class="person photos-open" onClick=${onPhotos}><span class="avatar multi" style="width:52px;height:52px;font-size:24px">🖼️</span><span class="grow">채팅방 사진 보기</span><span class="hint">›</span></button>
           <div class="section room-photo">
             ${room.photo
               ? html`<button class="tap" onClick=${() => setViewing(true)} aria-label="사진 크게 보기"><${Avatar} photo=${room.photo} size=${88} /></button>

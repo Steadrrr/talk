@@ -388,10 +388,12 @@ function talk_room_leave(PDO $pdo, array $cfg, int $uid, int $roomId): void {
 
 // 방을 통째로 없앰. 방 사람들 앱은 다음 동기화의 room_ids 에 이 방이 없으니 지운다
 function talk_room_destroy(PDO $pdo, array $cfg, int $roomId): void {
-    $st = $pdo->prepare('SELECT * FROM talk_media WHERE room_id = ? AND deleted = 0');
-    $st->execute([$roomId]);
-    foreach ($st->fetchAll() as $md) @unlink(talk_media_path($cfg, $md));
-    $pdo->prepare('UPDATE talk_media SET deleted = 1, thumb = NULL WHERE room_id = ?')->execute([$roomId]);
+    // 사진·영상: 이 방 메시지가 쓰던 것과 이 방에 올리던 것. 다른 방에 전달된 파일은 남긴다
+    $st = $pdo->prepare('SELECT mkey FROM talk_media_uses WHERE room_id = ? UNION SELECT mkey FROM talk_media WHERE room_id = ? AND deleted = 0');
+    $st->execute([$roomId, $roomId]);
+    $keys = $st->fetchAll(PDO::FETCH_COLUMN);
+    $pdo->prepare('DELETE FROM talk_media_uses WHERE room_id = ?')->execute([$roomId]);
+    talk_media_release($pdo, $cfg, $keys);
     $pdo->prepare('DELETE r FROM talk_reactions r JOIN talk_messages m ON m.id = r.message_id WHERE m.room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_messages WHERE room_id = ?')->execute([$roomId]);
     $pdo->prepare('DELETE FROM talk_room_members WHERE room_id = ?')->execute([$roomId]);

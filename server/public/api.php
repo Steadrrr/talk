@@ -167,6 +167,22 @@ switch ($route) {
         $b = talk_body();
         talk_json(['ok' => true, 'message' => talk_media_finish($pdo, $cfg, $uid, (string)($b['key'] ?? ''), (string)($b['client_id'] ?? ''))]);
 
+    case 'media/album':
+        // 사진 묶음: 따로 올린 사진(media/start·chunk) 열쇠들을 메시지 하나로
+        $need('POST');
+        $b = talk_body();
+        talk_json(['ok' => true, 'message' => talk_media_album($pdo, $cfg, $uid, (array)($b['keys'] ?? []), (string)($b['client_id'] ?? ''))]);
+
+    case 'messages/forward':
+        // 전달: 같은 그룹의 방(room_ids)·친구(user_ids)에게. index 가 있으면 묶음의 그 한 장만
+        $need('POST');
+        $b = talk_body();
+        $idx = isset($b['index']) && $b['index'] !== null ? (int)$b['index'] : null;
+        talk_json(['ok' => true, 'messages' => talk_forward($pdo, $cfg, $uid, (int)($b['id'] ?? 0), $idx, (array)($b['room_ids'] ?? []), (array)($b['user_ids'] ?? []))]);
+
+    case 'rooms/photos':
+        talk_json(['ok' => true, 'messages' => talk_room_photos($pdo, $uid, (int)$q('room_id', 0))]);
+
     case 'messages/delete':
         $need('POST');
         talk_message_delete($pdo, $cfg, $uid, (int)(talk_body()['id'] ?? 0));

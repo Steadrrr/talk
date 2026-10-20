@@ -3,7 +3,7 @@
 // 받은 것은 이 기기(localStorage)에 남겨서, 다음에 열 때 서버를 기다리지 않고 바로 보여 준다.
 import { api, b64Blob, AuthError, setToken } from './api.js';
 import { nickOf } from './names.js';
-import { prepPhoto, prepVideo, upload } from './media.js';
+import { prepPhoto, prepVideo, upload, uploadFile, finishAlbum } from './media.js';
 import { keepPending, dropPending, listPending, clearPending } from './pending.js';
 import { checkUpdate } from './update.js';
 import { syncMyBubble } from './chattheme.js';
@@ -58,11 +58,13 @@ export function loadSaved() {
 // 앱이 새로 열리면서 끊긴 사진·영상: "재전송" 로 되살림
 async function restorePending() {
   for (const p of await listPending()) {
-    if (!p.file || !state.rooms[p.room_id]) { dropPending(p.client_id); continue; }
+    if (!(p.file || p.files?.length) || !state.rooms[p.room_id]) { dropPending(p.client_id); continue; }
     const arr = state.messages[p.room_id] || (state.messages[p.room_id] = []);
     if (arr.some((m) => m.client_id === p.client_id)) continue;
-    arr.push({ id: 0, room_id: p.room_id, user_id: state.me?.id, kind: p.kind, body: '{}', client_id: p.client_id, at: p.at, pending: true,
-      file: p.file, local: p.kind === 'photo' ? URL.createObjectURL(p.file) : '', failed: true, error: '보내다가 멈췄어요', progress: 0, stage: '' });
+    const base = { id: 0, room_id: p.room_id, user_id: state.me?.id, kind: p.kind, body: '{}', client_id: p.client_id, at: p.at, pending: true,
+      failed: true, error: '보내다가 멈췄어요', progress: 0, stage: '' };
+    if (p.files?.length) arr.push({ ...base, album: true, files: p.files, keys: [], locals: p.files.map((f) => URL.createObjectURL(f)), local: '' });
+    else arr.push({ ...base, file: p.file, local: p.kind === 'photo' ? URL.createObjectURL(p.file) : '' });
   }
   notify();
 }
@@ -454,6 +456,64 @@ async function sendMediaNow(roomId, msg, isVideo) {
   notify();
 }
 
+// 사진 묶음: 여러 장을 메시지 하나로. 한 장씩 줄여 올린 뒤(열쇠를 기억해 재전송 때는 남은 것만) 묶음으로 끝냄
+export function sendAlbum(roomId, files, retry) {
+  const msg = retry || { id: 0, room_id: roomId, user_id: state.me.id, kind: 'photo', body: '{}', album: true, client_id: newClientId(),
+    at: new Date().toISOString(), pending: true, files, keys: [], locals: files.map((f) => URL.createObjectURL(f)), local: '' };
+  Object.assign(msg, { failed: false, error: '', progress: 0, stage: '기다리는 중' });
+  const arr = state.messages[roomId] || (state.messages[roomId] = []);
+  if (!retry) { arr.push(msg); keepPending(msg); }
+  notify();
+  mediaQueue = mediaQueue.then(() => sendAlbumNow(roomId, msg));
+  return mediaQueue;
+}
+
+async function sendAlbumNow(roomId, msg) {
+  if (!state.me || !(state.messages[roomId] || []).includes(msg)) return;
+  const n = msg.files.length;
+  try {
+    for (let i = 0; i < n; i++) {
+      if (msg.keys[i]) continue;
+      msg.stage = `사진 ${i + 1}/${n}`;
+      msg.progress = i / n;
+      notify();
+      const p = await prepPhoto(msg.files[i]);
+      msg.keys[i] = await uploadFile(roomId, p, (f) => { msg.progress = (i + f) / n; notify(); });
+    }
+    msg.stage = '보내는 중';
+    notify();
+    let m;
+    try { m = await finishAlbum(msg.keys, msg.client_id); } catch (e) { msg.keys = []; throw e; } // 다음 재전송은 처음부터
+    for (const u of msg.locals) URL.revokeObjectURL(u);
+    dropPending(msg.client_id);
+    mergeMessages([m]);
+    const room = state.rooms[roomId];
+    if (room) {
+      room.last = m;
+      const mine = room.members.find((x) => x.id === state.me.id);
+      if (mine) mine.last_read_id = Math.max(mine.last_read_id, m.id);
+    }
+    saveSoon();
+  } catch (e) {
+    if (e instanceof AuthError) { clearAll(); return; }
+    msg.failed = true;
+    msg.error = e.message;
+  }
+  notify();
+}
+
+// 전달: 같은 그룹의 방(roomIds)·친구(userIds)에게. index 가 있으면 묶음의 그 한 장만. 사진은 서버의 같은 파일을 씀
+export async function forward(m, index, roomIds, userIds) {
+  const r = await api('messages/forward', { id: m.id, index: index ?? null, room_ids: roomIds, user_ids: userIds });
+  mergeMessages(r.messages);
+  await syncNow();
+}
+
+// 채팅방 사진 모아보기: 이 방의 사진 메시지 (최근 것부터)
+export async function roomPhotos(roomId) {
+  return (await api(`rooms/photos?room_id=${roomId}`)).messages;
+}
+
 // ───── 길게 누르기: 나에게서 삭제(이 기기에서만 숨김)·모두에게 삭제 ─────
 const HIDDEN_KEY = 'talk.hidden';
 let hidden = new Set();
@@ -488,7 +548,8 @@ export async function react(m, emoji) {
 
 export function discard(roomId, msg) {
   if (msg.local?.startsWith('blob:')) URL.revokeObjectURL(msg.local);
-  if (msg.file) dropPending(msg.client_id);
+  for (const u of msg.locals || []) URL.revokeObjectURL(u);
+  if (msg.file || msg.files) dropPending(msg.client_id);
   state.messages[roomId] = (state.messages[roomId] || []).filter((m) => m !== msg);
   notify();
 }

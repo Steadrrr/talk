@@ -90,42 +90,174 @@ function talk_media_finish(PDO $pdo, array $cfg, int $uid, string $key, string $
     }
     $roomId = (int)$m['room_id'];
     if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
+    talk_media_check_file($cfg, $m);
+    $text = $m['kind'] === 'photo' ? '사진을 보냈어요.' : '동영상을 보냈어요.';
+    return talk_media_post($pdo, $cfg, $uid, $roomId, $m['kind'], talk_media_item($m), [$m], $clientId, $text);
+}
+
+// 다 받았는지·사진이 맞는지
+function talk_media_check_file(array $cfg, array $m): void {
     $path = talk_media_path($cfg, $m);
     clearstatcache(true, $path);
     if (!is_file($path) || filesize($path) !== (int)$m['size']) talk_fail('파일을 다 받지 못했어요. 다시 보내 주세요.');
     $head = (string)file_get_contents($path, false, null, 0, 16);
     if ($m['kind'] === 'photo' && talk_photo_type($head) === null) { @unlink($path); talk_fail('사진 파일이 아니에요.'); }
-    $body = json_encode(['key' => $key, 'w' => (int)$m['w'], 'h' => (int)$m['h'], 'dur' => (int)$m['dur'], 'size' => (int)$m['size'], 'thumb' => $m['thumb'] !== null],
-        JSON_UNESCAPED_SLASHES);
+}
+
+// 메시지 본문에 들어가는 파일 하나 (묶음이면 items 안에 이것들)
+function talk_media_item(array $m): array {
+    return ['key' => $m['mkey'], 'w' => (int)$m['w'], 'h' => (int)$m['h'], 'dur' => (int)$m['dur'], 'size' => (int)$m['size'], 'thumb' => $m['thumb'] !== null];
+}
+
+// 사진·영상 메시지 만들기: 올린 파일이면 done 표시, 메시지마다 쓰는 파일을 talk_media_uses 에
+function talk_media_post(PDO $pdo, array $cfg, int $uid, int $roomId, string $kind, array $body, array $media, string $clientId, string $pushText): array {
     $clientId = preg_match('/^[A-Za-z0-9_-]{8,40}$/', $clientId) ? $clientId : null;
+    $st = $pdo->prepare("SELECT dm_key FROM talk_rooms WHERE id = ? AND kind = 'dm'");
+    $st->execute([$roomId]);
+    if ($dm = $st->fetchColumn()) talk_dm_rejoin($pdo, $roomId, array_map('intval', explode(':', $dm)));
     $pdo->beginTransaction();
     $pdo->prepare('INSERT INTO talk_messages (room_id, user_id, kind, body, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        ->execute([$roomId, $uid, $m['kind'], $body, $clientId, talk_now()]);
+        ->execute([$roomId, $uid, $kind, json_encode($body, JSON_UNESCAPED_SLASHES), $clientId, talk_now()]);
     $id = (int)$pdo->lastInsertId();
-    $pdo->prepare('UPDATE talk_media SET done = 1, message_id = ? WHERE id = ?')->execute([$id, (int)$m['id']]);
+    $done = $pdo->prepare('UPDATE talk_media SET done = 1, message_id = ? WHERE id = ? AND done = 0');
+    $use = $pdo->prepare('INSERT IGNORE INTO talk_media_uses (mkey, message_id, room_id) VALUES (?, ?, ?)');
+    foreach ($media as $m) { $done->execute([$id, (int)$m['id']]); $use->execute([$m['mkey'], $id, $roomId]); }
     $pdo->prepare('UPDATE talk_room_members SET last_read_id = ? WHERE room_id = ? AND user_id = ?')->execute([$id, $roomId, $uid]);
     talk_event($pdo, $roomId, 'msg', $id);
     $pdo->commit();
-    $text = $m['kind'] === 'photo' ? '사진을 보냈어요.' : '동영상을 보냈어요.';
-    if (function_exists('talk_push_message')) talk_after_response(fn() => talk_push_message($pdo, $roomId, $uid, $text));
+    if (function_exists('talk_push_message')) talk_after_response(fn() => talk_push_message($pdo, $roomId, $uid, $pushText));
     talk_after_response(fn() => talk_media_cleanup($pdo, $cfg));
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$id]);
-    return talk_msg_view($st->fetch());
+    return talk_decorate($pdo, [talk_msg_view($st->fetch())])[0];
 }
 
-// 하나 지우기: 파일을 지우고 메시지 본문에 gone 표시 (방 사람들 앱이 다시 받게 'room' 변경)
+const TALK_ALBUM_MAX = 30;
+
+// 사진 묶음: 따로 올린 사진 여러 장(다 받은 것)을 메시지 하나로. 본문 {"items":[{key,w,h,size}, …]}
+function talk_media_album(PDO $pdo, array $cfg, int $uid, array $keys, string $clientId): array {
+    $keys = array_values(array_unique(array_map('strval', $keys)));
+    if (count($keys) < 2) talk_fail('묶음은 사진 두 장부터예요.');
+    if (count($keys) > TALK_ALBUM_MAX) talk_fail('한 번에 ' . TALK_ALBUM_MAX . '장까지 보낼 수 있어요.');
+    $rows = [];
+    foreach ($keys as $k) {
+        $m = talk_media_row($pdo, $k);
+        if (!$m || (int)$m['user_id'] !== $uid || (int)$m['deleted'] || $m['kind'] !== 'photo') talk_fail('올리던 사진을 찾지 못했어요. 다시 보내 주세요.', 404);
+        $rows[] = $m;
+    }
+    // 다시 보낸 것(연결이 끊겨 재시도): 이미 만든 메시지
+    if ((int)$rows[0]['done'] && $rows[0]['message_id']) {
+        $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
+        $st->execute([(int)$rows[0]['message_id']]);
+        if ($msg = $st->fetch()) return talk_decorate($pdo, [talk_msg_view($msg)])[0];
+    }
+    $roomId = (int)$rows[0]['room_id'];
+    if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
+    foreach ($rows as $m) {
+        if ((int)$m['room_id'] !== $roomId || (int)$m['done']) talk_fail('올리던 사진을 찾지 못했어요. 다시 보내 주세요.', 404);
+        talk_media_check_file($cfg, $m);
+    }
+    return talk_media_post($pdo, $cfg, $uid, $roomId, 'photo', ['items' => array_map('talk_media_item', $rows)], $rows, $clientId, '사진 ' . count($rows) . '장을 보냈어요.');
+}
+
+// 사진·영상 메시지의 파일들 (묶음이면 items, 아니면 본문 하나)
+function talk_media_items(array $body): array {
+    if (isset($body['items']) && is_array($body['items'])) return $body['items'];
+    return isset($body['key']) ? [$body] : [];
+}
+
+// 전달: 같은 그룹의 방·친구에게. 사진·영상은 다시 올리지 않고 같은 파일을 쓴다 (보관 기간은 처음 올린 날부터)
+//  index 가 있으면 묶음 가운데 그 한 장만
+function talk_forward(PDO $pdo, array $cfg, int $uid, int $msgId, ?int $index, array $roomIds, array $userIds): array {
+    $st = $pdo->prepare('SELECT m.*, r.group_id FROM talk_messages m JOIN talk_rooms r ON r.id = m.room_id WHERE m.id = ?');
+    $st->execute([$msgId]);
+    $src = $st->fetch();
+    if (!$src || !talk_room_member($pdo, $uid, (int)$src['room_id'])) talk_fail('메시지가 없어요.', 404);
+    if (!in_array($src['kind'], ['text', 'photo', 'video'], true)) talk_fail('전달할 수 없는 메시지예요.');
+    $gid = (int)$src['group_id'];
+    // 받을 곳: 내가 들어가 있는 같은 그룹 방 + 같은 그룹 친구와의 1:1 방
+    $targets = [];
+    $mine = talk_my_room_ids($pdo, $uid);
+    $grp = $pdo->prepare('SELECT group_id FROM talk_rooms WHERE id = ?');
+    foreach (array_unique(array_map('intval', $roomIds)) as $rid) {
+        $grp->execute([$rid]);
+        if (!in_array($rid, $mine, true) || (int)$grp->fetchColumn() !== $gid) talk_fail('같은 그룹 채팅방에만 전달할 수 있어요.', 403);
+        $targets[$rid] = true;
+    }
+    foreach (array_unique(array_map('intval', $userIds)) as $u) {
+        if ($u === $uid || !talk_in_group($pdo, $u, $gid)) talk_fail('같은 그룹 사람에게만 전달할 수 있어요.', 403);
+        $bot = $pdo->prepare('SELECT is_bot FROM talk_users WHERE id = ?');
+        $bot->execute([$u]);
+        if ((int)$bot->fetchColumn()) talk_fail('같은 그룹 사람에게만 전달할 수 있어요.', 403);
+        $targets[talk_open_dm($pdo, $uid, $u)] = true;
+    }
+    if (!$targets) talk_fail('전달할 곳을 골라 주세요.');
+    if (count($targets) > 20) talk_fail('한 번에 20곳까지 전달할 수 있어요.');
+
+    if ($src['kind'] === 'text') {
+        $out = [];
+        foreach (array_keys($targets) as $rid) $out[] = talk_send($pdo, $uid, $rid, (string)$src['body'], '', 0);
+        return $out;
+    }
+    $items = talk_media_items(json_decode((string)$src['body'], true) ?: []);
+    if ($index !== null) {
+        if (!isset($items[$index])) talk_fail('사진을 찾지 못했어요.', 404);
+        $items = [$items[$index]];
+    }
+    $media = [];
+    foreach ($items as $it) {
+        $m = talk_media_row($pdo, (string)($it['key'] ?? ''));
+        if ($m && !(int)$m['deleted'] && (int)$m['done']) $media[] = $m;
+    }
+    if (!$media) talk_fail('보관 기간이 지나 지워져서 전달할 수 없어요.', 410);
+    $body = count($media) > 1 ? ['items' => array_map('talk_media_item', $media)] : talk_media_item($media[0]);
+    $text = $src['kind'] === 'video' ? '동영상을 보냈어요.' : (count($media) > 1 ? '사진 ' . count($media) . '장을 보냈어요.' : '사진을 보냈어요.');
+    $out = [];
+    foreach (array_keys($targets) as $rid) $out[] = talk_media_post($pdo, $cfg, $uid, $rid, $src['kind'], $body, $media, '', $text);
+    return $out;
+}
+
+// 채팅방 사진 모아보기: 이 방의 사진 메시지 (최근 것부터, 지워진 것은 앱이 뺌)
+function talk_room_photos(PDO $pdo, int $uid, int $roomId): array {
+    if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
+    $st = $pdo->prepare("SELECT * FROM talk_messages WHERE room_id = ? AND kind = 'photo' ORDER BY id DESC LIMIT 1000");
+    $st->execute([$roomId]);
+    return array_map('talk_msg_view', $st->fetchAll());
+}
+
+// 메시지들이 쓰던 파일을 놓음: 다른 메시지가 더 안 쓰는 파일은 지운다
+function talk_media_release(PDO $pdo, array $cfg, array $keys): void {
+    $left = $pdo->prepare('SELECT COUNT(*) FROM talk_media_uses WHERE mkey = ?');
+    foreach (array_unique($keys) as $k) {
+        $left->execute([$k]);
+        if ((int)$left->fetchColumn() > 0) continue;
+        $m = talk_media_row($pdo, $k);
+        if (!$m || (int)$m['deleted']) continue;
+        @unlink(talk_media_path($cfg, $m));
+        $pdo->prepare('UPDATE talk_media SET deleted = 1, thumb = NULL WHERE id = ?')->execute([(int)$m['id']]);
+    }
+}
+
+// 하나 지우기 (보관 기간·상한): 파일을 지우고, 이 파일을 쓰는 메시지마다 본문에 gone 표시
+//  묶음은 그 한 장만 gone, 다 지워지면 메시지도 gone. 방 사람들 앱이 다시 받게 'room' 변경
 function talk_media_delete(PDO $pdo, array $cfg, array $m): void {
     @unlink(talk_media_path($cfg, $m));
     $pdo->prepare('UPDATE talk_media SET deleted = 1, thumb = NULL WHERE id = ?')->execute([(int)$m['id']]);
-    if ($m['message_id']) {
-        $st = $pdo->prepare('SELECT body FROM talk_messages WHERE id = ?');
-        $st->execute([(int)$m['message_id']]);
-        $b = json_decode((string)$st->fetchColumn(), true) ?: [];
-        $b['gone'] = true;
-        $pdo->prepare('UPDATE talk_messages SET body = ? WHERE id = ?')->execute([json_encode($b, JSON_UNESCAPED_SLASHES), (int)$m['message_id']]);
-        talk_event($pdo, (int)$m['room_id'], 'room');
+    $st = $pdo->prepare('SELECT u.message_id, u.room_id, t.body FROM talk_media_uses u JOIN talk_messages t ON t.id = u.message_id WHERE u.mkey = ?');
+    $st->execute([$m['mkey']]);
+    $rooms = [];
+    foreach ($st->fetchAll() as $u) {
+        $b = json_decode((string)$u['body'], true) ?: [];
+        if (isset($b['items']) && is_array($b['items'])) {
+            foreach ($b['items'] as &$it) if (($it['key'] ?? '') === $m['mkey']) $it['gone'] = true;
+            unset($it);
+            if (!array_filter($b['items'], fn($it) => empty($it['gone']))) $b['gone'] = true;
+        } else $b['gone'] = true;
+        $pdo->prepare('UPDATE talk_messages SET body = ? WHERE id = ?')->execute([json_encode($b, JSON_UNESCAPED_SLASHES), (int)$u['message_id']]);
+        $rooms[(int)$u['room_id']] = true;
     }
+    $pdo->prepare('DELETE FROM talk_media_uses WHERE mkey = ?')->execute([$m['mkey']]);
+    foreach (array_keys($rooms) as $rid) talk_event($pdo, $rid, 'room');
 }
 
 // 정리: 보관 기간이 지난 것, 하루 넘게 덜 올라온 것, 그리고 전체 상한을 넘으면 오래된 것부터
@@ -206,12 +338,12 @@ function talk_message_delete(PDO $pdo, array $cfg, int $uid, int $msgId): void {
     if ((int)$m['user_id'] !== $uid) talk_fail('내가 보낸 것만 모두에게서 지울 수 있어요.', 403);
     if ($m['kind'] === 'system') talk_fail('안내 글은 지울 수 없어요.', 400);
     if ($m['kind'] === 'deleted') return;
-    $st = $pdo->prepare('SELECT * FROM talk_media WHERE message_id = ? AND deleted = 0');
+    // 파일은 이 메시지만 쓰고 있을 때만 지움 (전달한 곳에는 남음)
+    $st = $pdo->prepare('SELECT mkey FROM talk_media_uses WHERE message_id = ?');
     $st->execute([$msgId]);
-    foreach ($st->fetchAll() as $md) {
-        @unlink(talk_media_path($cfg, $md));
-        $pdo->prepare('UPDATE talk_media SET deleted = 1, thumb = NULL WHERE id = ?')->execute([(int)$md['id']]);
-    }
+    $keys = $st->fetchAll(PDO::FETCH_COLUMN);
+    $pdo->prepare('DELETE FROM talk_media_uses WHERE message_id = ?')->execute([$msgId]);
+    talk_media_release($pdo, $cfg, $keys);
     $pdo->prepare("UPDATE talk_messages SET kind = 'deleted', body = '' WHERE id = ?")->execute([$msgId]);
     $u = $pdo->prepare('UPDATE talk_rooms SET notice_id = NULL, notice_by = NULL WHERE notice_id = ?');
     $u->execute([$msgId]);

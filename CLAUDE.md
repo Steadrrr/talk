@@ -15,8 +15,8 @@ Project S.A.K.I(저장소 Steadrrr/SAKI)의 카페24 호스팅을 같이 쓴다:
 - 비밀번호·FTP·DB 정보를 대화나 저장소에 절대 넣지 않기.
 
 ## 구조
-- `web/` 웹앱 (Vite + Preact + htm, JSX 빌드 없음): `main.js` 시작·화면 전환, `store.js` 상태·동기화·보내기, `auth.js` 로그인·가입, `home.js` 친구·채팅 목록·설정 탭, `room.js` 채팅방, `api.js` 서버 부르기. `update.js` 새 버전 자동 새로고침(빌드마다 판 번호 → 동기화의 `app` 이 다르면 쉬는 틈에 새로고침, 로그인 유지), `notices.js` 공지사항 게시판. `npx vite build` → `server/public/` 에 index.html·assets·sw.js 를 만든다 (빌드 결과는 git 에 넣지 않음).
-- `server/public/` 카페24 에 올라가는 폴더: `api.php`(API, `/talk/api.php/<경로>`), `setup.php`(처음 설정·관리 화면), `lib/core.php`(설정·DB·표·JSON), `lib/accounts.php`(계정·기기·그룹·초대), `lib/chat.php`(방·메시지·동기화), `lib/notices.php`(공지사항: 관리자 글 + 배포 때 deploy.json 의 커밋 제목을 30분 단위로 모은 자동 글), `lib/saki.php`(단체방 "사키" 봇: SAKI 서버의 SAKi Lite 를 서버에서 서버로 부름, 열쇠는 설정 파일 saki_lite_key 에만. 사키에게 보내는 앱 기능 설명 TALK_SAKI_APP 은 기능을 바꾸면 같이 고친다).
+- `web/` 웹앱 (Vite + Preact + htm, JSX 빌드 없음): `main.js` 시작·화면 전환, `store.js` 상태·동기화·보내기, `auth.js` 로그인·가입, `home.js` 친구·채팅 목록·설정 탭, `room.js` 채팅방, `gallery.js` 사진 묶음 콜라주·좌우로 넘기는 크게 보기·채팅방 사진 모아보기·전달, `api.js` 서버 부르기. `update.js` 새 버전 자동 새로고침(빌드마다 판 번호 → 동기화의 `app` 이 다르면 쉬는 틈에 새로고침, 로그인 유지), `notices.js` 공지사항 게시판. `npx vite build` → `server/public/` 에 index.html·assets·sw.js 를 만든다 (빌드 결과는 git 에 넣지 않음).
+- `server/public/` 카페24 에 올라가는 폴더: `api.php`(API, `/talk/api.php/<경로>`), `setup.php`(처음 설정·관리 화면), `lib/core.php`(설정·DB·표·JSON), `lib/accounts.php`(계정·기기·그룹·초대), `lib/chat.php`(방·메시지·동기화), `lib/media.php`(사진·영상·묶음·전달, 파일 하나를 여러 메시지가 같이 씀 talk_media_uses), `lib/notices.php`(공지사항: 관리자 글 + 배포 때 deploy.json 의 커밋 제목을 30분 단위로 모은 자동 글), `lib/saki.php`(단체방 "사키" 봇: SAKI 서버의 SAKi Lite 를 서버에서 서버로 부름, 열쇠는 설정 파일 saki_lite_key 에만. 사키에게 보내는 앱 기능 설명 TALK_SAKI_APP 은 기능을 바꾸면 같이 고친다).
 - `scripts/server-test.mjs` 서버 시험.
 
 ## 테스트
