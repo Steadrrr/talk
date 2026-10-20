@@ -1293,7 +1293,10 @@ try {
     let r = await api('me', undefined, tok.f1);
     assert.equal(r.body.groups.length, 0);
     await adminPost({ act: 'group_open', id: friends });
-    const html = await (await req('/setup.php')).text();
+    const main = await (await req('/setup.php')).text();
+    assert.ok(main.includes('href="?page=members"') && !main.includes('value="user_off"'), '관리 화면에는 회원 관리 단추만');
+    const html = await (await req('/setup.php?page=members')).text();
+    assert.match(html, /<title>SAKi Talk 회원 관리<\/title>/);
     const f1 = html.match(/<b>친구1<\/b>[\s\S]*?name="act" value="user_off"><input type="hidden" name="id" value="(\d+)"/)[1];
     await adminPost({ act: 'user_off', id: f1 });
     r = await api('me', undefined, tok.f1);
@@ -1303,8 +1306,14 @@ try {
   await t('관리: 사람별로 그룹을 여러 개 한꺼번에 정함, 관리자는 모든 그룹에', async () => {
     let html = await adminPost({ act: 'group_new', name: '회사' });
     html = await (await req('/setup.php')).text();
-    const ids = [...html.matchAll(/name="act" value="invite"><input type="hidden" name="group" value="(\d+)"/g)].map((m) => m[1]);
-    const company = ids[2];
+    const ids0 = [...html.matchAll(/name="act" value="invite"><input type="hidden" name="group" value="(\d+)"/g)].map((m) => m[1]);
+    const rev0 = (await api('sync?since=0', undefined, tok.mom)).body.groups_rev;
+    assert.match(await adminPost({ act: 'group_rename', id: ids0[2], name: '' }), /그룹 이름을 1~40자로/);
+    assert.match(await adminPost({ act: 'group_rename', id: ids0[2], name: ' 회사 동료 ' }), /그룹 이름을 (&quot;|")회사 동료(&quot;|") 으로 바꿨어요/);
+    assert.notEqual((await api('sync?since=0', undefined, tok.mom)).body.groups_rev, rev0, '이름을 바꾸면 앱이 그룹을 다시 받음');
+    assert.match(await adminPost({ act: 'group_rename', id: ids0[2], name: '회사' }), /바꿨어요/);
+    html = await (await req('/setup.php?page=members')).text();
+    const company = ids0[2];
     const before = (await api('sync?since=0', undefined, tok.mom)).body.groups_rev;
     const mom = html.split('<div class="row"><span><b>').find((x) => x.startsWith('엄마</b>')).match(/name="act" value="user_groups"><input type="hidden" name="id" value="(\d+)"/)[1];
     // 엄마: 가족 빼고 친구·회사
@@ -1370,7 +1379,7 @@ try {
     let res = await req('/' + r.body.url);
     assert.equal(res.status, 302);
     res = await req('/setup.php');
-    assert.match(await res.text(), /그룹 저장/, '로그인된 관리 화면');
+    assert.match(await res.text(), /회원 관리 \(/, '로그인된 관리 화면');
     jar = '';
     res = await req('/' + r.body.url);
     res = await req('/setup.php');

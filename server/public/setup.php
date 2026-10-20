@@ -175,6 +175,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             $gid = (int)$pdo->lastInsertId();
             talk_admin_in_all_groups($pdo); // 관리자는 모든 그룹에
             $msg = "그룹 \"$gname\" 을 만들었어요. 아래에서 초대 코드를 만들어 나눠 주세요.";
+        } elseif ($act === 'group_rename') {
+            $gname = trim((string)($_POST['name'] ?? ''));
+            if ($gname === '' || mb_strlen($gname) > 40) throw new RuntimeException('그룹 이름을 1~40자로 넣어 주세요.');
+            $u = $pdo->prepare('UPDATE talk_groups SET name = ? WHERE id = ?');
+            $u->execute([$gname, (int)($_POST['id'] ?? 0)]);
+            $msg = "그룹 이름을 \"$gname\" 으로 바꿨어요. (앱은 몇 초 안에 새 이름을 받아요)";
         } elseif ($act === 'group_close' || $act === 'group_open') {
             $pdo->prepare('UPDATE talk_groups SET closed = ? WHERE id = ?')->execute([$act === 'group_close' ? 1 : 0, (int)($_POST['id'] ?? 0)]);
             $msg = $act === 'group_close' ? '그룹을 닫았어요. (그룹 사람들끼리 서로 안 보이고 방도 숨겨져요. 다시 열 수 있어요)' : '그룹을 다시 열었어요.';
@@ -280,7 +286,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
         } elseif ($act === 'backup_txt' || $act === 'backup_json') {
             talk_backup_download($pdo, $act === 'backup_json' ? 'json' : 'txt');
         }
-        if (in_array($act, ['group_new', 'group_close', 'group_open', 'member_remove', 'user_off', 'user_on', 'user_groups'], true)) talk_groups_changed($pdo);
+        if (in_array($act, ['group_new', 'group_rename', 'group_close', 'group_open', 'member_remove', 'user_off', 'user_on', 'user_groups'], true)) talk_groups_changed($pdo);
     } catch (Throwable $e) {
         $err = $e->getMessage();
     }
@@ -298,7 +304,8 @@ function check_admin_password(PDO $pdo, array $cfg, string $pw): void {
     }
 }
 
-page_head('SAKi Talk 관리');
+$page = (string)($_GET['page'] ?? '') === 'members' && !empty($_SESSION['admin']) ? 'members' : '';
+page_head($page === 'members' ? 'SAKi Talk 회원 관리' : 'SAKi Talk 관리');
 if ($msg) echo '<p class="ok">' . h($msg) . '</p>';
 if ($err) echo '<p class="err">' . h($err) . '</p>';
 if (empty($_SESSION['admin'])) {
@@ -327,6 +334,27 @@ $counts = $pdo->query('SELECT (SELECT COUNT(*) FROM talk_rooms) r, (SELECT COUNT
 $copy = fn(string $text, string $label) => '<button type="button" class="sub" data-copy="' . h($text) . '">' . h($label) . '</button>';
 $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf" value="' . h(csrf()) . '"><input type="hidden" name="act" value="' . h($act) . '">'
     . implode('', array_map(fn($k, $v) => '<input type="hidden" name="' . h($k) . '" value="' . h((string)$v) . '">', array_keys($extra), $extra));
+if ($page === 'members') {
+    ?>
+<p class="back"><a href="./setup.php">← 관리 화면으로</a></p>
+<fieldset><legend>사람 (그룹을 체크하고 저장하면 여러 그룹에 한꺼번에 넣고 빼요)</legend>
+<?php foreach ($users as $u): ?>
+<div class="row"><span><b><?= h($u['name']) ?></b><?= $u['nick'] ? ' · ' . h($u['nick']) : '' ?> <span class="hint"><?= (int)$u['is_bot'] ? '사키 봇 (로그인 없음, 사키를 초대한 방에만)' : ((int)$u['is_admin'] ? '관리자' : '사용자') ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr(kst($u['created_at']), 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
+<?php if (!(int)$u['is_admin'] && !(int)$u['is_bot']): ?><span class="btns">
+<form method="post"><?= $hidden('user_pw', ['id' => (int)$u['id']]) ?><button type="submit" class="sub">새 비밀번호</button></form>
+<form method="post"><?= $hidden((int)$u['disabled'] ? 'user_on' : 'user_off', ['id' => (int)$u['id']]) ?><button type="submit" class="sub"><?= (int)$u['disabled'] ? '다시 켜기' : '멈추기' ?></button></form>
+</span><?php endif; ?></div>
+<?php if (!(int)$u['is_admin'] && !(int)$u['is_bot'] && $groups): ?>
+<form method="post" class="row ugroups"><?= $hidden('user_groups', ['id' => (int)$u['id']]) ?>
+<span class="checks"><?php foreach ($groups as $g): ?><label class="check"><input type="checkbox" name="groups[]" value="<?= (int)$g['id'] ?>"<?= isset($userGroups[(int)$u['id']][(int)$g['id']]) ? ' checked' : '' ?>> <?= h($g['name']) ?><?= (int)$g['closed'] ? ' (닫힘)' : '' ?></label><?php endforeach; ?></span>
+<button type="submit" class="sub">그룹 저장</button></form>
+<?php elseif ((int)$u['is_admin']): ?><p class="hint">└ 관리자는 모든 그룹에 들어가 있어요.</p><?php endif; ?>
+<?php endforeach; ?>
+</fieldset>
+<?php
+    page_foot();
+    exit;
+}
 ?>
 <fieldset><legend>서버 상태</legend>
 <p>웹앱 주소 <code><?= h($base) ?></code></p>
@@ -348,11 +376,9 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <form method="post" class="row"><?= $hidden((int)$g['closed'] ? 'group_open' : 'group_close', ['id' => $gid]) ?>
 <span><b><?= h($g['name']) ?></b><?= (int)$g['closed'] ? ' <span class="err">닫힘</span>' : '' ?> <span class="hint"><?= count($members[$gid] ?? []) ?>명</span></span>
 <button type="submit" class="sub"><?= (int)$g['closed'] ? '다시 열기' : '닫기' ?></button></form>
-<?php foreach ($members[$gid] ?? [] as $m): ?>
-<form method="post" class="row"><?= $hidden('member_remove', ['group' => $gid, 'id' => (int)$m['id']]) ?>
-<span class="hint">└ <?= h($m['name']) ?><?= $m['nick'] ? ' · ' . h($m['nick']) : '' ?><?= (int)$m['is_admin'] ? ' (관리자)' : '' ?></span>
-<?php if (!(int)$m['is_admin']): ?><button type="submit" class="sub">그룹에서 빼기</button><?php endif; ?></form>
-<?php endforeach; ?>
+<details class="rename"><summary class="hint">그룹 이름 바꾸기</summary>
+<form method="post" class="row"><?= $hidden('group_rename', ['id' => $gid]) ?><label>새 이름 <input name="name" required maxlength="40" value="<?= h($g['name']) ?>"></label><button type="submit">바꾸기</button></form></details>
+<p class="hint">└ <?= $members[$gid] ?? [] ? h(implode(', ', array_map(fn($m) => $m['name'] . ($m['nick'] ? ' · ' . $m['nick'] : '') . ((int)$m['is_admin'] ? ' (관리자)' : ''), $members[$gid]))) : '아직 아무도 없어요' ?></p>
 <?php foreach ($invites[$gid] ?? [] as $i): ?>
 <form method="post" class="row"><?= $hidden('invite_revoke', ['id' => (int)$i['id']]) ?>
 <span class="hint">└ 초대 코드 <?= $i['code'] ? '<code>' . h($i['code']) . '</code> · 링크 <code>' . h($base . '#invite=' . $i['code']) . '</code>' : '#' . (int)$i['id'] . ' (예전에 만든 코드라 다시 볼 수 없어요)' ?>
@@ -370,19 +396,9 @@ $hidden = fn(string $act, array $extra = []) => '<input type="hidden" name="csrf
 <form method="post" class="row"><?= $hidden('group_new') ?><label>새 그룹 이름 <input name="name" required maxlength="40" placeholder="예: 가족"></label><button type="submit">그룹 만들기</button></form>
 </fieldset>
 
-<fieldset><legend>사람 (그룹을 체크하고 저장하면 여러 그룹에 한꺼번에 넣고 빼요)</legend>
-<?php foreach ($users as $u): ?>
-<div class="row"><span><b><?= h($u['name']) ?></b><?= $u['nick'] ? ' · ' . h($u['nick']) : '' ?> <span class="hint"><?= (int)$u['is_bot'] ? '사키 봇 (로그인 없음, 사키를 초대한 방에만)' : ((int)$u['is_admin'] ? '관리자' : '사용자') ?> · 기기 <?= (int)$u['devs'] ?>개 · 가입 <?= h(substr(kst($u['created_at']), 0, 10)) ?><?= (int)$u['disabled'] ? ' · <span class="err">멈춤</span>' : '' ?></span></span>
-<?php if (!(int)$u['is_admin'] && !(int)$u['is_bot']): ?><span class="btns">
-<form method="post"><?= $hidden('user_pw', ['id' => (int)$u['id']]) ?><button type="submit" class="sub">새 비밀번호</button></form>
-<form method="post"><?= $hidden((int)$u['disabled'] ? 'user_on' : 'user_off', ['id' => (int)$u['id']]) ?><button type="submit" class="sub"><?= (int)$u['disabled'] ? '다시 켜기' : '멈추기' ?></button></form>
-</span><?php endif; ?></div>
-<?php if (!(int)$u['is_admin'] && !(int)$u['is_bot'] && $groups): ?>
-<form method="post" class="row ugroups"><?= $hidden('user_groups', ['id' => (int)$u['id']]) ?>
-<span class="checks"><?php foreach ($groups as $g): ?><label class="check"><input type="checkbox" name="groups[]" value="<?= (int)$g['id'] ?>"<?= isset($userGroups[(int)$u['id']][(int)$g['id']]) ? ' checked' : '' ?>> <?= h($g['name']) ?><?= (int)$g['closed'] ? ' (닫힘)' : '' ?></label><?php endforeach; ?></span>
-<button type="submit" class="sub">그룹 저장</button></form>
-<?php elseif ((int)$u['is_admin']): ?><p class="hint">└ 관리자는 모든 그룹에 들어가 있어요.</p><?php endif; ?>
-<?php endforeach; ?>
+<fieldset><legend>회원 관리</legend>
+<p class="hint">사람마다 그룹 넣고 빼기, 새 비밀번호, 멈추기는 회원 관리 화면에서 해요.</p>
+<p><a class="button" href="?page=members">회원 관리 (<?= count($users) ?>명) →</a></p>
 </fieldset>
 </details>
 
@@ -528,7 +544,7 @@ button{font:inherit;cursor:pointer;color:#fff;background:var(--acc);border:0;bor
 .btns{display:flex;gap:6px} .checks{display:flex;flex-wrap:wrap;gap:4px 14px;flex:1} label.check{display:flex;align-items:center;gap:4px;margin:0;color:var(--fg)} label.check input{width:auto;margin:0} .ugroups{border-top:0;padding-top:0} .group{border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:8px 0} button.sub{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:5px 10px}
 .secret{border:2px solid var(--ok);border-radius:12px;padding:12px;margin:10px 0;font-size:16px;background:var(--card)} .secret code{font-size:17px}
 details.menu{margin:12px 0;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:0 10px} details.menu>summary{cursor:pointer;padding:12px 2px;font-weight:600;color:var(--acc)} details.menu.sub{background:var(--bg);margin:8px 0} details.menu fieldset{border:0;margin:0 0 8px;padding:0 2px}
-.hint{color:var(--dim);font-size:13px} .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden} .bar i{display:block;height:100%;background:var(--acc)} .back{margin:calc(env(safe-area-inset-top) + 4px) 0 0} .back a{color:var(--acc);text-decoration:none;font-weight:600} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
+.hint{color:var(--dim);font-size:13px} .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden} .bar i{display:block;height:100%;background:var(--acc)} .back{margin:calc(env(safe-area-inset-top) + 4px) 0 0} .back a{color:var(--acc);text-decoration:none;font-weight:600} a.button{display:inline-block;color:#fff;background:var(--acc);border-radius:8px;padding:8px 16px;font-weight:600;text-decoration:none} details.rename>summary{cursor:pointer;padding:2px 0 6px} .ok{color:var(--ok)} .err{color:var(--bad)} code{background:var(--bg);padding:2px 6px;border-radius:6px;user-select:all;overflow-wrap:anywhere}fieldset{min-width:0}
 </style></head><body><main><p class="back"><a href="./">← SAKi Talk 으로</a></p><h1>' . h($title) . '</h1>';
 }
 function page_foot(): void { echo '</main><script src="./setup.js"></script></body></html>'; }
