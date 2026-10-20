@@ -98,6 +98,8 @@ export function MediaViewer({ items, start = 0, names, onClose }) {
     const w = stage.current?.clientWidth || innerWidth;
     if (dx < -Math.min(80, w / 5)) go(1); else if (dx > Math.min(80, w / 5)) go(-1); else go(0);
   };
+  // 사진을 두 손가락으로 잡거나 확대한 채 끌면 넘기기는 그만
+  const grab = () => { if (drag.current) { drag.current = null; setDx(0); } };
   const slide = (k) => {
     const it = items[k];
     if (!it) return null;
@@ -105,7 +107,7 @@ export function MediaViewer({ items, start = 0, names, onClose }) {
       <div class="slide" key=${it.key + ':' + it.m.id} style=${{ left: (k - i) * 100 + '%' }}>
         ${it.kind === 'video'
           ? html`<video src=${mediaUrl(it.key)} poster=${it.thumb ? mediaUrl(it.key, true) : undefined} controls autoplay=${k === i} playsinline></video>`
-          : html`<${Slide} it=${it} onMenu=${() => !dragged.current && setMenu(it)} onTap=${() => !dragged.current && onClose()} />`}
+          : html`<${Slide} it=${it} active=${k === i} onGrab=${grab} onMenu=${() => !dragged.current && setMenu(it)} onTap=${() => !dragged.current && onClose()} />`}
       </div>`;
   };
   return html`
@@ -128,9 +130,97 @@ export function MediaViewer({ items, start = 0, names, onClose }) {
     </div>`;
 }
 
-function Slide({ it, onMenu, onTap }) {
-  const press = useLongPress(onMenu, onTap);
-  return html`<img src=${mediaUrl(it.key)} alt="" draggable="false" ...${press} />`;
+// 크게 본 사진 한 장: 두 손가락으로 벌리고 오므려 확대·축소(1~5배), 확대한 채 한 손가락으로 끌어 옮김,
+// 두 번 누르면 2.5배 ↔ 원래대로, 컴퓨터는 휠. 확대 중에는 좌우 넘기기 대신 옮기기 (onGrab 으로 넘기기를 멈춤)
+const MAX_ZOOM = 5;
+function Slide({ it, active, onGrab, onMenu, onTap }) {
+  const img = useRef(null);
+  const [z, setZ] = useState({ s: 1, x: 0, y: 0 });
+  const zr = useRef(z); zr.current = z;
+  const pts = useRef(new Map());
+  const g = useRef(null);         // 지금 하는 손짓 { s, x, y, a, b?, d? }
+  const lastTap = useRef(0), tapT = useRef(0);
+  const [anim, setAnim] = useState(false);
+  const moved = useRef(false);    // 확대·옮기기를 한 손짓은 누르기로 치지 않음
+  const press = useLongPress(onMenu, () => {
+    // 한 번 누르면 닫기(확대 중이면 그대로), 두 번 누르면 확대·되돌리기
+    if (moved.current) return;
+    const now = Date.now();
+    if (now - lastTap.current < 300) { clearTimeout(tapT.current); lastTap.current = 0; toggle(); return; }
+    lastTap.current = now;
+    if (zr.current.s === 1) tapT.current = setTimeout(onTap, 300);
+  });
+  useEffect(() => { if (!active) { setZ({ s: 1, x: 0, y: 0 }); pts.current.clear(); g.current = null; } }, [active]);
+  useEffect(() => () => clearTimeout(tapT.current), []);
+
+  // 사진 가운데 기준 화면 위치 → 확대·옮김 맞추기 (사진이 화면 밖으로 다 나가지 않게)
+  const fit = (s, x, y) => {
+    const el = img.current, box = el?.parentElement;
+    if (!el || !box) return { s, x, y };
+    s = Math.min(MAX_ZOOM, Math.max(1, s));
+    const mx = Math.max(0, (el.offsetWidth * s - box.clientWidth) / 2), my = Math.max(0, (el.offsetHeight * s - box.clientHeight) / 2);
+    return { s, x: Math.min(mx, Math.max(-mx, x)), y: Math.min(my, Math.max(-my, y)) };
+  };
+  // 화면의 점 (cx, cy) 를 제자리에 둔 채 배율을 s 로
+  const zoomAt = (s, cx, cy, from) => {
+    const r = img.current.parentElement.getBoundingClientRect();
+    const ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2);
+    const k = Math.min(MAX_ZOOM, Math.max(1, s)) / from.s;
+    return fit(s, ox - (ox - from.x) * k, oy - (oy - from.y) * k);
+  };
+  const ease = (v) => { setAnim(true); setZ(v); setTimeout(() => setAnim(false), 200); };
+  function toggle() {
+    const r = img.current?.getBoundingClientRect();
+    if (!r) return;
+    ease(zr.current.s > 1 ? { s: 1, x: 0, y: 0 } : zoomAt(2.5, lastXY.current[0], lastXY.current[1], zr.current));
+  }
+  const lastXY = useRef([0, 0]);
+  const begin = () => {
+    const p = [...pts.current.values()];
+    const v = zr.current;
+    g.current = p.length >= 2 ? { ...v, a: p[0], b: p[1], d: Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]) || 1 }
+      : p.length === 1 && v.s > 1 ? { ...v, a: p[0] } : null;
+  };
+  function down(e) {
+    lastXY.current = [e.clientX, e.clientY];
+    pts.current.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pts.current.size === 1) { moved.current = false; press.onPointerDown(e); } else { moved.current = true; press.onPointerCancel(); }
+    begin();
+    if (g.current) { e.stopPropagation(); onGrab(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 무시 */ } }
+  }
+  function move(e) {
+    if (!pts.current.has(e.pointerId)) return;
+    pts.current.set(e.pointerId, [e.clientX, e.clientY]);
+    press.onPointerMove(e);
+    if (Math.hypot(e.clientX - lastXY.current[0], e.clientY - lastXY.current[1]) > 10) moved.current = true;
+    const s0 = g.current;
+    if (!s0) return;
+    e.stopPropagation();
+    const p = [...pts.current.values()];
+    if (s0.b && p.length >= 2) {
+      const d = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
+      const m0 = [(s0.a[0] + s0.b[0]) / 2, (s0.a[1] + s0.b[1]) / 2], m = [(p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2];
+      const v = zoomAt(s0.s * d / s0.d, m0[0], m0[1], s0);
+      setZ(fit(v.s, v.x + m[0] - m0[0], v.y + m[1] - m0[1]));
+    } else if (!s0.b) {
+      setZ(fit(s0.s, s0.x + p[0][0] - s0.a[0], s0.y + p[0][1] - s0.a[1]));
+    }
+  }
+  function up(e) {
+    if (!pts.current.delete(e.pointerId)) return;
+    if (e.type === 'pointercancel') press.onPointerCancel(); else press.onPointerUp();
+    if (g.current) e.stopPropagation();
+    if (zr.current.s < 1.05) { if (zr.current.s !== 1) ease({ s: 1, x: 0, y: 0 }); }
+    begin();
+  }
+  function wheel(e) {
+    e.preventDefault();
+    setZ(zoomAt(zr.current.s * Math.exp(-e.deltaY / 300), e.clientX, e.clientY, zr.current));
+  }
+  return html`<img ref=${img} src=${mediaUrl(it.key)} alt="" draggable="false" class=${anim ? 'zooming' : ''}
+    style=${z.s === 1 && !anim ? undefined : { transform: `translate(${z.x}px, ${z.y}px) scale(${z.s})` }}
+    onContextMenu=${press.onContextMenu} onClick=${press.onClick} onPointerLeave=${press.onPointerLeave}
+    onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onWheel=${wheel} />`;
 }
 
 // 사진 한 장 메뉴 (크게 보기·모아보기에서 길게 누름): 전달·저장
@@ -146,8 +236,10 @@ function ItemMenu({ it, onClose, onForward }) {
     <div class="sheet-bg top" onClick=${backdrop}>
       <div class="sheet action-sheet" role="menu">
         ${err && html`<p class="err">${err}</p>`}
-        <button onClick=${onForward}>전달</button>
-        <button onClick=${save} disabled=${busy}>${busy ? '받는 중…' : '저장'}</button>
+        <div class="action-grid">
+          <button onClick=${onForward}>전달</button>
+          <button onClick=${save} disabled=${busy}>${busy ? '받는 중…' : '저장'}</button>
+        </div>
         <button class="cancel" onClick=${onClose}>취소</button>
       </div>
     </div>`;

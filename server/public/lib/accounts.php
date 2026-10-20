@@ -73,13 +73,23 @@ function talk_set_bubble(PDO $pdo, int $uid, mixed $v): void {
 // 프로필 사진: 휴대폰에서 줄인 JPEG·WebP·PNG (300KB 까지). null 이면 지움
 const TALK_PHOTO_MAX = 300 * 1024;
 function talk_set_photo(PDO $pdo, int $uid, ?string $data): void {
-    if ($data !== null) {
-        if (strlen($data) > TALK_PHOTO_MAX) talk_fail('사진이 너무 커요.');
-        if (talk_photo_type($data) === null) talk_fail('사진 파일이 아니에요.');
-    }
+    talk_check_photo($data);
     $pdo->prepare('UPDATE talk_users SET photo = ?, photo_key = ? WHERE id = ?')
         ->execute([$data, $data === null ? null : bin2hex(random_bytes(12)), $uid]);
     talk_profile_changed($pdo, $uid);
+}
+
+function talk_check_photo(?string $data): void {
+    if ($data === null) return;
+    if (strlen($data) > TALK_PHOTO_MAX) talk_fail('사진이 너무 커요.');
+    if (talk_photo_type($data) === null) talk_fail('사진 파일이 아니에요.');
+}
+
+// 사키 프로필 사진: 내 화면에서만 사키가 이 사진으로 보임 (다른 사람에게는 안 알림). null 이면 기본
+function talk_set_saki_photo(PDO $pdo, int $uid, ?string $data): void {
+    talk_check_photo($data);
+    $pdo->prepare('UPDATE talk_users SET saki_photo = ?, saki_photo_key = ? WHERE id = ?')
+        ->execute([$data, $data === null ? null : bin2hex(random_bytes(12)), $uid]);
 }
 
 function talk_photo_type(string $data): ?string {
@@ -157,7 +167,7 @@ function talk_token_from_request(): string {
 function talk_auth(PDO $pdo): array {
     $t = talk_token_from_request();
     if (!preg_match('/^[a-f0-9]{64}$/', $t)) talk_fail('로그인이 필요해요.', 401);
-    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.photo_key, u.bubble, u.is_admin, u.push_quiet FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
+    $st = $pdo->prepare('SELECT d.id AS device_id, d.last_seen, d.active_at, d.active_room, u.id, u.name, u.nick, u.photo_key, u.saki_photo_key, u.bubble, u.is_admin, u.push_quiet FROM talk_devices d JOIN talk_users u ON u.id = d.user_id
         WHERE d.token_hash = ? AND d.revoked = 0 AND u.disabled = 0');
     $st->execute([hash('sha256', $t)]);
     $me = $st->fetch();
@@ -166,7 +176,7 @@ function talk_auth(PDO $pdo): array {
     if (strtotime($me['last_seen'] . ' UTC') < time() - 300) {
         $pdo->prepare('UPDATE talk_devices SET last_seen = ? WHERE id = ?')->execute([talk_now(), $me['device_id']]);
     }
-    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo_key'], 'bubble' => $me['bubble'], 'is_admin' => (int)$me['is_admin'], 'push_quiet' => (int)$me['push_quiet'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
+    return ['id' => (int)$me['id'], 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo_key'], 'saki_photo' => $me['saki_photo_key'], 'bubble' => $me['bubble'], 'is_admin' => (int)$me['is_admin'], 'push_quiet' => (int)$me['push_quiet'], 'device_id' => (int)$me['device_id'], 'active_at' => $me['active_at'], 'active_room' => (int)$me['active_room']];
 }
 
 // 앱에서 이 방을 보고 있음 (동기화할 때마다 부름, 방이 같으면 5초에 한 번만 적음, 0 = 목록). 앱을 숨기면 me/away 로 지움

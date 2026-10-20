@@ -610,6 +610,20 @@ try {
     r = await api('me/photo', { data: '' }, tok.mom);
     assert.equal((await api('me', undefined, tok.mom)).body.me.photo, null, '지우기');
     assert.equal((await req('/api.php/photo/' + me.photo)).status, 404);
+
+    // 사키 프로필 사진: 나만 보는 것 (me 에만 주소, 다른 사람 목록·프로필 사진은 그대로)
+    assert.equal((await api('me', undefined, tok.mom)).body.me.saki_photo, null, '처음엔 기본');
+    r = await api('me/saki-photo', { data: Buffer.from('nope').toString('base64') }, tok.mom);
+    assert.equal(r.status, 400);
+    r = await req('/api.php/me/saki-photo', { method: 'POST', headers: { 'X-Talk-Token': tok.mom, 'Content-Type': 'application/octet-stream' }, body: jpg });
+    assert.equal(r.status, 200);
+    const sp = (await api('me', undefined, tok.mom)).body.me.saki_photo;
+    assert.match(sp, /^[a-f0-9]{24}$/);
+    assert.equal((await api('me', undefined, tok.dad)).body.me.saki_photo, null, '다른 사람은 그대로');
+    assert.equal((await req('/api.php/photo/' + sp)).status, 200);
+    await api('me/saki-photo', { data: '' }, tok.mom);
+    assert.equal((await api('me', undefined, tok.mom)).body.me.saki_photo, null, '기본으로 되돌림');
+    assert.equal((await req('/api.php/photo/' + sp)).status, 404);
   });
 
   await t('사진·영상: 조각으로 올리고, 메시지로 보이고, 영상은 Range, 보관 기간이 지나면 지워짐', async () => {

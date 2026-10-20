@@ -268,6 +268,15 @@ export async function setPhoto(data) {
   await syncNow();
 }
 
+// 사키 프로필 사진 (내 화면에서만). data = base64 (JPEG) 또는 null(기본으로)
+export async function setSakiPhoto(data) {
+  await api('me/saki-photo', data ? b64Blob(data) : { data: '' });
+  await loadMe();
+}
+
+// 얼굴 사진: 사키는 내가 정한 사진이 있으면 그것 (나만 보임)
+export const photoOf = (p) => (p?.bot && state.me?.saki_photo ? state.me.saki_photo : p?.photo);
+
 // 내 말풍선 색 (다른 사람 화면에도 이 색). null 이면 기본
 export async function setBubble(color) {
   await api('me/bubble', { color: color || '' });

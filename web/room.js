@@ -1,7 +1,7 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, time, dateLine, dayKey } from './html.js';
-import { state, roomTitle, loadOlder, send, sendMedia, sendAlbum, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
+import { state, photoOf, roomTitle, loadOlder, send, sendMedia, sendAlbum, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
 import { mediaUrl, mediaInfo, mediaItems, saveMedia } from './media.js';
 import { useLongPress, useBackdrop, Collage, MediaViewer, Gallery, ForwardSheet, viewItems } from './gallery.js';
 import { nickOf } from './names.js';
@@ -166,6 +166,49 @@ export function Room({ id, onBack }) {
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
 
+  // 말풍선을 좌우로 밀면 그 메시지에 답장 (손가락만; 위아래로 먼저 움직이면 스크롤)
+  const sw = useRef(null);
+  const swBlock = useRef(false);   // 민 뒤에 오는 누르기(사진 열기 등)는 무시
+  function swDown(e) {
+    swBlock.current = false;
+    const row = e.pointerType !== 'mouse' && e.isPrimary && e.target.closest('.msg[data-id]');
+    sw.current = row ? { row, x: e.clientX, y: e.clientY, id: e.pointerId, on: false, dx: 0 } : null;
+  }
+  function swMove(e) {
+    const d = sw.current;
+    if (!d || d.id !== e.pointerId) return;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    if (!d.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { sw.current = null; return; }
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      d.on = true;
+      d.row.style.transition = '';
+      d.row.classList.add('swiping', dx > 0 ? 'r' : 'l');
+    }
+    const was = Math.abs(d.dx) >= SWIPE;
+    d.dx = Math.sign(dx) * Math.min(SWIPE * 1.4, Math.abs(dx) * 0.7);
+    if (!was && Math.abs(d.dx) >= SWIPE) navigator.vibrate?.(10);
+    d.row.classList.toggle('r', d.dx > 0); d.row.classList.toggle('l', d.dx < 0);
+    d.row.style.setProperty('--sw', Math.min(1, Math.abs(d.dx) / SWIPE));
+    d.row.style.transform = `translateX(${d.dx}px)`;
+  }
+  function swUp(e) {
+    const d = sw.current;
+    if (!d || d.id !== e.pointerId) return;
+    sw.current = null;
+    if (!d.on) return;
+    swBlock.current = true;
+    const row = d.row;
+    row.style.transition = 'transform .18s ease-out';
+    row.style.transform = '';
+    setTimeout(() => { row.classList.remove('swiping', 'r', 'l'); row.style.transition = ''; }, 200);
+    const m = e.type === 'pointerup' && Math.abs(d.dx) >= SWIPE && list.find((x) => String(x.id) === row.dataset.id);
+    if (m && m.kind !== 'deleted' && m.kind !== 'system') { setReplyTo(m); input.current?.focus(); }
+  }
+  function swClick(e) {
+    if (swBlock.current) { swBlock.current = false; e.stopPropagation(); e.preventDefault(); }
+  }
+
   if (!room) return html`<section class="page"><header class="bar"><button class="icon" onClick=${onBack}>‹</button></header><p class="empty">방을 찾지 못했어요.</p></section>`;
 
   const others = room.members.filter((m) => m.id !== state.me.id);
@@ -196,7 +239,7 @@ export function Room({ id, onBack }) {
     const n = m.pending ? 0 : unreadCount(m);
     rows.push(html`
       <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (first ? ' first' : '')} key=${m.id || m.client_id} data-id=${m.id || undefined}>
-        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} photo=${byId.get(m.user_id)?.photo} size=${54} /></button>` : html`<span class="avatar-gap"></span>`)}
+        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} photo=${photoOf(byId.get(m.user_id))} size=${54} /></button>` : html`<span class="avatar-gap"></span>`)}
         <div class="msg-col">
           ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">
@@ -232,7 +275,8 @@ export function Room({ id, onBack }) {
         </div>
       </header>
       ${room.notice && html`<${NoticeBar} notice=${room.notice} roomId=${id} onGo=${() => goTo(room.notice.id)} />`}
-      <div class="messages" ref=${scroller} onScroll=${onScroll}>
+      <div class="messages" ref=${scroller} onScroll=${onScroll}
+        onPointerDown=${swDown} onPointerMove=${swMove} onPointerUp=${swUp} onPointerCancel=${swUp} onClickCapture=${swClick}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
         ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map(nickOf).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
         ${rows}
@@ -264,6 +308,8 @@ export function Room({ id, onBack }) {
     </section>
   `;
 }
+
+const SWIPE = 56;   // 이만큼 밀면 답장
 
 const durText = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -427,6 +473,7 @@ function MsgMenu({ m, mine, isNotice, onClose, onReply, onForward }) {
           ${REACTIONS.map((e) => html`<button class=${e === myReaction ? 'on' : ''} onClick=${() => run('react', () => react(m, e))} aria-label=${'반응 ' + e}>${e}</button>`)}
         </div>
         ${err && html`<p class="err">${err}</p>`}
+        <div class="action-grid">
         <button onClick=${onReply}>답장</button>
         ${!media && html`<button onClick=${() => run('copy', () => navigator.clipboard.writeText(m.body))}>복사</button>`}
         ${!gone && html`<button onClick=${onForward}>전달</button>`}
@@ -434,6 +481,7 @@ function MsgMenu({ m, mine, isNotice, onClose, onReply, onForward }) {
         ${media && !gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
         <button class="danger" onClick=${() => confirm(`이 ${what} 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
         ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what} 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}
+        </div>
         <button class="cancel" onClick=${onClose}>취소</button>
       </div>
     </div>`;

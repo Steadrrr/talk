@@ -22,8 +22,8 @@ $cfg = talk_config();
 if (preg_match('#^photo/([a-f0-9]{24})$#', $route, $pm)) {
     $cfg0 = talk_config();
     if ($cfg0 === null) talk_fail('설정 전이에요.', 503);
-    $st = talk_db($cfg0)->prepare('SELECT photo FROM talk_users WHERE photo_key = ? UNION ALL SELECT photo FROM talk_rooms WHERE photo_key = ? LIMIT 1');
-    $st->execute([$pm[1], $pm[1]]);
+    $st = talk_db($cfg0)->prepare('SELECT photo FROM talk_users WHERE photo_key = ? UNION ALL SELECT photo FROM talk_rooms WHERE photo_key = ? UNION ALL SELECT saki_photo FROM talk_users WHERE saki_photo_key = ? LIMIT 1');
+    $st->execute([$pm[1], $pm[1], $pm[1]]);
     $data = $st->fetchColumn();
     if (!$data) talk_fail('사진이 없어요.', 404);
     header('Content-Type: ' . (talk_photo_type($data) ?? 'application/octet-stream'));
@@ -127,7 +127,7 @@ $uid = $me['id'];
 
 switch ($route) {
     case 'me':
-        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'bubble' => $me['bubble'], 'is_admin' => $me['is_admin'], 'push_quiet' => $me['push_quiet']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
+        talk_json(['ok' => true, 'me' => ['id' => $uid, 'name' => $me['name'], 'nick' => $me['nick'], 'photo' => $me['photo'], 'saki_photo' => $me['saki_photo'], 'bubble' => $me['bubble'], 'is_admin' => $me['is_admin'], 'push_quiet' => $me['push_quiet']], 'groups' => talk_my_groups($pdo, $uid), 'groups_rev' => talk_groups_rev($pdo)]);
 
     case 'me/nick':
         $need('POST');
@@ -147,6 +147,11 @@ switch ($route) {
     case 'me/photo':
         $need('POST');
         talk_set_photo($pdo, $uid, $photoBody()['data']);
+        talk_json(['ok' => true]);
+
+    case 'me/saki-photo':
+        $need('POST');
+        talk_set_saki_photo($pdo, $uid, $photoBody()['data']);
         talk_json(['ok' => true]);
 
     case 'media/start':

@@ -1,8 +1,8 @@
 // 아래 탭 세 개: 친구(그룹별), 채팅(방 목록), 설정
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { html, Avatar, listTime } from './html.js';
+import { html, Avatar, listTime, openImage, PhotoCrop } from './html.js';
 import { api } from './api.js';
-import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile, leaveRoom, setBubble } from './store.js';
+import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile, leaveRoom, setBubble, setSakiPhoto } from './store.js';
 import { leaveQuestion } from './roomsettings.js';
 import { nickOf, fullName } from './names.js';
 import { PushCard } from './pushui.js';
@@ -163,7 +163,41 @@ function NewRoom({ onClose, onOpen }) {
   `;
 }
 
-// 설정 > 개인설정: 초대 코드 넣기, 비밀번호 바꾸기
+// 사키 프로필 사진: 내 화면에서만 사키가 이 사진으로 보임. 안 정하면 기본(SAKi 아이콘)
+function SakiPhotoCard() {
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const mine = state.me.saki_photo;
+  const bot = Object.values(state.rooms).flatMap((r) => r.members).find((p) => p.bot);
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setErr('');
+    try { setDraft(await openImage(file)); } catch (e2) { setErr(e2.message || '사진을 열지 못했어요.'); }
+  }
+  async function put(data) {
+    setBusy(true); setErr('');
+    try { await setSakiPhoto(data); setDraft(null); } catch (e2) { setErr(e2.message || '사진을 올리지 못했어요.'); setDraft(null); } finally { setBusy(false); }
+  }
+  return html`
+    <div class="card">
+      <b>사키 프로필 사진</b>
+      <div class="inline saki-photo">
+        ${mine || bot?.photo ? html`<${Avatar} photo=${mine || bot.photo} size=${64} />` : html`<img class="avatar" src="./icon-192.png" alt="" width="64" height="64" />`}
+        <span class="grow hint">${mine ? '내가 고른 사진이에요.' : '기본 사진이에요.'} 내 화면에서만 바뀌어요.</span>
+      </div>
+      ${err && html`<p class="err">${err}</p>`}
+      <div class="inline">
+        <label class="primary btn-label">${busy ? '올리는 중…' : mine ? '사진 바꾸기' : '사진 고르기'}<input type="file" accept="image/*" hidden onChange=${pick} disabled=${busy} /></label>
+        ${mine && html`<button class="text dim" onClick=${() => confirm('사키 사진을 기본으로 되돌릴까요?') && put(null)} disabled=${busy}>기본으로</button>`}
+      </div>
+      ${draft && html`<${PhotoCrop} img=${draft} size=${320} title="사키 사진으로 할까요?" busy=${busy} onCancel=${() => setDraft(null)} onOk=${put} />`}
+    </div>`;
+}
+
+// 설정 > 개인설정: 초대 코드 넣기, 비밀번호 바꾸기, 사키 프로필 사진
 function PersonalPage({ onBack }) {
   const [invite, setInvite] = useState('');
   const [msg, setMsg] = useState('');
@@ -216,6 +250,7 @@ function PersonalPage({ onBack }) {
           <input type="password" value=${newPw} onInput=${(e) => setNewPw(e.target.value)} placeholder="새 비밀번호 (6자 이상)" required minlength="6" autocomplete="new-password" />
           <button class="primary" type="submit">바꾸기</button>
         </form>
+        <${SakiPhotoCard} />
       </div>
     </section>
   `;
@@ -263,7 +298,7 @@ function Settings() {
         </button>
         <${InstallCard} />
         <button class="card nav-row" onClick=${() => setPersonal(true)}>
-          <span class="grow"><b>개인설정</b><div class="hint">초대 코드 넣기, 비밀번호 바꾸기</div></span><span class="hint">›</span>
+          <span class="grow"><b>개인설정</b><div class="hint">초대 코드 넣기, 비밀번호 바꾸기, 사키 프로필 사진</div></span><span class="hint">›</span>
         </button>
         <button class="danger" onClick=${logout}>로그아웃</button>
         ${state.me.is_admin ? html`<button class="admin-link" onClick=${openAdmin}>⚙️ SAKi Talk 관리 <span class="hint">그룹·초대 코드·사람·알림 기록</span></button>` : ''}

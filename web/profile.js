@@ -2,7 +2,7 @@
 import { useState } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoCrop } from './html.js';
 import { nickOf, fullName } from './names.js';
-import { state, person, showProfile, openDm, setNick, setPhoto } from './store.js';
+import { state, photoOf, person, showProfile, openDm, setNick, setPhoto } from './store.js';
 
 export function Profile({ onOpen }) {
   const id = state.profile;
@@ -50,7 +50,7 @@ export function Profile({ onOpen }) {
       <div class="sheet profile">
         <header class="bar"><button class="icon" onClick=${close} aria-label="닫기">✕</button><span class="grow"></span></header>
         <div class="profile-body">
-          <${Avatar} name=${nickOf(p)} id=${p.id} photo=${p.photo} size=${96} />
+          <${Avatar} name=${nickOf(p)} id=${p.id} photo=${photoOf(p)} size=${96} />
           <h2 class="profile-name">${fullName(p)}</h2>
           ${groups.length > 0 && html`<p class="hint">${groups.join(' · ')}</p>`}
           ${err && html`<p class="err">${err}</p>`}

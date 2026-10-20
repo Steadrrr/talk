@@ -2,7 +2,7 @@
 import { useState } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
-import { state, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation } from './store.js';
+import { state, photoOf, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation } from './store.js';
 
 export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
   const [name, setName] = useState(room.name || '');
@@ -102,13 +102,13 @@ export function RoomSettings({ room, onClose, onLeft, onPhotos }) {
             <h3>대화 상대 ${room.members.length}</h3>
           </div>
           ${room.members.map((m) => html`
-            <button class="person" onClick=${() => showProfile(m.id)}><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} size=${60} /><span>${nickOf(m)}${m.id === state.me.id ? ' (나)' : ''}</span></button>`)}
+            <button class="person" onClick=${() => showProfile(m.id)}><${Avatar} name=${nickOf(m)} id=${m.id} photo=${photoOf(m)} size=${60} /><span>${nickOf(m)}${m.id === state.me.id ? ' (나)' : ''}</span></button>`)}
           ${!inviting && html`<button class="person" onClick=${() => { setInviting(true); setPicked([]); }} disabled=${!candidates.length}><span class="avatar multi" style="width:60px;height:60px">＋</span><span>${candidates.length ? '초대하기' : '같은 그룹에 초대할 사람이 없어요'}</span></button>`}
           ${inviting && html`
             <div class="section"><h3>초대할 사람 (${group?.name || ''} 그룹)</h3>
               ${!isGroup && html`<p class="hint">1:1 대화는 그대로 두고, 고른 사람과 함께하는 새 단체방이 만들어져요.</p>`}</div>
             ${candidates.map((m) => html`
-              <label class="person check"><input type="checkbox" checked=${picked.includes(m.id)} onChange=${() => toggle(m.id)} /><${Avatar} name=${nickOf(m)} id=${m.id} photo=${m.photo} size=${60} /><span>${nickOf(m)}</span></label>`)}
+              <label class="person check"><input type="checkbox" checked=${picked.includes(m.id)} onChange=${() => toggle(m.id)} /><${Avatar} name=${nickOf(m)} id=${m.id} photo=${photoOf(m)} size=${60} /><span>${nickOf(m)}</span></label>`)}
             <div class="section inline"><button class="text" onClick=${() => setInviting(false)}>그만두기</button><span class="grow"></span>
               <button class="primary" disabled=${!picked.length} onClick=${() => run(invite, isGroup ? '초대했어요.' : '')}>${isGroup ? '초대' : '단체방 만들기'}</button></div>`}
           <div class="section"><button class="danger" onClick=${leave}>${isGroup ? '채팅방 나가기' : '대화방 지우기'}</button></div>
