@@ -492,7 +492,8 @@ async function sendAlbumNow(roomId, msg) {
     msg.stage = '보내는 중';
     notify();
     let m;
-    try { m = await finishAlbum(msg.keys, msg.client_id); } catch (e) { msg.keys = []; throw e; } // 다음 재전송은 처음부터
+    // 서버가 올린 사진을 못 찾으면(하루 넘게 지나 지워짐) 다음 재전송은 처음부터. 연결이 끊긴 것이면 열쇠를 그대로 두고 묶기만 다시
+    try { m = await finishAlbum(msg.keys, msg.client_id); } catch (e) { if (e.status === 404) msg.keys = []; throw e; }
     for (const u of msg.locals) URL.revokeObjectURL(u);
     dropPending(msg.client_id);
     mergeMessages([m]);

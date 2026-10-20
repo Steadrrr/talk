@@ -221,7 +221,8 @@ function talk_create_room(PDO $pdo, int $uid, int $groupId, array $memberIds, st
 }
 
 // ───── 메시지 ─────
-function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $clientId, int $replyTo = 0): array {
+// $saki = false: 전달한 글은 사키를 부르지 않음 (원래 글에 "사키"가 있어도)
+function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $clientId, int $replyTo = 0, bool $saki = true): array {
     if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
     $body = rtrim(str_replace("\r\n", "\n", $body));
     if (trim($body) === '') talk_fail('빈 메시지는 보낼 수 없어요.');
@@ -251,7 +252,7 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     $pdo->commit();
     if (function_exists('talk_push_message')) talk_after_response(fn() => talk_push_message($pdo, $roomId, $uid, $body));
     // 사키를 불렀으면 (또는 끼어들 때가 됐으면) 알림 다음에 SAKi Lite 를 부른다
-    if (function_exists('talk_saki_after_send')) talk_saki_after_send($pdo, $roomId, $uid, $id, $body, $replyTo);
+    if ($saki && function_exists('talk_saki_after_send')) talk_saki_after_send($pdo, $roomId, $uid, $id, $body, $replyTo);
     if (random_int(1, 200) === 1) talk_cleanup_events($pdo);
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$id]);

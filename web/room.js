@@ -188,6 +188,8 @@ export function Room({ id, onBack }) {
     const was = Math.abs(d.dx) >= SWIPE;
     d.dx = Math.sign(dx) * Math.min(SWIPE * 1.4, Math.abs(dx) * 0.7);
     if (!was && Math.abs(d.dx) >= SWIPE) navigator.vibrate?.(10);
+    // 미는 사이 새 메시지로 다시 그려지면 class 가 지워지므로 매번 다시 붙임
+    d.row.classList.add('swiping');
     d.row.classList.toggle('r', d.dx > 0); d.row.classList.toggle('l', d.dx < 0);
     d.row.style.setProperty('--sw', Math.min(1, Math.abs(d.dx) / SWIPE));
     d.row.style.setProperty('--swd', Math.abs(d.dx));

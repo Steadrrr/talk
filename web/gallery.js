@@ -110,6 +110,7 @@ export function MediaViewer({ items, start = 0, names, onClose }) {
           : html`<${Slide} it=${it} active=${k === i} onGrab=${grab} onMenu=${() => !dragged.current && setMenu(it)} onTap=${() => !dragged.current && onClose()} />`}
       </div>`;
   };
+  // 메뉴·전달은 크게 보기 바깥에 (안에 두면 .viewer 의 흰 글씨·사진 모양이 시트에도 먹어 안내 글이 안 보였음)
   return html`
     <div class="viewer" role="dialog" aria-label="크게 보기">
       <div class="viewer-top">
@@ -125,9 +126,9 @@ export function MediaViewer({ items, start = 0, names, onClose }) {
         ${n > 1 && i < n - 1 && html`<button class="viewer-nav next" onClick=${() => go(1)} aria-label="다음 사진">›</button>`}
       </div>
       <p>${names.get(cur.m.user_id) || ''} · ${dateLine(cur.m.at)} ${time(cur.m.at)}</p>
-      ${menu && html`<${ItemMenu} it=${menu} onClose=${() => setMenu(null)} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
-      ${fwd && html`<${ForwardSheet} m=${fwd.m} index=${mediaItems(fwd.m).length > 1 ? fwd.i : null} onClose=${() => setFwd(null)} />`}
-    </div>`;
+    </div>
+    ${menu && html`<${ItemMenu} it=${menu} onClose=${() => setMenu(null)} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
+    ${fwd && html`<${ForwardSheet} m=${fwd.m} index=${mediaItems(fwd.m).length > 1 ? fwd.i : null} onClose=${() => setFwd(null)} />`}`;
 }
 
 // 크게 본 사진 한 장: 두 손가락으로 벌리고 오므려 확대·축소(1~5배), 확대한 채 한 손가락으로 끌어 옮김,

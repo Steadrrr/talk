@@ -86,7 +86,7 @@ function talk_media_finish(PDO $pdo, array $cfg, int $uid, string $key, string $
     if ((int)$m['done'] && $m['message_id']) {
         $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
         $st->execute([(int)$m['message_id']]);
-        return talk_msg_view($st->fetch());
+        return talk_decorate($pdo, [talk_msg_view($st->fetch())])[0];
     }
     $roomId = (int)$m['room_id'];
     if (!talk_room_member($pdo, $uid, $roomId)) talk_fail('이 방에 들어가 있지 않아요.', 403);
@@ -112,6 +112,12 @@ function talk_media_item(array $m): array {
 // 사진·영상 메시지 만들기: 올린 파일이면 done 표시, 메시지마다 쓰는 파일을 talk_media_uses 에
 function talk_media_post(PDO $pdo, array $cfg, int $uid, int $roomId, string $kind, array $body, array $media, string $clientId, string $pushText): array {
     $clientId = preg_match('/^[A-Za-z0-9_-]{8,40}$/', $clientId) ? $clientId : null;
+    // 같은 메시지를 다시 보낸 경우(응답을 못 받고 재전송): 처음 것을 돌려준다 (client_id 는 겹칠 수 없음)
+    if ($clientId !== null) {
+        $st = $pdo->prepare('SELECT * FROM talk_messages WHERE user_id = ? AND client_id = ?');
+        $st->execute([$uid, $clientId]);
+        if ($old = $st->fetch()) return talk_decorate($pdo, [talk_msg_view($old)])[0];
+    }
     $st = $pdo->prepare("SELECT dm_key FROM talk_rooms WHERE id = ? AND kind = 'dm'");
     $st->execute([$roomId]);
     if ($dm = $st->fetchColumn()) talk_dm_rejoin($pdo, $roomId, array_map('intval', explode(':', $dm)));
@@ -196,7 +202,7 @@ function talk_forward(PDO $pdo, array $cfg, int $uid, int $msgId, ?int $index, a
 
     if ($src['kind'] === 'text') {
         $out = [];
-        foreach (array_keys($targets) as $rid) $out[] = talk_send($pdo, $uid, $rid, (string)$src['body'], '', 0);
+        foreach (array_keys($targets) as $rid) $out[] = talk_send($pdo, $uid, $rid, (string)$src['body'], '', 0, false);
         return $out;
     }
     $items = talk_media_items(json_decode((string)$src['body'], true) ?: []);

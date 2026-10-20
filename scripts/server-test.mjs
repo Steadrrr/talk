@@ -728,6 +728,10 @@ try {
     assert.equal(album.kind, 'photo');
     assert.deepEqual(JSON.parse(album.body).items.map((x) => x.key), keys);
     assert.equal((await api('media/album', { keys, client_id: 'album-test-1' }, tok.me)).body.message.id, album.id, '다시 보내도 메시지 하나');
+    // 응답을 못 받아 다시 올린 사진으로 같은 client_id 를 다시 묶어도 서버 오류 없이 처음 것
+    r = await api('media/album', { keys: [await up(dm, tok.me), await up(dm, tok.me)], client_id: 'album-test-1' }, tok.me);
+    assert.equal(r.status, 200, '다시 올려 묶어도 오류 없음');
+    assert.equal(r.body.message.id, album.id, '다시 올려 묶어도 메시지 하나');
 
     // 채팅방 사진 모아보기
     r = await api('rooms/photos?room_id=' + dm, undefined, tok.mom);
