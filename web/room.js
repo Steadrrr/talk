@@ -190,6 +190,7 @@ export function Room({ id, onBack }) {
     if (!was && Math.abs(d.dx) >= SWIPE) navigator.vibrate?.(10);
     d.row.classList.toggle('r', d.dx > 0); d.row.classList.toggle('l', d.dx < 0);
     d.row.style.setProperty('--sw', Math.min(1, Math.abs(d.dx) / SWIPE));
+    d.row.style.setProperty('--swd', Math.abs(d.dx));
     d.row.style.transform = `translateX(${d.dx}px)`;
   }
   function swUp(e) {
@@ -217,31 +218,49 @@ export function Room({ id, onBack }) {
   // 안 읽은 사람 수: 그 메시지 번호까지 아직 안 읽은 사람 (보낸 사람은 읽은 것으로)
   const unreadCount = (m) => m.kind === 'system' ? 0 : room.members.filter((p) => p.id !== m.user_id && !p.bot && p.last_read_id < m.id).length;
 
+  // 같은 사람이 이어 보낸 것은 한 묶음: 프로필 사진·대화명은 한 번만 (시간이 많이 지나도), 사진은 묶음 말풍선들의 가운데.
+  // 시각은 분마다 그 분의 마지막 말풍선 옆에. 밀어서 답장할 때는 말풍선 줄(.msg)만 밀리고 사진·대화명은 그대로
   const rows = [];
-  let prevDay = '', prevUser = 0, prevMin = '';
   const shown = list.filter((m) => !m.id || !isHidden(m.id));   // "나에게서 삭제" 한 것은 빼고
+  let group = null;
+  const flush = () => {
+    if (!group) return;
+    const { uid, items } = group;
+    const mine = uid === state.me.id;
+    const first = items[0];
+    rows.push(mine ? html`<div class="msg-group mine" key=${'g' + (first.id || first.client_id)}>${items.map((x) => x.row)}</div>`
+      : html`
+      <div class="msg-group theirs" key=${'g' + (first.id || first.client_id)}>
+        <div class="who tap" onClick=${() => showProfile(uid)}>${names.get(uid) || '나간 사람'}</div>
+        <div class="grp-body">
+          <button class="tap grp-face" onClick=${() => showProfile(uid)} aria-label="프로필"><${Avatar} name=${names.get(uid)} id=${uid} photo=${photoOf(byId.get(uid))} size=${54} /></button>
+          <div class="grp-rows">${items.map((x) => x.row)}</div>
+        </div>
+      </div>`);
+    group = null;
+  };
+  let prevDay = '';
   shown.forEach((m, i) => {
     const day = dayKey(m.at);
-    if (day !== prevDay) { rows.push(html`<div class="day" key=${'d' + day}><span>${dateLine(m.at)}</span></div>`); prevUser = 0; }
+    if (day !== prevDay) { flush(); rows.push(html`<div class="day" key=${'d' + day}><span>${dateLine(m.at)}</span></div>`); }
     prevDay = day;
     if (m.kind === 'system') {
+      flush();
       rows.push(html`<div class="msg-system" key=${m.id}><span>${m.body}</span></div>`);
-      prevUser = 0;
       return;
     }
     const mine = m.user_id === state.me.id;
+    if (group && group.uid !== m.user_id) flush();
+    const firstInGroup = !group;
+    if (!group) group = { uid: m.user_id, items: [] };
     const next = shown[i + 1];
     const minute = time(m.at);
-    const first = m.user_id !== prevUser || minute !== prevMin;
     // 같은 사람이 같은 분에 이어 보낸 것은 마지막 것에만 시각을 붙인다
     const showTime = !next || next.user_id !== m.user_id || time(next.at) !== minute || dayKey(next.at) !== day;
-    prevUser = m.user_id; prevMin = minute;
     const n = m.pending ? 0 : unreadCount(m);
-    rows.push(html`
-      <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (first ? ' first' : '')} key=${m.id || m.client_id} data-id=${m.id || undefined}>
-        ${!mine && (first ? html`<button class="tap" onClick=${() => showProfile(m.user_id)} aria-label="프로필"><${Avatar} name=${names.get(m.user_id)} id=${m.user_id} photo=${photoOf(byId.get(m.user_id))} size=${54} /></button>` : html`<span class="avatar-gap"></span>`)}
+    group.items.push({ row: html`
+      <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (firstInGroup ? ' first' : '')} key=${m.id || m.client_id} data-id=${m.id || undefined}>
         <div class="msg-col">
-          ${!mine && first && html`<div class="who tap" onClick=${() => showProfile(m.user_id)}>${names.get(m.user_id) || '나간 사람'}</div>`}
           <div class="msg-line">
             ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig({ items: viewItems(m), start: 0 })} onMenu=${() => setMenu(m)} />`
               : m.kind === 'deleted' ? html`<div class="bubble gone">삭제된 메시지예요</div>`
@@ -256,8 +275,9 @@ export function Room({ id, onBack }) {
           ${m.kind !== 'deleted' && m.reactions?.length > 0 && html`<${Reactions} m=${m} names=${names} />`}
           ${m.failed && html`<div class="fail"><button class="del" onClick=${() => confirm('보내지 못한 것을 지울까요?') && discard(id, m)}>지우기</button><button class="retry" onClick=${() => m.kind === 'text' ? send(id, null, m) : m.album ? sendAlbum(id, null, m) : sendMedia(id, null, m)}>재전송</button></div>`}
         </div>
-      </div>`);
+      </div>` });
   });
+  flush();
 
   return html`
     <section class="page room-page">

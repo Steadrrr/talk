@@ -118,22 +118,27 @@ h1 { font-size: calc(24px * var(--fs)); margin: 12px 0; }
 .messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 10px 12px; min-height: 0; overscroll-behavior: contain; }
 .day { text-align: center; margin: 14px 0 8px; }
 .day span { font-size: calc(12px * var(--fs)); color: var(--dim); background: var(--bg); border-radius: 12px; padding: 3px 12px; }
-.msg { display: flex; gap: 8px; margin-top: 3px; }
+.msg { display: flex; gap: 8px; margin-top: 2px; }
 /* 밀어서 답장: 민 쪽 반대편에 답장 표시가 나타남 */
 .messages { overflow-x: hidden; touch-action: pan-y; }
 .msg.swiping { position: relative; }
 .msg.swiping::before { content: '↩'; position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -17px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,.28); color: #fff; font-size: 19px; opacity: var(--sw, 0); transform: scale(calc(.6 + .4 * var(--sw, 0))); }
-.msg.swiping.r::before { left: -44px; }
-.msg.swiping.l::before { right: -44px; }
-.msg.first { margin-top: 10px; }
+/* 표시는 밀려서 생긴 빈자리 가운데 (--swd = 민 거리 px) */
+.msg.swiping.r::before { left: calc(var(--swd, 0) * -0.5px - 17px); }
+.msg.swiping.l::before { right: calc(var(--swd, 0) * -0.5px - 17px); }
+.msg.first { margin-top: 0; }
+/* 한 사람이 이어 보낸 묶음: 사진은 말풍선들의 세로 가운데, 대화명은 맨 위에 한 번 */
+.msg-group { margin-top: 8px; }
+.msg-group.theirs > .who { margin-left: 64px; width: fit-content; }
+.grp-body { display: flex; gap: 8px; align-items: center; }
+.grp-face { flex: none; align-self: center; }
+.grp-rows { flex: 1; min-width: 0; }
+.grp-rows .msg-col { max-width: 86%; }
 .msg.mine { justify-content: flex-end; }
-.avatar-gap { width: 54px; flex: none; }
 .msg-col { display: flex; flex-direction: column; max-width: 76%; min-width: 0; }
 .msg.mine .msg-col { align-items: flex-end; }
 .who { font-size: calc(13px * var(--fs)); line-height: calc(18px * var(--fs)); color: var(--dim); margin: 0 0 4px 2px; }
-/* 얼굴 위쪽을 말풍선 위쪽과 맞춤 (이름 줄 높이 + 4px 만큼 내림) */
-.msg.theirs.first > .tap { align-self: flex-start; margin-top: calc(18px * var(--fs) + 4px); }
 .msg-line { display: flex; align-items: flex-end; gap: 5px; }
 .msg.mine .msg-line { flex-direction: row-reverse; }
 .bubble { padding: 8px 12px; border-radius: 16px; background: var(--theirs); color: var(--theirs-fg, var(--fg)); white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgba(0,0,0,.04); }
