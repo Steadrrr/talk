@@ -223,8 +223,28 @@ function Slide({ it, active, onGrab, onMenu, onTap }) {
     onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onWheel=${wheel} />`;
 }
 
+// 길게 누른 것을 메뉴 위 빈 곳에 같이 보여 줌 (무엇을 누른 건지 알게). 누르면 뒤 어두운 곳을 누른 것과 같음
+//  item: 사진 한 장만 (모아보기), 없으면 메시지 그대로 (묶음은 콜라주)
+export function MenuPreview({ m, item, mine, style }) {
+  const media = m.kind === 'photo' || m.kind === 'video';
+  let body;
+  if (item) body = html`<img class="pv-media" src=${mediaUrl(item.key)} alt="" />`;
+  else if (!media) body = html`<div class="bubble" style=${style}>${m.body}</div>`;
+  else {
+    const items = viewItems(m);
+    if (!items.length) body = html`<div class="bubble gone">${m.kind === 'photo' ? '🖼️' : '🎬'} 보관 기간이 지나 지워졌어요</div>`;
+    else if (items.length > 1) body = html`<${Collage} m=${m} press=${{}} />`;
+    else {
+      const it = items[0];
+      body = m.kind === 'photo' ? html`<img class="pv-media" src=${mediaUrl(it.key)} alt="" />`
+        : html`<span class="pv-video">${it.thumb ? html`<img class="pv-media" src=${mediaUrl(it.key, true)} alt="" />` : html`<span class="media-blank"></span>`}<span class="play">▶</span></span>`;
+    }
+  }
+  return html`<div class=${'menu-preview msg ' + (mine ? 'mine' : 'theirs')}>${body}</div>`;
+}
+
 // 사진 한 장 메뉴 (크게 보기·모아보기에서 길게 누름): 전달·저장
-function ItemMenu({ it, onClose, onForward }) {
+function ItemMenu({ it, preview, onClose, onForward }) {
   const backdrop = useBackdrop(onClose);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -233,7 +253,8 @@ function ItemMenu({ it, onClose, onForward }) {
     try { await saveMedia(it.m, it.i); onClose(); } catch (e) { setErr(e.message || '저장하지 못했어요.'); } finally { setBusy(false); }
   }
   return html`
-    <div class="sheet-bg top" onClick=${backdrop}>
+    <div class=${'sheet-bg top' + (preview ? ' with-preview' : '')} onClick=${backdrop}>
+      ${preview && html`<${MenuPreview} m=${it.m} item=${it} mine=${it.m.user_id === state.me.id} />`}
       <div class="sheet action-sheet" role="menu">
         ${err && html`<p class="err">${err}</p>`}
         <div class="action-grid">
@@ -271,7 +292,7 @@ export function Gallery({ room, names, onClose }) {
         </div>
       </div>
       ${big !== null && html`<${MediaViewer} items=${items} start=${big} names=${names} onClose=${() => setBig(null)} />`}
-      ${menu && html`<${ItemMenu} it=${menu} onClose=${() => setMenu(null)} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
+      ${menu && html`<${ItemMenu} it=${menu} preview onClose=${() => setMenu(null)} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
       ${fwd && html`<${ForwardSheet} m=${fwd.m} index=${mediaItems(fwd.m).length > 1 ? fwd.i : null} onClose=${() => setFwd(null)} />`}
     </div>`;
 }

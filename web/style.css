@@ -241,7 +241,7 @@ img.avatar { object-fit: cover; background: var(--line); }
 .action-sheet .cancel { margin-top: 6px; color: var(--dim); }
 /* 길게 누름 메뉴: 한 줄에 두 개씩 (홀수면 마지막 것은 한 줄 전체) */
 .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.action-sheet .action-grid button { min-height: 46px; font-size: calc(16px * var(--fs)); padding: 0 6px; }
+.action-sheet .action-grid button { margin: 0; min-height: 46px; font-size: calc(16px * var(--fs)); padding: 0 6px; }
 .action-grid button:last-child:nth-child(odd) { grid-column: span 2; }
 .action-sheet .cancel { min-height: 44px; }
 
@@ -371,6 +371,14 @@ img.avatar { object-fit: cover; background: var(--line); }
 @media (pointer: fine) { .viewer-nav { display: flex; } }
 .viewer > .viewer-stage + p { padding-bottom: env(safe-area-inset-bottom); }
 .sheet-bg.top { z-index: 40; }
+/* 길게 누른 메시지·사진을 메뉴 위에 같이 */
+.sheet-bg.with-preview { flex-direction: column; align-items: center; justify-content: flex-end; background: rgba(0,0,0,.45); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.menu-preview { flex: 1; min-height: 0; width: 100%; max-width: 640px; margin: 0; padding: calc(env(safe-area-inset-top) + 16px) 16px 14px; display: flex; align-items: flex-end; pointer-events: none; }
+.menu-preview > * { max-height: 100%; max-width: 80%; overflow: hidden; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+.menu-preview .bubble { font-size: calc(16px * var(--fs)); }
+.menu-preview .pv-media { display: block; max-width: 100%; max-height: 100%; border-radius: 14px; object-fit: contain; }
+.menu-preview .pv-video { position: relative; display: block; border-radius: 14px; }
+.menu-preview .media.album { width: 240px; }
 
 /* 채팅방 사진 모아보기: 3칸 격자 */
 .photos-open { margin-top: 4px; }
