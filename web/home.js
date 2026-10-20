@@ -1,5 +1,5 @@
 // 아래 탭 세 개: 친구(그룹별), 채팅(방 목록), 설정
-import { useState, useRef } from 'preact/hooks';
+import { useState, useRef, useEffect } from 'preact/hooks';
 import { html, Avatar, listTime } from './html.js';
 import { api } from './api.js';
 import { state, sortedRooms, roomTitle, openDm, createRoom, loadMe, clearAll, showProfile, leaveRoom, setBubble } from './store.js';
@@ -40,7 +40,7 @@ function Friends() {
       <${Header} title="친구" />
       <div class="scroll">
         <button class="person me-row" onClick=${() => showProfile(me.id)}><${Avatar} name=${nickOf(me)} id=${me.id} photo=${me.photo} size=${78} /><b>${nickOf(me)}</b></button>
-        ${state.groups.length === 0 && html`<p class="empty">아직 들어간 그룹이 없어요. 설정에서 초대 코드를 넣어 주세요.</p>`}
+        ${state.groups.length === 0 && html`<p class="empty">아직 들어간 그룹이 없어요. 설정 > 개인설정에서 초대 코드를 넣어 주세요.</p>`}
         ${state.groups.map((g) => html`
           <h3 class="group-title">${g.name} <span class="hint">${g.members.length}</span></h3>
           ${g.members.filter((m) => m.id !== me.id).map((m) => html`
@@ -163,14 +163,21 @@ function NewRoom({ onClose, onOpen }) {
   `;
 }
 
-function Settings() {
+// 설정 > 개인설정: 초대 코드 넣기, 비밀번호 바꾸기
+function PersonalPage({ onBack }) {
   const [invite, setInvite] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [oldPw, setOldPw] = useState('');
   const [newPw, setNewPw] = useState('');
-  const [fs, setFs] = useState(getFontSize());
-  const [decor, setDecor] = useState(false);   // 채팅방 꾸미기 화면
+
+  useEffect(() => {
+    history.pushState({ personal: 1 }, '');
+    const onPop = () => onBack();
+    addEventListener('popstate', onPop);
+    return () => removeEventListener('popstate', onPop);
+  }, []);
+  const back = () => (history.state?.personal ? history.back() : onBack());
 
   async function join(e) {
     e.preventDefault();
@@ -191,6 +198,37 @@ function Settings() {
       setMsg('비밀번호를 바꿨어요.');
     } catch (e2) { setErr(e2.message); }
   }
+
+  return html`
+    <section class="page">
+      <header class="bar"><button class="icon hicon" onClick=${back} aria-label="뒤로">${BACK}</button><h2>개인설정</h2></header>
+      <div class="scroll pad">
+        ${msg && html`<p class="ok">${msg}</p>`}
+        ${err && html`<p class="err">${err}</p>`}
+        <form class="card" onSubmit=${join}>
+          <b>초대 코드 넣기</b>
+          <p class="hint">다른 그룹의 초대 코드를 받았으면 여기에 넣어요.</p>
+          <div class="inline"><input value=${invite} onInput=${(e) => setInvite(e.target.value.toUpperCase())} placeholder="8자리" required autocapitalize="characters" /><button class="primary" type="submit">들어가기</button></div>
+        </form>
+        <form class="card" onSubmit=${changePw}>
+          <b>비밀번호 바꾸기</b>
+          <input type="password" value=${oldPw} onInput=${(e) => setOldPw(e.target.value)} placeholder="지금 비밀번호" required autocomplete="current-password" />
+          <input type="password" value=${newPw} onInput=${(e) => setNewPw(e.target.value)} placeholder="새 비밀번호 (6자 이상)" required minlength="6" autocomplete="new-password" />
+          <button class="primary" type="submit">바꾸기</button>
+        </form>
+      </div>
+    </section>
+  `;
+}
+const BACK = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4 7 12l8 8" /></svg>`;
+
+function Settings() {
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [fs, setFs] = useState(getFontSize());
+  const [decor, setDecor] = useState(false);   // 채팅방 꾸미기 화면
+  const [personal, setPersonal] = useState(false);   // 개인설정 화면
+
   // 관리자 계정: 관리 화면을 비밀번호 없이 연다 (서버가 60초짜리 한 번 쓰는 표를 줌)
   async function openAdmin() {
     setMsg(''); setErr('');
@@ -203,6 +241,7 @@ function Settings() {
   }
 
   if (decor) return html`<${ChatThemePage} onBack=${() => setDecor(false)} setBubble=${setBubble} />`;
+  if (personal) return html`<${PersonalPage} onBack=${() => setPersonal(false)} />`;
   return html`
     <section class="page">
       <${Header} title="설정" />
@@ -223,17 +262,9 @@ function Settings() {
           <span class="grow"><b>채팅방 꾸미기</b><div class="hint">말풍선 색, 배경 색, 배경화면</div></span><span class="hint">›</span>
         </button>
         <${InstallCard} />
-        <form class="card" onSubmit=${join}>
-          <b>초대 코드 넣기</b>
-          <p class="hint">다른 그룹의 초대 코드를 받았으면 여기에 넣어요.</p>
-          <div class="inline"><input value=${invite} onInput=${(e) => setInvite(e.target.value.toUpperCase())} placeholder="8자리" required autocapitalize="characters" /><button class="primary" type="submit">들어가기</button></div>
-        </form>
-        <form class="card" onSubmit=${changePw}>
-          <b>비밀번호 바꾸기</b>
-          <input type="password" value=${oldPw} onInput=${(e) => setOldPw(e.target.value)} placeholder="지금 비밀번호" required autocomplete="current-password" />
-          <input type="password" value=${newPw} onInput=${(e) => setNewPw(e.target.value)} placeholder="새 비밀번호 (6자 이상)" required minlength="6" autocomplete="new-password" />
-          <button class="primary" type="submit">바꾸기</button>
-        </form>
+        <button class="card nav-row" onClick=${() => setPersonal(true)}>
+          <span class="grow"><b>개인설정</b><div class="hint">초대 코드 넣기, 비밀번호 바꾸기</div></span><span class="hint">›</span>
+        </button>
         <button class="danger" onClick=${logout}>로그아웃</button>
         ${state.me.is_admin ? html`<button class="admin-link" onClick=${openAdmin}>⚙️ SAKi Talk 관리 <span class="hint">그룹·초대 코드·사람·알림 기록</span></button>` : ''}
         <p class="hint center">SAKi Talk · 광고 없음</p>
