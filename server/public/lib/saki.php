@@ -460,7 +460,8 @@ function talk_saki_run(PDO $pdo, array $cfg, int $roomId, int $bot, int $msgId, 
         if ($mode === 'chime') talk_meta_set($pdo, "saki_chime:$roomId", (string)time());
         [$messages, $range] = talk_saki_context($pdo, $roomId, $bot, $mode === 'summary');
         if (!$messages) return;
-        talk_saki_typing($pdo, $roomId, $bot, true);
+        // 끼어들기(chime)는 대부분 대답하지 않고 넘어가서, 입력 중이 떴다가 그냥 사라졌음 → 불렀을 때만 입력 중 표시
+        if ($mode !== 'chime') talk_saki_typing($pdo, $roomId, $bot, true);
         $req = [
             'personality' => $s['personality'], 'polite' => (bool)$s['polite'], 'mode' => $mode,
             'name' => mb_substr(talk_display_name($pdo, $bot), 0, 20), 'room' => mb_substr($roomName, 0, 40),
