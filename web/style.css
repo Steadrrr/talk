@@ -20,7 +20,9 @@ body {
 }
 #app { position: fixed; top: var(--app-top, 0px); left: 0; right: 0; height: var(--app-h, 100dvh); max-width: 640px; margin: 0 auto; background: var(--bg); }
 .kb .composer { padding-bottom: 8px; }
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* 길게 누르기 메뉴·미리보기 글자는 길게 눌러도 선택되지 않게 */
+.action-sheet, .menu-preview, .reactions { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 button:disabled { opacity: .45; cursor: default; }
 input, textarea { font: inherit; font-size: max(16px, calc(16px * var(--fs))); color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
 input:focus, textarea:focus { outline: 2px solid var(--acc); outline-offset: -1px; }
