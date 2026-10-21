@@ -543,7 +543,13 @@ function talk_saki_memory_row(PDO $pdo, int $roomId): ?array {
 function talk_saki_memory_load(PDO $pdo, int $roomId): array {
     $out = [];
     $m = talk_saki_memory_row($pdo, $roomId);
-    if ($m && trim((string)$m['memory']) !== '') $out['room_memory'] = (string)$m['memory'];
+    if ($m && trim((string)$m['memory']) !== '') {
+        $memory = (string)$m['memory'];
+        // 날이 바뀐 뒤 아직 정리 전이면 기억의 [오늘] 칸은 지난 날 일이다. 그대로 보내면 사키가 어제 일을 오늘 일처럼 말해서
+        // (대답이 정리보다 먼저 돌아서 날이 바뀐 뒤 첫 부르기에 생김) 그날 날짜로 바꿔 보낸다
+        if ($m['day'] !== '' && $m['day'] !== talk_saki_day()) $memory = str_replace('[오늘]', '[' . talk_saki_day_name($m['day']) . ' (오늘 아님)]', $memory);
+        $out['room_memory'] = $memory;
+    }
     $st = $pdo->prepare('SELECT day, body FROM talk_saki_diary WHERE room_id = ? ORDER BY day DESC LIMIT ' . TALK_SAKI_DIARY_SEND);
     $st->execute([$roomId]);
     $diary = array_map(fn($d) => ['day' => (int)substr($d['day'], 5, 2) . '/' . (int)substr($d['day'], 8, 2), 'text' => $d['body']], array_reverse($st->fetchAll()));

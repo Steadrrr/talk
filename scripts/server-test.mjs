@@ -1190,11 +1190,21 @@ try {
     // 일기 고치기·지우기 (누구나)
     r = await api('rooms/saki_memory', { room_id: sakiRoom, diary_day: yday, diary_text: '삼겹살 먹은 날' }, tok.dad);
     assert.equal(r.body.diary[0].text, '삼겹살 먹은 날');
+    // 날이 바뀐 뒤 정리 전에 부르면: 기억의 [오늘] 칸은 지난 날 것이라 그날 날짜로 바꿔 보냄 (대답이 정리보다 먼저)
+    const mark = sql(`SELECT MAX(id) FROM talk_messages WHERE room_id = ${sakiRoom}`);
+    sql(`UPDATE talk_saki_memory SET day = '${yday}', memory = '[사람]\n- 아빠: 등산\n[오늘]\n- 삼겹살' WHERE room_id = ${sakiRoom}`);
+    await say({ body: '사키야 오늘 뭐 했지?' }, tok.mom);
+    assert.equal(talks().at(-1).body.room_memory, `[사람]\n- 아빠: 등산\n[${Number(yday.slice(5, 7))}월 ${Number(yday.slice(8, 10))}일 (오늘 아님)]\n- 삼겹살`);
+    await say({ body: '사키야 또 물어봄' }, tok.mom);
+    assert.match(talks().at(-1).body.room_memory, /\[오늘\]/, '정리 뒤로는 그대로');
+    sql(`DELETE r FROM talk_reactions r JOIN talk_messages m ON m.id = r.message_id WHERE m.room_id = ${sakiRoom} AND m.id > ${mark}`);
+    sql(`DELETE FROM talk_messages WHERE room_id = ${sakiRoom} AND id > ${mark}`); // 아래 시험의 기록 한 쪽을 밀어내지 않게
     // 끄면 정리도 싣기도 안 함, forget 이 없으면 기억은 남음
     await api('rooms/saki', { room_id: sakiRoom, memory: false }, tok.mom);
     chat(45);
+    const rn = remembers().length;
     await say({ body: '사키야 아직 기억해?' }, tok.dad);
-    assert.equal(remembers().length, 6);
+    assert.equal(remembers().length, rn);
     assert.equal(talks().at(-1).body.room_memory, undefined);
     assert.equal(talks().at(-1).body.room_diary, undefined);
     assert.ok(mem() !== '', '지우기를 고르지 않으면 남겨 둠');
