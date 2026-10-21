@@ -1,7 +1,7 @@
 // 채팅방 화면: 메시지 목록(날짜 구분선, 안 읽은 사람 수), 위로 올리면 예전 대화, 아래 입력칸
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { html, Avatar, time, dateLine, dayKey } from './html.js';
-import { state, photoOf, roomTitle, loadOlder, send, sendMedia, sendAlbum, sendPlace, discard, showProfile, isHidden, hideMessage, deleteForAll, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
+import { state, photoOf, roomTitle, loadOlder, send, sendMedia, sendAlbum, sendPlace, discard, showProfile, isHidden, hideMessage, deleteForAll, editMessage, react, REACTIONS, searchRoom, loadUntil, setNotice, setTyping } from './store.js';
 import { mediaUrl, mediaInfo, mediaItems, saveMedia } from './media.js';
 import { useLongPress, useBackdrop, Collage, MediaViewer, Gallery, ForwardSheet, MenuPreview, viewItems } from './gallery.js';
 import { nickOf } from './names.js';
@@ -26,6 +26,7 @@ export function Room({ id, onBack }) {
   const [fwd, setFwd] = useState(null);   // 전달할 메시지
   const [menu, setMenu] = useState(null); // 길게 눌러 연 메시지 메뉴
   const [replyTo, setReplyTo] = useState(null); // 답장할 메시지
+  const [editing, setEditing] = useState(null); // 고치는 중인 내 글 (입력칸에 원래 글을 넣고 보내기 = 고치기)
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState(null); // 보내기 전에 보는 사진들 (편집 가능)
   const [attach, setAttach] = useState('');   // ＋ 메뉴: 'menu' | 'here' (내 위치) | 'search' (장소 검색) | 'schedule' (일정 등록)
@@ -90,9 +91,40 @@ export function Room({ id, onBack }) {
       setCur(1 - cur);
     }
     setText('');
+    if (editing) {
+      const m = editing;
+      setEditing(null);
+      if (body !== m.body) editMessage(m, body).catch((e) => alert(e.message || '고치지 못했어요.'));
+      return;
+    }
     atBottom.current = true;
     send(id, body, null, replyTo);
     setReplyTo(null);
+  }
+
+  // 고치기 시작: 입력칸에 원래 글을 넣고 커서를 끝에 (답장은 그만둠)
+  function startEdit(m) {
+    setMenu(null);
+    setReplyTo(null);
+    setEditing(m);
+    const el = input.current;
+    if (!el) return;
+    el.textContent = m.body;
+    fitBox(el);
+    setText(m.body);
+    caretEnd(el);
+  }
+  function stopEdit() {
+    setEditing(null);
+    const el = input.current;
+    if (el) { el.textContent = ''; fitBox(el); }
+    setText('');
+  }
+  // 고치는 중에 답장을 고르면: 고치기는 그만두고 답장
+  function startReply(m) {
+    if (editing) stopEdit();
+    setReplyTo(m);
+    input.current?.focus();
   }
 
   // 사진·영상 고르기: 사진은 먼저 크게 보며 빼거나 편집한 뒤 보내기, 영상은 하나씩 바로 보냄
@@ -123,7 +155,7 @@ export function Room({ id, onBack }) {
   }
 
   // 입력칸에 글자가 남아 있으면 계속 입력 중 (3초마다 다시 알림, 앱을 숨기면 서버가 끔)
-  const hasText = text.trim() !== '';
+  const hasText = !editing && text.trim() !== '';
   useEffect(() => {
     if (!hasText) return;
     const t = setInterval(() => { if (!document.hidden) setTyping(id, true); }, 3000);
@@ -138,7 +170,7 @@ export function Room({ id, onBack }) {
     const t = el.innerText.replace(/\n$/, '');
     fitBox(el);
     setText(t);
-    setTyping(id, t.trim() !== '');
+    if (!editing) setTyping(id, t.trim() !== '');
   }
   // 입력칸 사이 빈틈(＋ 옆 등)을 눌러도 입력칸으로: 빈틈을 누르면 아이폰이 커서를 뺐다 넣었다 하며
   // 키보드가 내려갔다 올라와 화면이 튀었음 → 누름 자체를 막고, 커서가 없을 때만 입력칸 끝에 커서를 둔다
@@ -147,13 +179,7 @@ export function Room({ id, onBack }) {
     e.preventDefault();
     const el = input.current;
     if (e.type !== 'click' || !el || document.activeElement === el) return;   // 키보드는 누름이 끝날 때 열어야 아이폰이 띄움
-    el.focus();
-    const r = document.createRange();
-    r.selectNodeContents(el);
-    r.collapse(false);
-    const sel = getSelection();
-    sel.removeAllRanges();
-    sel.addRange(r);
+    caretEnd(el);
   }
   // 붙여넣기는 글자만 (plaintext-only 를 모르는 브라우저에서 서식·그림이 들어오지 않게)
   function onPaste(e) {
@@ -218,7 +244,7 @@ export function Room({ id, onBack }) {
     row.style.transform = '';
     setTimeout(() => { row.classList.remove('swiping', 'r', 'l'); row.style.transition = ''; }, 200);
     const m = e.type === 'pointerup' && Math.abs(d.dx) >= SWIPE && list.find((x) => String(x.id) === row.dataset.id);
-    if (m && m.kind !== 'deleted' && m.kind !== 'system') { setReplyTo(m); input.current?.focus(); }
+    if (m && m.kind !== 'deleted' && m.kind !== 'system') startReply(m);
   }
   function swClick(e) {
     if (swBlock.current) { swBlock.current = false; e.stopPropagation(); e.preventDefault(); }
@@ -283,7 +309,7 @@ export function Room({ id, onBack }) {
             <div class="meta">
               ${m.failed ? html`<span class="small bad">못 보냄</span>`
                 : m.pending ? html`<span class="hint small">보내는 중</span>`
-                : html`${n > 0 && html`<span class="unread">${n}</span>`}${showTime && html`<span class="hint small">${minute}</span>`}`}
+                : html`${n > 0 && html`<span class="unread">${n}</span>`}${m.edited && m.kind === 'text' && html`<span class="hint small">수정됨</span>`}${showTime && html`<span class="hint small">${minute}</span>`}`}
             </div>
           </div>
           ${m.kind === 'text' && m.links?.length > 0 && html`<${LinkCards} links=${m.links} />`}
@@ -319,6 +345,11 @@ export function Room({ id, onBack }) {
         ${state.typing.length > 0 && html`<div class="typing" aria-live="polite"><span class="dots"><i></i><i></i><i></i></span>
           <span class="hint small">${room.kind === 'dm' ? '입력 중' : `${state.typing.map((u) => names.get(u)).filter(Boolean).join(', ')}님이 입력 중`}</span></div>`}
       </div>
+      ${editing && html`
+        <div class="reply-bar edit-bar">
+          <div class="grow ellipsis"><b>메시지 수정</b><br /><span class="hint">${editing.body}</span></div>
+          <button class="icon" onClick=${stopEdit} aria-label="수정 그만두기">✕</button>
+        </div>`}
       ${replyTo && html`
         <div class="reply-bar">
           <div class="grow ellipsis"><b>${names.get(replyTo.user_id) || '나간 사람'}</b>에게 답장<br /><span class="hint">${replyPreview(replyTo)}</span></div>
@@ -332,10 +363,10 @@ export function Room({ id, onBack }) {
               aria-hidden=${i === cur ? null : 'true'} tabIndex=${i === cur ? 0 : -1}
               autocapitalize="off" spellcheck="false" onInput=${onEdit} onScroll=${keepTop} onKeyDown=${onKey} onPaste=${onPaste}></div>`)}
         </div>
-        <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label="보내기">↑</button>
+        <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label=${editing ? '수정' : '보내기'}>${editing ? '✓' : '↑'}</button>
       </div>
       ${menu && html`<${MsgMenu} m=${menu} mine=${menu.user_id === state.me.id} bubble=${menu.user_id === state.me.id ? null : bubbleStyle(byId.get(menu.user_id))} name=${names.get(menu.user_id)} isNotice=${room.notice?.id === menu.id} onClose=${() => setMenu(null)}
-        onReply=${() => { setReplyTo(menu); setMenu(null); input.current?.focus(); }} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
+        onReply=${() => { setMenu(null); startReply(menu); }} onEdit=${() => startEdit(menu)} onForward=${() => { setFwd(menu); setMenu(null); }} />`}
       ${big && html`<${MediaViewer} items=${big.items} start=${big.start} names=${names} onClose=${() => setBig(null)} />`}
       ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => { setPhotos(false); setSettings(true); }} />`}
       ${picked && html`<${SendPreview} files=${picked} onSend=${sendPhotos} onClose=${() => setPicked(null)} />`}
@@ -455,6 +486,17 @@ function NoticeBar({ notice, roomId, onGo }) {
 
 // 입력칸은 다섯 줄을 넘을 때만 스크롤: 한 줄일 때도 글자 높이가 줄 높이보다 몇 px 커서 스크롤할 수 있는 칸이 돼,
 // 커서를 끌면 스크롤바가 생기고 글이 밀려 내려갔음 → 넘치지 않으면 overflow 를 막고 밀린 자리를 되돌림
+// 입력칸에 커서를 두고 맨 끝으로
+function caretEnd(el) {
+  el.focus();
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  r.collapse(false);
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
 function fitBox(el) {
   el.classList.toggle('tall', el.scrollHeight > el.clientHeight + 8);
   if (!el.classList.contains('tall')) el.scrollTop = 0;
@@ -507,8 +549,8 @@ function Reactions({ m, names }) {
     </div>`;
 }
 
-// 메시지 메뉴(길게 누르기): 반응, 답장, 복사(글)·전달(같은 그룹 방·친구)·저장(사진·영상, 묶음은 전부), 삭제(이 기기에서 숨김), 모두에게 삭제(내가 보낸 것만)
-function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onForward }) {
+// 메시지 메뉴(길게 누르기): 반응, 답장, 복사(글)·전달(같은 그룹 방·친구)·저장(사진·영상, 묶음은 전부), 수정(내가 보낸 글만), 삭제(이 기기에서 숨김), 모두에게 삭제(내가 보낸 것만)
+function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onEdit, onForward }) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const media = m.kind === 'photo' || m.kind === 'video';
@@ -535,6 +577,7 @@ function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onForward 
         ${!media && html`<button onClick=${() => run('copy', () => navigator.clipboard.writeText(copyText))}>${isPlace ? '주소 복사' : '복사'}</button>`}
         ${!gone && html`<button onClick=${onForward}>전달</button>`}
         ${m.kind === 'text' && html`<button onClick=${() => run('notice', () => setNotice(m.room_id, isNotice ? 0 : m.id))} disabled=${!!busy}>${isNotice ? '공지 내리기' : '공지 설정'}</button>`}
+        ${mine && m.kind === 'text' && html`<button onClick=${onEdit}>수정</button>`}
         ${media && !gone && html`<button onClick=${() => run('save', () => saveMedia(m))} disabled=${!!busy}>${busy === 'save' ? '받는 중…' : '저장'}</button>`}
         <button class="danger" onClick=${() => confirm(`이 ${what} 내 화면에서 지울까요?\n(다른 사람에게는 그대로 보여요)`) && run('hide', () => hideMessage(m.id))} disabled=${!!busy}>삭제</button>
         ${mine && html`<button class="danger" onClick=${() => confirm(`이 ${what} 모두에게서 지울까요?\n되돌릴 수 없어요.`) && run('all', () => deleteForAll(m))} disabled=${!!busy}>${busy === 'all' ? '지우는 중…' : '모두에게 삭제'}</button>`}

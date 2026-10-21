@@ -366,6 +366,11 @@ switch ($route) {
         $b = talk_body();
         talk_json(['ok' => true, 'message' => talk_send($pdo, $uid, (int)($b['room_id'] ?? 0), (string)($b['body'] ?? ''), (string)($b['client_id'] ?? ''), (int)($b['reply_to'] ?? 0))]);
 
+    case 'messages/edit':
+        $need('POST');
+        $b = talk_body();
+        talk_json(['ok' => true, 'message' => talk_message_edit($pdo, $uid, (int)($b['id'] ?? 0), (string)($b['body'] ?? ''))]);
+
     case 'messages/react':
         $need('POST');
         $b = talk_body();

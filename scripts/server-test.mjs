@@ -765,6 +765,28 @@ try {
     assert.equal(after.messages.find((x) => x.id === mid)?.kind, 'deleted');
     assert.equal(after.messages.find((x) => x.id === mid)?.body, '');
 
+    // 메시지 수정: 보낸 사람의 글만, 다른 사람 동기화에 같은 번호로 바뀐 글·수정 시각, 답장 미리보기·공지도 바뀐 글
+    const orig = (await api('messages/send', { room_id: room, body: '내일 3시', client_id: 'edit-test-orig' }, tok.mom)).body.message;
+    const re = (await api('messages/send', { room_id: room, body: '알겠어', client_id: 'edit-test-reply', reply_to: orig.id }, tok.dad)).body.message;
+    assert.equal(orig.edited, undefined, '고치기 전에는 수정 표시 없음');
+    await api('rooms/notice', { room_id: room, message_id: orig.id }, tok.mom);
+    const ecur = (await api('sync?since=0', undefined, tok.dad)).body.cursor;
+    assert.equal((await api('messages/edit', { id: orig.id, body: '남의 글' }, tok.dad)).status, 403, '남의 글은 못 고침');
+    assert.equal((await api('messages/edit', { id: orig.id, body: '방 밖' }, tok.f1)).status, 404, '방에 없는 사람');
+    assert.equal((await api('messages/edit', { id: orig.id, body: '   ' }, tok.mom)).status, 400, '빈 글로는 못 고침');
+    assert.equal((await api('messages/edit', { id: r.body.message.id, body: '사진' }, tok.mom)).status, 400, '사진은 못 고침');
+    let ed = await api('messages/edit', { id: orig.id, body: '내일 4시로 바꿀게' }, tok.mom);
+    assert.equal(ed.status, 200);
+    assert.equal(ed.body.message.body, '내일 4시로 바꿀게');
+    assert.ok(ed.body.message.edited, '수정 시각');
+    const esync = (await api('sync?since=' + ecur, undefined, tok.dad)).body;
+    assert.equal(esync.messages.find((x) => x.id === orig.id)?.body, '내일 4시로 바꿀게');
+    assert.ok(esync.messages.find((x) => x.id === orig.id)?.edited);
+    assert.equal(esync.messages.find((x) => x.id === re.id)?.reply?.body, '내일 4시로 바꿀게', '답장 미리보기도 바뀐 글');
+    const eroom = esync.rooms.find((x) => x.id === room);
+    assert.equal(eroom.notice?.body, '내일 4시로 바꿀게', '공지도 바뀐 글');
+    await api('rooms/notice', { room_id: room, message_id: 0 }, tok.mom);
+
     // 영상: Range
     const mp4 = crypto.randomBytes(5000);
     r = await api('media/start', { room_id: room, kind: 'video', mime: 'video/mp4', size: mp4.length, dur: 12 }, tok.mom);

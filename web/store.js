@@ -603,6 +603,17 @@ export async function deleteForAll(m) {
   notify();
 }
 
+// 내가 보낸 글 고치기: 서버가 돌려준 글로 바꿔 끼움 (마지막 메시지·공지였으면 목록·공지 띠도)
+export async function editMessage(m, body) {
+  const r = await api('messages/edit', { id: m.id, body });
+  mergeMessages([r.message]);
+  const room = state.rooms[m.room_id];
+  if (room?.last?.id === m.id) room.last = { ...room.last, body: r.message.body, edited: r.message.edited };
+  if (room?.notice?.id === m.id) room.notice = { ...room.notice, body: r.message.body };
+  saveSoon();
+  notify();
+}
+
 export const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
 // 반응: 바로 화면에 바꾸고 서버에 (같은 것을 다시 누르면 뺌). 실패하면 다음 동기화에서 바로잡힘
 export async function react(m, emoji) {

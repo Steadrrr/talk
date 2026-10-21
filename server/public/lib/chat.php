@@ -30,7 +30,8 @@ function talk_room_member(PDO $pdo, int $uid, int $roomId): bool {
 function talk_msg_view(array $m): array {
     return ['id' => (int)$m['id'], 'room_id' => (int)$m['room_id'], 'user_id' => (int)$m['user_id'], 'kind' => $m['kind'],
         'body' => $m['body'], 'client_id' => $m['client_id'], 'at' => talk_iso($m['created_at']),
-        'reply_to' => (int)($m['reply_to'] ?? 0) ?: null] + (empty($m['links']) ? [] : ['links' => json_decode($m['links'], true)]);
+        'reply_to' => (int)($m['reply_to'] ?? 0) ?: null] + (empty($m['links']) ? [] : ['links' => json_decode($m['links'], true)])
+        + (empty($m['edited_at']) ? [] : ['edited' => talk_iso($m['edited_at'])]);
 }
 
 const TALK_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
@@ -262,6 +263,31 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     if (random_int(1, 200) === 1) talk_cleanup_events($pdo);
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$id]);
+    return talk_decorate($pdo, [talk_msg_view($st->fetch())])[0];
+}
+
+// 메시지 수정: 내가 보낸 글만. 다른 사람은 다음 동기화에서 바뀐 글을 받고, 이 글에 답한 메시지의 미리보기도 다시 받는다
+// (공지로 걸린 글이면 방 요약의 공지도 바뀐 글로). 알림·사키는 다시 부르지 않음
+function talk_message_edit(PDO $pdo, int $uid, int $msgId, string $body): array {
+    $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
+    $st->execute([$msgId]);
+    $m = $st->fetch();
+    if (!$m || !talk_room_member($pdo, $uid, (int)$m['room_id'])) talk_fail('메시지가 없어요.', 404);
+    if ((int)$m['user_id'] !== $uid) talk_fail('내가 보낸 글만 고칠 수 있어요.', 403);
+    if ($m['kind'] !== 'text') talk_fail('글만 고칠 수 있어요.');
+    $body = rtrim(str_replace("\r\n", "\n", $body));
+    if (trim($body) === '') talk_fail('빈 메시지로는 고칠 수 없어요.');
+    if (mb_strlen($body) > TALK_BODY_MAX) talk_fail('메시지는 ' . TALK_BODY_MAX . '자까지예요.');
+    $roomId = (int)$m['room_id'];
+    if ($body !== $m['body']) {
+        $pdo->prepare('UPDATE talk_messages SET body = ?, edited_at = ? WHERE id = ?')->execute([$body, talk_now(), $msgId]);
+        talk_event($pdo, $roomId, 'msg', $msgId);
+        $st = $pdo->prepare('SELECT id FROM talk_messages WHERE room_id = ? AND reply_to = ? ORDER BY id DESC LIMIT 50');
+        $st->execute([$roomId, $msgId]);
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $rid) talk_event($pdo, $roomId, 'msg', (int)$rid);
+    }
+    $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
+    $st->execute([$msgId]);
     return talk_decorate($pdo, [talk_msg_view($st->fetch())])[0];
 }
 
