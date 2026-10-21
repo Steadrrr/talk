@@ -227,11 +227,16 @@ function SakiSection({ room, run }) {
         <p class="hint">대답 빈도</p>
         ${seg([['called', '부를 때만'], ['chime', '가끔 끼어들기']], s.freq, 'freq')}
         ${s.freq === 'chime' && html`<p class="hint">대화가 쌓이면 가끔 먼저 끼어들어요.</p>`}
-        <label class="switch-row"><span class="grow">읽씹 방지<br /><span class="hint">누가 글을 올렸는데 5분 동안 아무도 대답이 없으면 사키가 대답해요</span></span>
-          <input type="checkbox" class="switch" checked=${!!s.noignore} disabled=${!can} onChange=${(e) => set({ noignore: e.target.checked })} /></label>
-        ${(s.freq === 'chime' || s.noignore > 0) && html`
-          <label class="switch-row"><span class="grow">사키가 먼저 말하는 최소 간격<br /><span class="hint">끼어들기·읽씹 방지는 사키가 마지막으로 말한 뒤 이만큼 지나야 해요 (부르면 언제든 대답)</span></span>
+        ${s.freq === 'chime' && html`
+          <label class="switch-row"><span class="grow">끼어들기 최소 간격</span>
             <select value=${s.gap} disabled=${!can} onChange=${(e) => set({ gap: Number(e.target.value) })}>
+              ${[5, 10, 20, 30, 60, 120].map((m) => html`<option value=${m}>${m < 60 ? `${m}분` : `${m / 60}시간`}</option>`)}
+            </select></label>`}
+        <label class="switch-row"><span class="grow">읽씹 방지<br /><span class="hint">마지막 채팅 뒤 고른 시간 동안 아무도 대답이 없으면 사키가 대답해요 (마지막이 사키 말이면 안 해요)</span></span>
+          <input type="checkbox" class="switch" checked=${!!s.noignore} disabled=${!can} onChange=${(e) => set({ noignore: e.target.checked })} /></label>
+        ${s.noignore > 0 && html`
+          <label class="switch-row"><span class="grow">읽씹 방지 시간</span>
+            <select value=${s.wait || 5} disabled=${!can} onChange=${(e) => set({ wait: Number(e.target.value) })}>
               ${[5, 10, 20, 30, 60, 120].map((m) => html`<option value=${m}>${m < 60 ? `${m}분` : `${m / 60}시간`}</option>`)}
             </select></label>`}
         <label class="switch-row"><span class="grow">반응 달기<br /><span class="hint">사키를 부른 메시지에 표정 이모지</span></span>
