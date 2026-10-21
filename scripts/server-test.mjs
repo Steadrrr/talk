@@ -943,7 +943,7 @@ try {
     assert.equal((await api('rooms/saki', { room_id: dm2, on: true }, tok.mom)).status, 400, '1:1 방은 안 됨');
     const r = await api('rooms/saki', { room_id: sakiRoom, on: true, personality: 'tsundere', polite: true }, tok.mom);
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.saki, { on: 1, personality: 'tsundere', polite: 1, freq: 'called', gap: 10, react: 1, memory: 0 });
+    assert.deepEqual(r.body.saki, { on: 1, personality: 'tsundere', polite: 1, freq: 'called', gap: 10, react: 1, memory: 0, noignore: 0 });
     const room = await roomOf(tok.dad);
     const bot = room.members.find((m) => m.bot);
     assert.ok(bot && bot.nick === '사키');
@@ -1039,6 +1039,12 @@ try {
     assert.equal(replies().length, n + 1, '아직 5분이 안 지남');
     sql(`UPDATE talk_messages SET created_at = created_at - INTERVAL 6 MINUTE WHERE room_id = ${sakiRoom}`);
     await syncS(tok.dad);
+    assert.equal(replies().length, n + 1, '읽씹 방지를 안 켰으면 안 함');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, noignore: true }, tok.mom)).body.saki.noignore, 1);
+    await syncS(tok.dad);
+    assert.equal(replies().length, n + 1, '방금 끼어들기를 물어봐서 간격(10분)이 안 지남');
+    sql(`UPDATE talk_meta SET v = v - 660 WHERE k = 'saki_chime:${sakiRoom}'`);
+    await syncS(tok.dad);
     assert.equal(replies().length, n + 2);
     assert.equal(replies().at(-1).body.mode, 'called');
     assert.equal(replies().at(-1).body.messages.at(-1).text, '좋아');
@@ -1049,7 +1055,20 @@ try {
     sql(`UPDATE talk_messages SET created_at = created_at - INTERVAL 2 HOUR WHERE room_id = ${sakiRoom}`);
     await syncS(tok.mom);
     assert.equal(replies().length, n + 2, '1시간 넘게 지난 글은 안 함');
-    await api('rooms/saki', { room_id: sakiRoom, freq: 'called' }, tok.mom);
+    // 간격 1시간이면 사키가 말한 지 1시간 안에는 읽씹 방지도 안 함 (부르면 대답)
+    await api('rooms/saki', { room_id: sakiRoom, gap: 60 }, tok.mom);
+    sql(`DELETE FROM talk_meta WHERE k = 'saki_chime:${sakiRoom}'`);
+    sql(`UPDATE talk_messages SET created_at = UTC_TIMESTAMP() - INTERVAL 20 MINUTE WHERE room_id = ${sakiRoom} AND user_id = ${botId} ORDER BY id DESC LIMIT 1`);
+    await say({ body: '아무도 없어?' }, tok.dad);
+    sql(`UPDATE talk_messages SET created_at = UTC_TIMESTAMP() - INTERVAL 6 MINUTE WHERE room_id = ${sakiRoom} ORDER BY id DESC LIMIT 1`);
+    await syncS(tok.mom);
+    assert.equal(replies().length, n + 2, '사키가 20분 전에 말해서 1시간 간격이 안 지남');
+    await api('rooms/saki', { room_id: sakiRoom, freq: 'called', noignore: false, gap: 10 }, tok.mom);
+    // 예전에 저장된 설정(읽씹 방지 칸이 없음): 가끔 끼어들기 방이면 켜진 것으로
+    sql(`UPDATE talk_rooms SET saki = '{"on":1,"personality":"tsundere","polite":1,"freq":"chime","gap":10,"react":1}' WHERE id = ${sakiRoom}`);
+    assert.equal((await roomOf(tok.mom)).saki.noignore, 1);
+    sql(`UPDATE talk_rooms SET saki = '{"on":1,"personality":"tsundere","polite":1,"freq":"called","gap":10,"react":1}' WHERE id = ${sakiRoom}`);
+    assert.equal((await roomOf(tok.mom)).saki.noignore, 0);
   });
 
   await t('사키: 관계(내 것은 나, 남의 것은 방장)·90% 안내는 방마다 하루 한 번·하루 요약', async () => {

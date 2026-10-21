@@ -180,7 +180,7 @@ function NoticePage({ room, onClose }) {
 function sakiSummary(s) {
   if (!s?.on) return '꺼짐 · 눌러서 초대하기';
   const p = PERSONALITIES.find(([v]) => v === s.personality)?.[1] || '';
-  return ['켜짐', p, s.polite ? '존댓말' : '', s.freq === 'chime' ? '가끔 끼어들기' : '부를 때만', s.memory ? '기억 켬' : ''].filter(Boolean).join(' · ');
+  return ['켜짐', p, s.polite ? '존댓말' : '', s.freq === 'chime' ? '가끔 끼어들기' : '부를 때만', s.noignore ? '읽씹 방지' : '', s.memory ? '기억 켬' : ''].filter(Boolean).join(' · ');
 }
 
 // 사키 설정 화면: 채팅방 관리에서 눌러 들어가는 따로 된 화면 (초대·성격·말투·빈도·반응·기억·관계)
@@ -226,9 +226,11 @@ function SakiSection({ room, run }) {
           <input type="checkbox" class="switch" checked=${!!s.polite} disabled=${!can} onChange=${(e) => set({ polite: e.target.checked })} /></label>
         <p class="hint">대답 빈도</p>
         ${seg([['called', '부를 때만'], ['chime', '가끔 끼어들기']], s.freq, 'freq')}
-        ${s.freq === 'chime' && html`<p class="hint">대화 중에 가끔 끼어들고, 누가 글을 올렸는데 5분 동안 아무도 대답이 없으면 그 글에 대답해요.</p>`}
-        ${s.freq === 'chime' && html`
-          <label class="switch-row"><span class="grow">끼어들기 최소 간격</span>
+        ${s.freq === 'chime' && html`<p class="hint">대화가 쌓이면 가끔 먼저 끼어들어요.</p>`}
+        <label class="switch-row"><span class="grow">읽씹 방지<br /><span class="hint">누가 글을 올렸는데 5분 동안 아무도 대답이 없으면 사키가 대답해요</span></span>
+          <input type="checkbox" class="switch" checked=${!!s.noignore} disabled=${!can} onChange=${(e) => set({ noignore: e.target.checked })} /></label>
+        ${(s.freq === 'chime' || s.noignore > 0) && html`
+          <label class="switch-row"><span class="grow">사키가 먼저 말하는 최소 간격<br /><span class="hint">끼어들기·읽씹 방지는 사키가 마지막으로 말한 뒤 이만큼 지나야 해요 (부르면 언제든 대답)</span></span>
             <select value=${s.gap} disabled=${!can} onChange=${(e) => set({ gap: Number(e.target.value) })}>
               ${[5, 10, 20, 30, 60, 120].map((m) => html`<option value=${m}>${m < 60 ? `${m}분` : `${m / 60}시간`}</option>`)}
             </select></label>`}

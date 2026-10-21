@@ -26,12 +26,12 @@ const TALK_SAKI_APP = 'SAKi Talk: 가족·친구 10명 안쪽이 쓰는 광고 �
     . '그룹(가족·친구 등)마다 초대 코드로 가입하고 같은 그룹 사람끼리만 보임. 한 사람이 여러 그룹에 있을 수 있음. '
     . '친구 프로필의 1:1 대화, 채팅 탭의 + (새 채팅방)에서 한 명을 고르면 1:1, 여러 명이면 단체방. '
     . '글·사진(14일 보관)·영상(3일 보관, 60초까지) 보내기. 사진·영상은 휴대폰에서 줄여서 올림. 사진은 고른 뒤 보내기 전에 크게 보며 빼거나 "편집"(자르기·돌리기·펜으로 그리기·되돌리기)할 수 있음. '
-    . '사진을 여러 장 고르면 한 묶음(30장까지)으로 가서 채팅에 콜라주와 장수가 보이고, 누르면 좌우로 넘겨 봄(위에 현재장/총장수), 크게 본 사진은 두 손가락으로 확대·축소, 두 번 누르면 확대·원래대로. 채팅방 관리(☰) "사진·영상"에서 이 방 사진을 격자로 모아 보고 눌러 크게·좌우로 넘김. '
+    . '사진을 여러 장 고르면 한 묶음(30장까지)으로 가서 채팅에 콜라주와 장수가 보이고, 누르면 좌우로 넘겨 봄(위에 현재장/총장수), 크게 본 사진은 확대·축소 됨. 채팅방 관리(☰) "사진·영상"에서 이 방 사진을 격자로 모아 보고 눌러 크게·좌우로 넘김. '
     . '메시지를 길게 누르면 반응·답장·복사·전달·공지 설정·수정(내 글)·삭제(한 줄에 두 개씩), 말풍선을 좌우로 밀어도 바로 답장. 전달은 같은 그룹의 채팅방이나 친구 이름으로만(다른 그룹으로는 안 됨), 크게 본 사진을 길게 눌러 그 한 장만 전달·저장도 됨. 공지는 첫 줄만(누르면 펼침). ＋ "일정"은 공지 밑 D-Day(가까운 순). 방 안 검색, 입력 중 표시, 읽지 않은 사람 수. '
     . '입력칸 + 에서 사진·영상, "내 위치"(동 이름·지도와 함께), "장소 검색"(가게·주소, 네이버). 장소 말풍선을 누르면 네이버 지도 앱·길찾기·주소 복사. '
     . '웹 푸시 알림: 방마다 알림 끄기, 설정 탭의 "정신병 방지(연속알림 차단)"를 켜면 한 방에 1분 안에 3개 이상 몰아서 올라올 때부터 조용히 받음. '
-    . '방 설정에서 방 사진·이름 바꾸기·친구 초대·나가기, 프로필에서 사진·닉네임 바꾸기. 설정 탭 "채팅방 꾸미기"에서 내 말풍선 색(다른 사람 화면에도 그 색으로 보임, 보는 사람이 "친구가 정한 색으로 보기"를 끄면 자기가 고른 상대 말풍선 색), 배경 색·배경화면 사진(기기마다). 설정 탭 "개인설정" 안에 초대 코드 넣기(다른 그룹 들어가기)·비밀번호 바꾸기·사키 프로필 사진(자기 화면에서만 사키가 그 사진으로 보임, 안 정하면 기본). 채팅 목록 맨 위에 공지사항(바뀐 점). 새 버전은 저절로 새로고침. '
-    . '사키: 채팅방 관리 "사키 설정"에서 방장·관리자가 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·반응 달기를 정함. '
+    . '방 설정에서 방 사진·이름 바꾸기·친구 초대·나가기, 프로필에서 사진·닉네임 바꾸기. 설정 탭 "채팅방 꾸미기"에서 내 말풍선 색(다른 사람 화면에도 그 색, "친구가 정한 색으로 보기"를 끄면 내가 고른 색), 배경 색·배경화면 사진(기기마다). 설정 탭 "개인설정" 안에 초대 코드 넣기(다른 그룹 들어가기)·비밀번호 바꾸기·사키 프로필 사진(자기 화면에서만 사키가 그 사진으로 보임, 안 정하면 기본). 채팅 목록 맨 위에 공지사항(바뀐 점). 새 버전은 저절로 새로고침. '
+    . '사키: 채팅방 관리 "사키 설정"에서 방장·관리자가 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·읽씹 방지(5분 동안 아무도 대답이 없으면 사키가 대답)·먼저 말하는 최소 간격·반응 달기를 정함. '
     . '방 사람마다 "사키에게 알려 줄 관계"를 적을 수 있음. "사키 기억"을 켜면(기본 끔) 대화를 조금씩 기억하고 날마다 방 일기를 씀, 기억과 일기는 방 설정에서 방 사람 누구나 고치거나 지움. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
     . '"사키야 오늘 무슨 얘기 했어?"처럼 요약·정리를 부탁하면 오늘 대화를 요약함. "사키야 매뉴얼 보여줘"면 사용법 페이지 링크. '
     . '사키는 하루 쓸 수 있는 양이 정해져 있어 다 쓰면 그날은 쉼. 관리자는 일래.';
@@ -59,7 +59,8 @@ function talk_saki_rooms_changed(PDO $pdo): void {
 
 function talk_saki_settings(?string $json): array {
     $s = json_decode((string)$json, true);
-    $s = (is_array($s) ? array_intersect_key($s, TALK_SAKI_DEFAULTS) : []) + TALK_SAKI_DEFAULTS;
+    $raw = is_array($s) ? $s : [];
+    $s = array_intersect_key($raw, TALK_SAKI_DEFAULTS) + TALK_SAKI_DEFAULTS;
     return [
         'on' => $s['on'] ? 1 : 0,
         'personality' => isset(TALK_SAKI_PERSONALITIES[$s['personality']]) ? $s['personality'] : TALK_SAKI_DEFAULTS['personality'],
@@ -68,6 +69,8 @@ function talk_saki_settings(?string $json): array {
         'gap' => max(5, min(120, (int)$s['gap'])),
         'react' => $s['react'] ? 1 : 0,
         'memory' => $s['memory'] ? 1 : 0,
+        // 읽씹 방지 (5분 동안 아무도 대답이 없으면 사키가 대답). 따로 켜고 끄기 전에는 "가끔 끼어들기"에 붙어 있었음
+        'noignore' => array_key_exists('noignore', $raw) ? ($raw['noignore'] ? 1 : 0) : ($s['freq'] === 'chime' ? 1 : 0),
     ];
 }
 
@@ -117,7 +120,7 @@ function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
         $new['freq'] = $b['freq'];
     }
     if (array_key_exists('gap', $b)) $new['gap'] = max(5, min(120, (int)$b['gap']));
-    foreach (['polite', 'react', 'memory'] as $k) if (array_key_exists($k, $b)) $new[$k] = $b[$k] ? 1 : 0;
+    foreach (['polite', 'react', 'memory', 'noignore'] as $k) if (array_key_exists($k, $b)) $new[$k] = $b[$k] ? 1 : 0;
     if ($new['on'] && !$old['on'] && !talk_saki_ready()) talk_fail('아직 사키를 부를 수 없어요. 관리자가 관리 화면에 SAKi Lite 열쇠를 넣어야 해요.', 503);
     $bot = talk_saki_bot($pdo);
     $pdo->beginTransaction();
@@ -219,16 +222,17 @@ function talk_saki_after_send(PDO $pdo, int $roomId, int $uid, int $msgId, strin
     if ($s['memory']) talk_after_response(fn() => talk_saki_remember($pdo, $cfg, $roomId, $bot, $s, (string)$room['name']));
 }
 
-// 조용할 때 대답 ("가끔 끼어들기" 방): 사람이 글을 올리고 5분 동안 아무도 말이 없으면 그 대화를 보고 한 번 대답한다.
+// 읽씹 방지 (조용할 때 대답): 사람이 글을 올리고 5분 동안 아무도 말이 없으면 그 대화를 보고 한 번 대답한다.
+// 사키가 먼저 말하는 것이라 끼어들기와 같은 최소 간격을 지킨다 (사키가 마지막으로 말하거나 끼어들기·읽씹 방지를 한 지 간격이 지나야)
 // cron 이 없어서, 방 사람 누군가의 앱이 동기화할 때(응답 뒤) 살핀다. 앱이 모두 닫혀 있었으면 다음에 누가 열 때 (1시간 지난 글은 안 함)
 const TALK_SAKI_QUIET_SECONDS = 300;
 const TALK_SAKI_QUIET_MAX = 3600;
 
 function talk_saki_quiet_check(PDO $pdo, int $uid): void {
     $st = $pdo->prepare("SELECT r.id, r.name, r.saki FROM talk_rooms r JOIN talk_room_members m ON m.room_id = r.id AND m.user_id = ?
-        WHERE r.kind = 'group' AND r.saki LIKE '%\"freq\":\"chime\"%'");
+        WHERE r.kind = 'group' AND r.saki LIKE '%\"on\":1%'");
     $st->execute([$uid]);
-    $rooms = array_filter($st->fetchAll(), fn($r) => talk_saki_settings($r['saki'])['on'] && talk_saki_settings($r['saki'])['freq'] === 'chime');
+    $rooms = array_filter($st->fetchAll(), fn($r) => talk_saki_settings($r['saki'])['on'] && talk_saki_settings($r['saki'])['noignore']);
     if (!$rooms) return;
     $cfg = talk_config();
     if ((string)($cfg['saki_lite_key'] ?? '') === '') return;
@@ -242,7 +246,9 @@ function talk_saki_quiet_check(PDO $pdo, int $uid): void {
         $age = time() - strtotime($last['created_at'] . ' UTC');
         if ($age < TALK_SAKI_QUIET_SECONDS || $age > TALK_SAKI_QUIET_MAX) continue;
         if ((int)talk_meta_get($pdo, "saki_quiet:$rid") >= (int)$last['id']) continue; // 이 글에는 이미 한 번 해 봄
+        if (!talk_saki_gap_passed($pdo, $rid, $bot, talk_saki_settings($r['saki'])['gap'])) continue;
         talk_meta_set($pdo, "saki_quiet:$rid", (string)$last['id']);
+        talk_meta_set($pdo, "saki_chime:$rid", (string)time()); // 끼어들기와 간격을 같이 셈
         // 대답을 바라는 경우라 called 로 (chime 은 대부분 pass)
         talk_after_response(fn() => talk_saki_run($pdo, $cfg, $rid, $bot, (int)$last['id'], 'called', talk_saki_settings($r['saki']), (string)$r['name']));
         return; // 한 번에 한 방만
@@ -258,6 +264,15 @@ function talk_saki_lock(PDO $pdo, int $roomId): bool {
     $st = $pdo->prepare('INSERT INTO talk_meta (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = IF(CAST(v AS UNSIGNED) < ?, VALUES(v), v)');
     $st->execute(["saki_busy:$roomId", (string)$now, $now - TALK_SAKI_BUSY_SECONDS]);
     return $st->rowCount() > 0;
+}
+
+// 사키가 먼저 말해도 되는지: 사키가 마지막으로 말한 지, 그리고 마지막 끼어들기·읽씹 방지 뒤로 최소 간격이 지남
+function talk_saki_gap_passed(PDO $pdo, int $roomId, int $bot, int $gapMin): bool {
+    $st = $pdo->prepare("SELECT created_at FROM talk_messages WHERE room_id = ? AND user_id = ? AND kind = 'text' ORDER BY id DESC LIMIT 1");
+    $st->execute([$roomId, $bot]);
+    $at = $st->fetchColumn();
+    $last = max($at ? strtotime($at . ' UTC') : 0, (int)talk_meta_get($pdo, "saki_chime:$roomId"));
+    return $last <= time() - $gapMin * 60;
 }
 
 // 끼어들기 조건: 사키가 마지막으로 말한 지(또는 마지막으로 끼어들기를 물어본 지) 최소 간격이 지났고, 그 뒤로 사람 메시지가 3개 이상
