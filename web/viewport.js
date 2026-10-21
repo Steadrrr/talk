@@ -15,7 +15,10 @@ export function fitViewport() {
     raf = 0;
     if (vv.height > full) full = vv.height;
     const kb = typing() || full - vv.height > 120;   // 홈 화면 앱은 innerHeight 도 같이 줄어서 '가장 컸던 높이'와 비교
-    const h = Math.round(vv.height), top = Math.max(0, Math.round(vv.offsetTop));
+    const h = Math.round(vv.height);
+    // 보이는 부분의 위치는 키보드가 떠 있을 때만 따라감. 유튜브 PIP 가 붙은 채로 알림을 눌러 앱이 열리면
+    // 바뀌는 중의 위치(offsetTop)가 남아 앱 전체가 아래로 밀려 있었음 → 그 밖에는 늘 맨 위(0), 화면 밖으로는 안 내려감
+    const top = kb ? Math.max(0, Math.min(Math.round(vv.offsetTop), innerHeight - h)) : 0;
     const key = `${h}|${top}|${kb}`;
     if (key === last) return;      // 같으면 아무것도 안 바꿈 (불필요한 다시 그리기 = 떨림)
     last = key;
@@ -31,6 +34,11 @@ export function fitViewport() {
   vv.addEventListener('resize', soon);
   vv.addEventListener('scroll', soon);
   addEventListener('orientationchange', () => { full = 0; setTimeout(soon, 300); });
+  // 다른 앱(유튜브 PIP 등)에서 돌아올 때: 화면이 바뀌는 동안 알림이 빠지거나 중간 값이 올 수 있어 조금 뒤에 다시 맞춤
+  const again = () => { soon(); setTimeout(soon, 300); setTimeout(soon, 1000); };
+  addEventListener('resize', again);
+  addEventListener('pageshow', again);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) again(); });
   fit();
   if (touch) holdPage();
 }
