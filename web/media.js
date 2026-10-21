@@ -234,6 +234,11 @@ export async function saveMedia(m, index = null) {
     const ext = (blob.type.split('/')[1] || (m.kind === 'photo' ? 'jpg' : 'mp4')).replace('quicktime', 'mov').replace('jpeg', 'jpg');
     files.push(new File([blob], `SAKiTalk-${m.id}${items.length > 1 || index !== null ? '-' + (i + 1) : ''}.${ext}`, { type: blob.type }));
   }
+  await saveFiles(files);
+}
+
+// 파일 저장: 휴대폰은 공유 창(사진에 저장), 아니면 내려받기
+export async function saveFiles(files) {
   if (navigator.canShare?.({ files }) && matchMedia('(pointer: coarse)').matches) {
     try { await navigator.share({ files }); return; } catch (e) { if (e.name === 'AbortError') return; }
   }

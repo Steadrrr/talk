@@ -91,7 +91,7 @@ export function PlaceSheet({ m, onClose }) {
 
 // ＋ 메뉴: 사진·영상 / 내 위치 / 장소 검색 / 일정 (위쪽 D-Day)
 //  사진 고르기는 label 안의 file input 으로 (아이폰은 누름 안에서 열어야 고르기 창이 뜸)
-export function AttachSheet({ onFiles, onHere, onSearch, onSchedule, onClose }) {
+export function AttachSheet({ onFiles, onHere, onSearch, onSchedule, onCapture, onClose }) {
   const backdrop = useBackdrop(onClose);
   return html`
     <div class="sheet-bg" onClick=${backdrop}>
@@ -102,6 +102,7 @@ export function AttachSheet({ onFiles, onHere, onSearch, onSchedule, onClose }) 
           <button class="attach-item" onClick=${onHere}><span class="attach-icon">📍</span>내 위치</button>
           <button class="attach-item" onClick=${onSearch}><span class="attach-icon">🔎</span>장소 검색</button>
           <button class="attach-item" onClick=${onSchedule}><span class="attach-icon">📅</span>일정</button>
+          <button class="attach-item" onClick=${onCapture}><span class="attach-icon">📸</span>캡쳐</button>
         </div>
         <button class="cancel" onClick=${onClose}>취소</button>
       </div>

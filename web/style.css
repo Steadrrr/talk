@@ -497,3 +497,23 @@ img.avatar { object-fit: cover; background: var(--line); }
 .manage-card .schedule-item:first-child { border-top: 0; }
 .manage-btns { display: flex; gap: 4px; justify-content: flex-end; }
 .manage-btns .text { padding: 2px 4px; min-height: 0; }
+
+/* 채팅 캡쳐: 고른 곳은 점선 테두리 + 살짝 밝게, 아래 줄은 안내·취소·저장, 저장 전 미리 보기 */
+.composer[hidden] { display: none; }
+.messages.capturing { position: relative; }
+.messages.capturing [data-id] { cursor: pointer; }
+.messages.capturing .msg > *, .messages.capturing .who, .messages.capturing .grp-face { pointer-events: none; }
+.cap-box { position: absolute; left: 4px; right: 4px; display: none; border: 2px dashed var(--acc); border-radius: 12px; background: rgba(255,255,255,.32); pointer-events: none; }
+.cap-bar { padding: 8px 12px max(10px, env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
+.cap-tip { margin: 2px 0 8px; text-align: center; font-size: calc(14px * var(--fs)); color: var(--dim); }
+.cap-actions { display: flex; gap: 8px; }
+.cap-actions button { flex: 1; min-height: 44px; border-radius: 12px; font-weight: 600; font-size: calc(16px * var(--fs)); }
+.cap-cancel { background: var(--card); color: var(--fg); border: 1px solid var(--line); }
+.cap-save { background: var(--acc); color: var(--acc-fg); }
+.cap-save:disabled { opacity: .45; }
+.cap-seg { margin: 4px auto 8px; }
+.cap-view { padding: 0 16px 12px; text-align: center; }
+.cap-view img { max-width: 100%; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.18); -webkit-touch-callout: default; }
+.cap-foot { padding: 0 16px 12px; }
+.cap-foot .primary { margin-top: 0; }
+.messages.cap-clone { position: fixed; left: 0; top: 0; z-index: -1; flex: none; height: auto; overflow: visible; pointer-events: none; }

@@ -10,6 +10,7 @@ import { RoomSettings } from './roomsettings.js';
 import { SendPreview } from './photoedit.js';
 import { PlaceBubble, PlaceSheet, AttachSheet, HereSheet, PlaceSearch, placeInfo } from './place.js';
 import { ScheduleBar, ScheduleSheet } from './schedule.js';
+import { CaptureBar, CapturePreview, capIds, capPick, placeBox } from './capture.js';
 
 export function Room({ id, onBack }) {
   const room = state.rooms[id];
@@ -31,6 +32,9 @@ export function Room({ id, onBack }) {
   const [picked, setPicked] = useState(null); // 보내기 전에 보는 사진들 (편집 가능)
   const [attach, setAttach] = useState('');   // ＋ 메뉴: 'menu' | 'here' (내 위치) | 'search' (장소 검색) | 'schedule' (일정 등록)
   const [place, setPlace] = useState(null);   // 눌러서 연 장소 메시지
+  const [cap, setCap] = useState(null);       // 캡쳐 고르는 중 { from, to } (메시지 번호)
+  const [capView, setCapView] = useState(false); // 캡쳐 저장 미리 보기
+  const capBox = useRef(null);
   const input = useRef(null);           // 지금 쓰는 입력칸 (아래 두 칸 중 하나)
   const boxes = [useRef(null), useRef(null)];
   const [cur, setCur] = useState(0);
@@ -51,6 +55,10 @@ export function Room({ id, onBack }) {
       el.scrollTop = el.scrollHeight;
     }
   });
+
+  // 캡쳐로 고른 곳 점선 상자: 그릴 때마다 (사진이 늦게 떠 높이가 바뀌면 onLoad 에서도)
+  const capSel = cap ? capIds(list.filter((m) => !m.id || !isHidden(m.id)), cap.from, cap.to) : null;
+  useLayoutEffect(() => { if (capSel) placeBox(scroller.current, capBox.current, capSel); });
 
   // 키보드가 올라오거나 내려가 화면 높이가 바뀌면: 맨 아래를 보고 있었으면 계속 맨 아래
   useEffect(() => {
@@ -209,6 +217,7 @@ export function Room({ id, onBack }) {
   const swBlock = useRef(false);   // 민 뒤에 오는 누르기(사진 열기 등)는 무시
   function swDown(e) {
     swBlock.current = false;
+    if (cap) { sw.current = null; return; }
     const row = e.pointerType !== 'mouse' && e.isPrimary && e.target.closest('.msg[data-id]');
     sw.current = row ? { row, x: e.clientX, y: e.clientY, id: e.pointerId, on: false, dx: 0 } : null;
   }
@@ -247,8 +256,14 @@ export function Room({ id, onBack }) {
     if (m && m.kind !== 'deleted' && m.kind !== 'system') startReply(m);
   }
   function swClick(e) {
-    if (swBlock.current) { swBlock.current = false; e.stopPropagation(); e.preventDefault(); }
+    if (swBlock.current) { swBlock.current = false; e.stopPropagation(); e.preventDefault(); return; }
+    if (!cap) return;
+    // 캡쳐 고르는 중: 누른 메시지를 시작·끝으로 (사진 열기·답장 등은 막음)
+    e.stopPropagation(); e.preventDefault();
+    const row = e.target.closest('[data-id]');
+    if (row) setCap(capPick(cap, Number(row.dataset.id)));
   }
+  const openMenu = (m) => cap || setMenu(m);
 
   if (!room) return html`<section class="page"><header class="bar"><button class="icon" onClick=${onBack}>‹</button></header><p class="empty">방을 찾지 못했어요.</p></section>`;
 
@@ -286,7 +301,7 @@ export function Room({ id, onBack }) {
     prevDay = day;
     if (m.kind === 'system') {
       flush();
-      rows.push(html`<div class="msg-system" key=${m.id}><span>${m.body}</span></div>`);
+      rows.push(html`<div class="msg-system" key=${m.id} data-id=${m.id || undefined}><span>${m.body}</span></div>`);
       return;
     }
     const mine = m.user_id === state.me.id;
@@ -302,10 +317,10 @@ export function Room({ id, onBack }) {
       <div class=${'msg ' + (mine ? 'mine' : 'theirs') + (firstInGroup ? ' first' : '')} key=${m.id || m.client_id} data-id=${m.id || undefined}>
         <div class="msg-col">
           <div class="msg-line">
-            ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig({ items: viewItems(m), start: 0 })} onMenu=${() => setMenu(m)} />`
-              : m.kind === 'place' ? html`<${PlaceBubble} m=${m} onOpen=${() => setPlace(m)} onMenu=${() => setMenu(m)} />`
+            ${m.kind === 'photo' || m.kind === 'video' ? html`<${MediaBubble} m=${m} onOpen=${() => setBig({ items: viewItems(m), start: 0 })} onMenu=${() => openMenu(m)} />`
+              : m.kind === 'place' ? html`<${PlaceBubble} m=${m} onOpen=${() => setPlace(m)} onMenu=${() => openMenu(m)} />`
               : m.kind === 'deleted' ? html`<div class="bubble gone">삭제된 메시지예요</div>`
-              : html`<${TextBubble} m=${m} names=${names} style=${mine ? null : bubbleStyle(byId.get(m.user_id))} onMenu=${() => setMenu(m)} onJump=${jumpTo} />`}
+              : html`<${TextBubble} m=${m} names=${names} style=${mine ? null : bubbleStyle(byId.get(m.user_id))} onMenu=${() => openMenu(m)} onJump=${jumpTo} />`}
             <div class="meta">
               ${m.failed ? html`<span class="small bad">못 보냄</span>`
                 : m.pending ? html`<span class="hint small">보내는 중</span>`
@@ -337,25 +352,28 @@ export function Room({ id, onBack }) {
       </header>
       ${room.notice && html`<${NoticeBar} notice=${room.notice} roomId=${id} onGo=${() => goTo(room.notice.id)} />`}
       <${ScheduleBar} schedules=${room.schedules} roomId=${id} onPlace=${(p) => setPlace({ body: JSON.stringify(p) })} />
-      <div class="messages" ref=${scroller} onScroll=${onScroll}
+      <div class=${'messages' + (cap ? ' capturing' : '')} ref=${scroller} onScroll=${onScroll} onLoadCapture=${() => capSel && placeBox(scroller.current, capBox.current, capSel)}
         onPointerDown=${swDown} onPointerMove=${swMove} onPointerUp=${swUp} onPointerCancel=${swUp} onClickCapture=${swClick}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
         ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map(nickOf).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
         ${rows}
         ${state.typing.length > 0 && html`<div class="typing" aria-live="polite"><span class="dots"><i></i><i></i><i></i></span>
           <span class="hint small">${room.kind === 'dm' ? '입력 중' : `${state.typing.map((u) => names.get(u)).filter(Boolean).join(', ')}님이 입력 중`}</span></div>`}
+        ${cap && html`<div class="cap-box" ref=${capBox}></div>`}
       </div>
-      ${editing && html`
+      ${cap && html`<${CaptureBar} cap=${cap} count=${capSel.size} onCancel=${() => setCap(null)} onSave=${() => setCapView(true)} />`}
+      ${capView && html`<${CapturePreview} scroller=${scroller.current} ids=${capSel} onClose=${() => setCapView(false)} onDone=${() => { setCapView(false); setCap(null); }} />`}
+      ${!cap && editing && html`
         <div class="reply-bar edit-bar">
           <div class="grow ellipsis"><b>메시지 수정</b><br /><span class="hint">${editing.body}</span></div>
           <button class="icon" onClick=${stopEdit} aria-label="수정 그만두기">✕</button>
         </div>`}
-      ${replyTo && html`
+      ${!cap && replyTo && html`
         <div class="reply-bar">
           <div class="grow ellipsis"><b>${names.get(replyTo.user_id) || '나간 사람'}</b>에게 답장<br /><span class="hint">${replyPreview(replyTo)}</span></div>
           <button class="icon" onClick=${() => setReplyTo(null)} aria-label="답장 그만두기">✕</button>
         </div>`}
-      <div class="composer" onPointerDown=${onGap} onClick=${onGap}>
+      <div class="composer" onPointerDown=${onGap} onClick=${onGap} hidden=${!!cap}>
         <button type="button" class="attach" onClick=${() => setAttach('menu')} aria-label="사진·위치 보내기">＋</button>
         <div class="msg-box">
           ${boxes.map((r, i) => html`
@@ -370,7 +388,7 @@ export function Room({ id, onBack }) {
       ${big && html`<${MediaViewer} items=${big.items} start=${big.start} names=${names} onClose=${() => setBig(null)} />`}
       ${photos && html`<${Gallery} room=${room} names=${names} onClose=${() => { setPhotos(false); setSettings(true); }} />`}
       ${picked && html`<${SendPreview} files=${picked} onSend=${sendPhotos} onClose=${() => setPicked(null)} />`}
-      ${attach === 'menu' && html`<${AttachSheet} onFiles=${pickFiles} onHere=${() => setAttach('here')} onSearch=${() => setAttach('search')} onSchedule=${() => setAttach('schedule')} onClose=${() => setAttach('')} />`}
+      ${attach === 'menu' && html`<${AttachSheet} onFiles=${pickFiles} onHere=${() => setAttach('here')} onSearch=${() => setAttach('search')} onSchedule=${() => setAttach('schedule')} onCapture=${() => { setAttach(''); setMenu(null); input.current?.blur(); setCap({ from: null, to: null }); }} onClose=${() => setAttach('')} />`}
       ${attach === 'schedule' && html`<${ScheduleSheet} roomId=${id} onClose=${() => setAttach('')} />`}
       ${attach === 'here' && html`<${HereSheet} roomId=${id} onSent=${() => { atBottom.current = true; setAttach(''); }} onClose=${() => setAttach('')} />`}
       ${attach === 'search' && html`<${PlaceSearch} roomId=${id} onSent=${() => { atBottom.current = true; setAttach(''); }} onClose=${() => setAttach('')} />`}
