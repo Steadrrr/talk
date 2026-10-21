@@ -1147,6 +1147,9 @@ try {
     // 부를 때 기억을 실음
     await say({ body: '사키야 나 기억해?' }, tok.dad);
     assert.equal(talks().at(-1).body.room_memory, memory);
+    assert.equal(talks().at(-1).body.memory_on, true);
+    assert.match(talks().at(-1).body.today, /^\d+\/\d+$/);
+    assert.ok(talks().at(-1).body.messages.slice(-3).every((m) => m.day === undefined), '오늘 메시지는 날짜 없음');
     // 방 사람 누구나 고침 → 다음 부르기에 실림
     let r = await api('rooms/saki_memory', { room_id: sakiRoom }, tok.dad);
     assert.equal(r.body.memory, memory);
@@ -1180,6 +1183,7 @@ try {
     c = remembers().at(-1).body;
     assert.equal(c.diary, `${Number(yday.slice(5, 7))}월 ${Number(yday.slice(8, 10))}일`);
     assert.deepEqual(c.messages.map((m) => m.text), ['어제 삼겹살', '(사진)'], '지난 날 것만');
+    assert.deepEqual(c.messages.map((m) => m.day), [`${Number(yday.slice(5, 7))}/${Number(yday.slice(8, 10))}`, `${Number(yday.slice(5, 7))}/${Number(yday.slice(8, 10))}`], '오늘이 아닌 메시지에는 날짜');
     assert.equal(mem().split('|')[1], kst(Date.now()), '정리한 날짜는 오늘로');
     r = await api('rooms/saki_memory', { room_id: sakiRoom }, tok.mom);
     assert.deepEqual(r.body.diary.map((d) => d.day), [yday]);
@@ -1207,6 +1211,7 @@ try {
     assert.equal(remembers().length, rn);
     assert.equal(talks().at(-1).body.room_memory, undefined);
     assert.equal(talks().at(-1).body.room_diary, undefined);
+    assert.equal(talks().at(-1).body.memory_on, undefined);
     assert.ok(mem() !== '', '지우기를 고르지 않으면 남겨 둠');
     // 다시 켜고 "지우기"로 끄면 기억·일기 모두 없어짐
     await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.mom);

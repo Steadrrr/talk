@@ -315,7 +315,7 @@ function talk_saki_context(PDO $pdo, int $roomId, int $bot, bool $summary = fals
         $text = $m['kind'] === 'photo' ? '(사진)' : ($m['kind'] === 'video' ? '(영상)' : ($m['kind'] === 'place' ? talk_saki_place_text((string)$m['body']) : mb_substr((string)$m['body'], 0, 600)));
         if ($summary && $out && ($chars += mb_strlen($text)) > TALK_SAKI_SUMMARY_CHARS) break;
         $one = ['name' => mb_substr((string)($m['who'] ?? '나간 사람'), 0, 20) ?: '나간 사람', 'text' => $text,
-            'at' => gmdate('H:i', strtotime($m['created_at'] . ' UTC') + 9 * 3600)];
+            'at' => gmdate('H:i', strtotime($m['created_at'] . ' UTC') + 9 * 3600)] + talk_saki_msg_day($m['created_at']);
         if ((int)$m['user_id'] === $bot) $one['bot'] = true;
         $out[] = $one;
     }
@@ -468,7 +468,9 @@ function talk_saki_run(PDO $pdo, array $cfg, int $roomId, int $bot, int $msgId, 
         ];
         if ($members = talk_saki_members($pdo, $roomId)) $req['members'] = $members;
         if ($mode === 'summary') $req['range'] = $range;
-        if ($s['memory']) $req += talk_saki_memory_load($pdo, $roomId);
+        // memory_on: 기억이 아직 비어 있어도 켜져 있음을 알림 (없으면 사키가 "저장 못 해"라고 말함). today: "어제"·"오늘"의 기준
+        if ($s['memory']) $req += ['memory_on' => true] + talk_saki_memory_load($pdo, $roomId);
+        $req['today'] = talk_saki_md(talk_saki_day());
         if ($mode === 'called') {
             $req['app'] = TALK_SAKI_APP;
             // 하루 사용량 90% 안내: 방마다 하루 한 번만 (안내를 붙였다는 답을 받으면 그날은 그만)
@@ -557,6 +559,13 @@ function talk_saki_memory_load(PDO $pdo, int $roomId): array {
     return $out;
 }
 
+// 오늘이 아닌 메시지에만 붙이는 한국 날짜 {day: "M/D"} (사키가 "어제"·"오늘"을 짐작하지 않게)
+function talk_saki_md(string $day): string { return (int)substr($day, 5, 2) . '/' . (int)substr($day, 8, 2); }
+function talk_saki_msg_day(string $createdAt): array {
+    $day = gmdate('Y-m-d', strtotime($createdAt . ' UTC') + 9 * 3600);
+    return $day === talk_saki_day() ? [] : ['day' => talk_saki_md($day)];
+}
+
 // 한국 날짜 0시의 UTC 시각 ("Y-m-d H:i:s")
 function talk_saki_day_start(string $day): string { return gmdate('Y-m-d H:i:s', strtotime("$day 00:00:00 UTC") - 9 * 3600); }
 function talk_saki_day_name(string $day): string { return (int)substr($day, 5, 2) . '월 ' . (int)substr($day, 8, 2) . '일'; }
@@ -628,7 +637,7 @@ function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $
         foreach ($rows as $r) {
             $one = ['name' => mb_substr((string)($r['who'] ?? '나간 사람'), 0, 20) ?: '나간 사람',
                 'text' => $r['kind'] === 'photo' ? '(사진)' : ($r['kind'] === 'video' ? '(영상)' : ($r['kind'] === 'place' ? talk_saki_place_text((string)$r['body']) : mb_substr((string)$r['body'], 0, 600))),
-                'at' => gmdate('H:i', strtotime($r['created_at'] . ' UTC') + 9 * 3600)];
+                'at' => gmdate('H:i', strtotime($r['created_at'] . ' UTC') + 9 * 3600)] + talk_saki_msg_day($r['created_at']);
             if ((int)$r['user_id'] === $bot) $one['bot'] = true;
             $messages[] = $one;
         }
