@@ -50,7 +50,7 @@ export function CaptureBar({ cap, count, onCancel, onSave }) {
 }
 
 // 저장 미리 보기: 대화명·프로필 공개/숨기기를 고르면 다시 그리고, 저장을 누르면 사진으로
-export function CapturePreview({ scroller, ids, onClose, onDone }) {
+export function CapturePreview({ scroller, ids, names, onClose, onDone }) {
   const [hide, setHide] = useState(false);
   const [img, setImg] = useState(null);   // { url, blob }
   const [err, setErr] = useState('');
@@ -59,7 +59,7 @@ export function CapturePreview({ scroller, ids, onClose, onDone }) {
   useEffect(() => {
     let live = true, url = '';
     setImg(null); setErr('');
-    capture(scroller, ids, hide).then((blob) => {
+    capture(scroller, ids, hide && names).then((blob) => {
       url = URL.createObjectURL(blob);
       if (live) setImg({ url, blob }); else URL.revokeObjectURL(url);
     }).catch((e) => live && setErr(e.message || '그림을 만들지 못했어요.'));
@@ -95,10 +95,11 @@ let h2c = null;
 const lib = () => (h2c ??= import('html2canvas-pro').then((x) => x.default).catch((e) => { h2c = null; throw e; }));
 
 // 그림 만들기: 고른 메시지만 남긴 복사본을 화면 뒤에 같은 너비로 펼쳐 놓고 그린다
+// hide: 숨길 때 방 사람 이름들(Map), 공개면 false
 async function capture(scroller, ids, hide) {
   const draw = await lib().catch(() => { throw new Error('캡쳐 도구를 받지 못했어요. 인터넷 연결을 확인해 주세요.'); });
   const box = buildClone(scroller, ids);
-  if (hide) await hideNames(box, scroller);
+  if (hide) await hideNames(box, scroller, [...hide.values()]);
   scroller.parentNode.appendChild(box);
   try {
     await Promise.all([...box.querySelectorAll('img')].map((i) => i.decode().catch(() => {})));
@@ -137,9 +138,12 @@ function buildClone(scroller, ids) {
   return box;
 }
 
-// 숨기기: 다른 사람 대화명·답장 속 이름은 ???, 프로필 사진은 모자이크 (원래 화면의 사진에서 그림)
-async function hideNames(box, scroller) {
+// 숨기기: 다른 사람 대화명·답장 속 이름은 ???, 안내 글("엄마님이 들어왔어요") 속 이름도 ???,
+// 프로필 사진은 모자이크 (원래 화면의 사진에서 그림)
+async function hideNames(box, scroller, names = []) {
   for (const el of box.querySelectorAll('.msg-group.theirs > .who, .quote b')) el.textContent = '???';
+  const words = [...new Set(names.filter(Boolean))].sort((a, b) => b.length - a.length);
+  for (const el of box.querySelectorAll('.msg-system span')) for (const w of words) el.textContent = el.textContent.split(w + '님').join('???님');
   const faces = [...scroller.querySelectorAll('.grp-face .avatar')];
   const clones = [...box.querySelectorAll('.grp-face .avatar')];
   // 복사본의 그룹은 원래 그룹 중 일부라, 같은 사진·글자를 찾아 짝짓는다

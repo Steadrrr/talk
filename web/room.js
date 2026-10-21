@@ -362,7 +362,7 @@ export function Room({ id, onBack }) {
         ${cap && html`<div class="cap-box" ref=${capBox}></div>`}
       </div>
       ${cap && html`<${CaptureBar} cap=${cap} count=${capSel.size} onCancel=${() => setCap(null)} onSave=${() => setCapView(true)} />`}
-      ${capView && html`<${CapturePreview} scroller=${scroller.current} ids=${capSel} onClose=${() => setCapView(false)} onDone=${() => { setCapView(false); setCap(null); }} />`}
+      ${capView && html`<${CapturePreview} scroller=${scroller.current} ids=${capSel} names=${names} onClose=${() => setCapView(false)} onDone=${() => { setCapView(false); setCap(null); }} />`}
       ${!cap && editing && html`
         <div class="reply-bar edit-bar">
           <div class="grow ellipsis"><b>메시지 수정</b><br /><span class="hint">${editing.body}</span></div>
