@@ -342,13 +342,23 @@ function roomFace(r) {
     : html`<span class="avatar multi" style="width:52px;height:52px">${r.members.length}</span>`;
 }
 
-// 전달: 이 메시지가 있는 방과 같은 그룹의 채팅방·친구만 보임 (여러 곳 골라 한 번에)
+// 전달: 이 메시지가 있는 방과 같은 그룹의 채팅방·친구 (여러 곳 골라 한 번에)
+//  사진·영상은 내가 속한 다른 그룹의 방·친구에게도 (그룹이 여럿이면 그룹 이름을 같이 보임)
 export function ForwardSheet({ m, index = null, onClose }) {
   const src = state.rooms[m.room_id];
   const gid = src?.group_id;
   const group = state.groups.find((g) => g.id === gid);
-  const rooms = sortedRooms().filter((r) => r.group_id === gid);
-  const friends = (group?.members || []).filter((p) => p.id !== state.me.id && !p.bot);
+  const anyGroup = (m.kind === 'photo' || m.kind === 'video') && state.groups.length > 1;
+  const groupName = (id) => state.groups.find((g) => g.id === id)?.name || '';
+  const rooms = sortedRooms().filter((r) => anyGroup || r.group_id === gid);
+  const friends = [];
+  for (const g of anyGroup ? [group, ...state.groups.filter((x) => x.id !== gid)] : [group]) {
+    for (const p of g?.members || []) {
+      if (p.id === state.me.id || p.bot) continue;
+      const seen = friends.find((x) => x.p.id === p.id);
+      if (seen) seen.groups.push(g.name); else friends.push({ p, groups: [g.name] });
+    }
+  }
   const [pickRooms, setPickRooms] = useState([]);
   const [pickUsers, setPickUsers] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -367,17 +377,17 @@ export function ForwardSheet({ m, index = null, onClose }) {
       <div class="sheet forward-sheet">
         <header class="bar"><button class="icon" onClick=${onClose} aria-label="닫기">✕</button><h2 class="ellipsis">${what} 전달</h2></header>
         <div class="scroll">
-          <p class="hint pad">${group ? `${group.name} 그룹 안에서만 전달할 수 있어요.` : '같은 그룹 안에서만 전달할 수 있어요.'}</p>
+          <p class="hint pad">${anyGroup ? '내가 속한 모든 그룹에 전달할 수 있어요.' : group ? `${group.name} 그룹 안에서만 전달할 수 있어요.` : '같은 그룹 안에서만 전달할 수 있어요.'}</p>
           ${err && html`<p class="err pad">${err}</p>`}
           <div class="section"><h3>채팅방</h3></div>
           ${rooms.map((r) => html`
             <label class="person check" key=${'r' + r.id}><input type="checkbox" checked=${pickRooms.includes(r.id)} onChange=${() => flip(pickRooms, setPickRooms, r.id)} />
               ${roomFace(r)}
-              <span class="grow ellipsis">${roomTitle(r)}${r.id === m.room_id ? html` <span class="hint">(지금 방)</span>` : ''}</span></label>`)}
+              <span class="grow ellipsis">${roomTitle(r)}${r.id === m.room_id ? html` <span class="hint">(지금 방)</span>` : anyGroup ? html` <span class="hint">· ${groupName(r.group_id)}</span>` : ''}</span></label>`)}
           <div class="section"><h3>친구</h3></div>
-          ${friends.length ? friends.map((p) => html`
+          ${friends.length ? friends.map(({ p, groups }) => html`
             <label class="person check" key=${'u' + p.id}><input type="checkbox" checked=${pickUsers.includes(p.id)} onChange=${() => flip(pickUsers, setPickUsers, p.id)} />
-              <${Avatar} name=${nickOf(p)} id=${p.id} photo=${p.photo} size=${52} /><span class="grow ellipsis">${nickOf(p)}</span></label>`)
+              <${Avatar} name=${nickOf(p)} id=${p.id} photo=${p.photo} size=${52} /><span class="grow ellipsis">${nickOf(p)}${anyGroup ? html` <span class="hint">· ${groups.join(', ')}</span>` : ''}</span></label>`)
             : html`<p class="hint pad">같은 그룹에 친구가 없어요.</p>`}
         </div>
         <div class="section inline forward-go">

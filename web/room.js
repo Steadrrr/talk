@@ -601,7 +601,7 @@ function Reactions({ m, names }) {
     </div>`;
 }
 
-// 메시지 메뉴(길게 누르기): 반응, 답장, 복사(글)·전달(같은 그룹 방·친구)·저장(사진·영상, 묶음은 전부), 수정(내가 보낸 글만), 삭제(이 기기에서 숨김), 모두에게 삭제(내가 보낸 것만)
+// 메시지 메뉴(길게 누르기): 반응, 답장, 복사(글)·전달(같은 그룹 방·친구, 사진·영상은 내 다른 그룹에도)·저장(사진·영상, 묶음은 전부), 수정(내가 보낸 글만), 삭제(이 기기에서 숨김), 모두에게 삭제(내가 보낸 것만)
 function MsgMenu({ m, mine, bubble, name, isNotice, onClose, onReply, onEdit, onForward }) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');

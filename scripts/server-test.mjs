@@ -846,10 +846,21 @@ try {
     assert.equal(r.body.messages[0].id, album.id, '최근 것부터');
     assert.equal((await api('rooms/photos?room_id=' + dm, undefined, tok.f1)).status, 403, '방 밖 사람');
 
-    // 전달: 같은 그룹(가족)의 방·친구에게만
-    assert.equal((await api('messages/forward', { id: album.id, user_ids: [f1Id] }, tok.me)).status, 403, '다른 그룹 친구에게는 안 됨');
+    // 전달: 글·장소는 같은 그룹(가족)의 방·친구에게만
     const friendsRoom = (await api('rooms/dm', { user_id: f1Id }, tok.me)).body.room.id;
-    assert.equal((await api('messages/forward', { id: album.id, room_ids: [friendsRoom] }, tok.me)).status, 403, '다른 그룹 방에는 안 됨');
+    const note = (await api('messages/send', { room_id: dm, body: '그룹 밖으로는 못 가는 글' }, tok.me)).body.message;
+    assert.equal((await api('messages/forward', { id: note.id, user_ids: [f1Id] }, tok.me)).status, 403, '글은 다른 그룹 친구에게 안 됨');
+    assert.equal((await api('messages/forward', { id: note.id, room_ids: [friendsRoom] }, tok.me)).status, 403, '글은 다른 그룹 방에 안 됨');
+    // 사진·영상은 내가 속한 다른 그룹(친구)의 방·친구에게도, 같은 파일로
+    const cross = (await api('media/album', { keys: [await up(dm, tok.me), await up(dm, tok.me)], client_id: 'album-cross-1' }, tok.me)).body.message;
+    r = await api('messages/forward', { id: cross.id, user_ids: [f1Id] }, tok.me);
+    assert.equal(r.status, 200, '여러 그룹에 있으면 다른 그룹 친구에게 사진 전달');
+    assert.equal(r.body.messages[0].room_id, friendsRoom);
+    assert.deepEqual(JSON.parse(r.body.messages[0].body).items.map((x) => x.key), JSON.parse(cross.body).items.map((x) => x.key), '다시 올리지 않고 같은 파일');
+    assert.equal((await api('messages/forward', { id: cross.id, room_ids: [friendsRoom], index: 0 }, tok.me)).status, 200, '다른 그룹 방에도');
+    // 한 그룹에만 있는 엄마는 그룹 밖으로 못 보냄
+    assert.equal((await api('messages/forward', { id: cross.id, user_ids: [f1Id] }, tok.mom)).status, 403, '그룹이 안 겹치는 사람');
+    assert.equal((await api('messages/forward', { id: cross.id, room_ids: [friendsRoom] }, tok.mom)).status, 403, '안 들어가 있는 방');
     assert.equal((await api('messages/forward', { id: album.id, user_ids: [dadId] }, tok.f1)).status, 404, '못 보는 메시지');
     assert.equal((await api('messages/forward', { id: album.id }, tok.me)).status, 400, '받을 곳 없음');
     r = await api('messages/forward', { id: album.id, user_ids: [dadId], index: 1 }, tok.me);

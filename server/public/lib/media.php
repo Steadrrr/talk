@@ -173,6 +173,7 @@ function talk_media_items(array $body): array {
 }
 
 // 전달: 같은 그룹의 방·친구에게. 사진·영상은 다시 올리지 않고 같은 파일을 쓴다 (보관 기간은 처음 올린 날부터)
+//  사진·영상은 내가 들어가 있는 다른 그룹의 방·친구에게도 (여러 그룹에 있는 사람). 글·장소는 같은 그룹만
 //  index 가 있으면 묶음 가운데 그 한 장만
 function talk_forward(PDO $pdo, array $cfg, int $uid, int $msgId, ?int $index, array $roomIds, array $userIds): array {
     $st = $pdo->prepare('SELECT m.*, r.group_id FROM talk_messages m JOIN talk_rooms r ON r.id = m.room_id WHERE m.id = ?');
@@ -181,20 +182,27 @@ function talk_forward(PDO $pdo, array $cfg, int $uid, int $msgId, ?int $index, a
     if (!$src || !talk_room_member($pdo, $uid, (int)$src['room_id'])) talk_fail('메시지가 없어요.', 404);
     if (!in_array($src['kind'], ['text', 'photo', 'video', 'place'], true)) talk_fail('전달할 수 없는 메시지예요.');
     $gid = (int)$src['group_id'];
-    // 받을 곳: 내가 들어가 있는 같은 그룹 방 + 같은 그룹 친구와의 1:1 방
+    $anyGroup = in_array($src['kind'], ['photo', 'video'], true);
+    // 받을 곳: 내가 들어가 있는 방 + 나와 그룹이 겹치는 친구와의 1:1 방 (글·장소는 이 메시지의 그룹 안에서만)
     $targets = [];
     $mine = talk_my_room_ids($pdo, $uid);
     $grp = $pdo->prepare('SELECT group_id FROM talk_rooms WHERE id = ?');
     foreach (array_unique(array_map('intval', $roomIds)) as $rid) {
         $grp->execute([$rid]);
-        if (!in_array($rid, $mine, true) || (int)$grp->fetchColumn() !== $gid) talk_fail('같은 그룹 채팅방에만 전달할 수 있어요.', 403);
+        if (!in_array($rid, $mine, true)) talk_fail('내가 들어가 있는 채팅방에만 전달할 수 있어요.', 403);
+        if (!$anyGroup && (int)$grp->fetchColumn() !== $gid) talk_fail('같은 그룹 채팅방에만 전달할 수 있어요.', 403);
         $targets[$rid] = true;
     }
+    $shared = $pdo->prepare('SELECT 1 FROM talk_group_members a JOIN talk_group_members b ON b.group_id = a.group_id JOIN talk_groups g ON g.id = a.group_id
+        WHERE a.user_id = ? AND b.user_id = ? AND g.closed = 0 LIMIT 1');
+    $bot = $pdo->prepare('SELECT is_bot, disabled FROM talk_users WHERE id = ?');
     foreach (array_unique(array_map('intval', $userIds)) as $u) {
-        if ($u === $uid || !talk_in_group($pdo, $u, $gid)) talk_fail('같은 그룹 사람에게만 전달할 수 있어요.', 403);
-        $bot = $pdo->prepare('SELECT is_bot FROM talk_users WHERE id = ?');
+        if ($u === $uid) talk_fail('같은 그룹 사람에게만 전달할 수 있어요.', 403);
+        $shared->execute([$uid, $u]);
+        if ($anyGroup ? !$shared->fetchColumn() : !talk_in_group($pdo, $u, $gid)) talk_fail('같은 그룹 사람에게만 전달할 수 있어요.', 403);
         $bot->execute([$u]);
-        if ((int)$bot->fetchColumn()) talk_fail('같은 그룹 사람에게만 전달할 수 있어요.', 403);
+        $b = $bot->fetch();
+        if (!$b || (int)$b['is_bot'] || (int)$b['disabled']) talk_fail('같은 그룹 사람에게만 전달할 수 있어요.', 403);
         $targets[talk_open_dm($pdo, $uid, $u)] = true;
     }
     if (!$targets) talk_fail('전달할 곳을 골라 주세요.');

@@ -576,7 +576,7 @@ async function sendAlbumNow(roomId, msg) {
   notify();
 }
 
-// 전달: 같은 그룹의 방(roomIds)·친구(userIds)에게. index 가 있으면 묶음의 그 한 장만. 사진은 서버의 같은 파일을 씀
+// 전달: 같은 그룹의 방(roomIds)·친구(userIds)에게 (사진·영상은 내 다른 그룹에도). index 가 있으면 묶음의 그 한 장만. 사진은 서버의 같은 파일을 씀
 export async function forward(m, index, roomIds, userIds) {
   const r = await api('messages/forward', { id: m.id, index: index ?? null, room_ids: roomIds, user_ids: userIds });
   mergeMessages(r.messages);
