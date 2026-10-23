@@ -40,14 +40,46 @@ export function Room({ id, onBack }) {
   const [cur, setCur] = useState(0);
   useLayoutEffect(() => { input.current = boxes[cur].current; });
 
-  // 처음 열 때 기기에 메시지가 없으면 서버에서
+  // 안 읽은 게 있으면 마지막으로 읽은 곳부터: 처음 안 읽은 메시지 위에 "여기까지 읽었어요" 줄을 두고 거기로
+  const readFrom = useRef(state.readFrom?.room === id ? state.readFrom.id : null);
+  const readLine = useRef(null);    // 줄을 둘 메시지 번호 (정해지면 그대로)
+  const readJump = useRef(false);   // 아직 줄로 스크롤하기 전
+  if (readFrom.current !== null && readLine.current === null) {
+    const first = list.find((m) => !m.pending);
+    // 읽은 곳까지 기기에 있어야 처음 안 읽은 것을 알 수 있다
+    if (first && (first.id <= readFrom.current || noMore)) {
+      const m = list.find((x) => x.id > readFrom.current && x.user_id !== state.me.id && x.kind !== 'system' && !isHidden(x.id));
+      readLine.current = m ? m.id : 0;
+      readJump.current = !!m;
+    }
+  }
+  if (readJump.current === true) atBottom.current = false;
+
+  // 처음 열 때 기기에 메시지가 없으면 서버에서 (읽은 곳이 기기에 없으면 거기까지)
   useEffect(() => {
-    if (!list.length) loadOlder(id).then((more) => { if (!more) setNoMore(true); }).catch(() => {});
+    const first = list.find((m) => !m.pending);
+    if (readFrom.current !== null && (!first || first.id > readFrom.current)) {
+      loadUntil(id, readFrom.current).then((ok) => { if (!ok) setNoMore(true); }).catch(() => { readFrom.current = null; });
+    } else if (!list.length) loadOlder(id).then((more) => { if (!more) setNoMore(true); }).catch(() => {});
   }, [id]);
+
+  // 줄이 화면 위쪽에 오게 (사진이 늦게 떠 높이가 바뀌면 손대기 전까지 다시 맞춤)
+  const toReadLine = () => {
+    const el = scroller.current;
+    const line = el?.querySelector('.read-line');
+    if (!line) return false;
+    el.scrollTop += line.getBoundingClientRect().top - el.getBoundingClientRect().top - 8;
+    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    return true;
+  };
 
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
+    if (readJump.current === true) {
+      if (toReadLine()) readJump.current = 'hold';
+      return;
+    }
     if (keepFrom.current !== null) {
       el.scrollTop = el.scrollHeight - keepFrom.current;
       keepFrom.current = null;
@@ -299,6 +331,7 @@ export function Room({ id, onBack }) {
     const day = dayKey(m.at);
     if (day !== prevDay) { flush(); rows.push(html`<div class="day" key=${'d' + day}><span>${dateLine(m.at)}</span></div>`); }
     prevDay = day;
+    if (m.id && m.id === readLine.current) { flush(); rows.push(html`<div class="read-line" key="read-line"><span>여기까지 읽었어요</span></div>`); }
     if (m.kind === 'system') {
       flush();
       rows.push(html`<div class="msg-system" key=${m.id} data-id=${m.id || undefined}><span>${m.body}</span></div>`);
@@ -352,8 +385,9 @@ export function Room({ id, onBack }) {
       </header>
       ${room.notice && html`<${NoticeBar} notice=${room.notice} roomId=${id} onGo=${() => goTo(room.notice.id)} />`}
       <${ScheduleBar} schedules=${room.schedules} roomId=${id} onPlace=${(p) => setPlace({ body: JSON.stringify(p) })} />
-      <div class=${'messages' + (cap ? ' capturing' : '')} ref=${scroller} onScroll=${onScroll} onLoadCapture=${() => capSel && placeBox(scroller.current, capBox.current, capSel)}
-        onPointerDown=${swDown} onPointerMove=${swMove} onPointerUp=${swUp} onPointerCancel=${swUp} onClickCapture=${swClick}>
+      <div class=${'messages' + (cap ? ' capturing' : '')} ref=${scroller} onScroll=${onScroll} onLoadCapture=${() => { if (capSel) placeBox(scroller.current, capBox.current, capSel); if (readJump.current === 'hold') toReadLine(); }}
+        onWheel=${() => { readJump.current = false; }} onTouchStart=${() => { readJump.current = false; }}
+        onPointerDown=${(e) => { readJump.current = false; swDown(e); }} onPointerMove=${swMove} onPointerUp=${swUp} onPointerCancel=${swUp} onClickCapture=${swClick}>
         ${loading && html`<p class="hint center">불러오는 중…</p>`}
         ${noMore && !list.length && html`<p class="empty">${others.length ? `${others.map(nickOf).join(', ')}님과의 대화를 시작해 보세요.` : '대화를 시작해 보세요.'}</p>`}
         ${rows}

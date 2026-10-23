@@ -25,6 +25,7 @@ export const state = {
   notice: null,    // 공지사항 최신 글 { id, title, updated } (채팅 목록 맨 위 한 줄)
   notices: false,  // 공지사항 게시판을 열어 둠
   sakiReady: false, // 관리자가 SAKi Lite 열쇠를 넣어 사키를 부를 수 있음
+  readFrom: null,  // 방을 열 때 안 읽은 게 있었으면 { room, id: 그때까지 읽은 메시지 번호 } (읽음 처리 전에 기억)
 };
 
 const listeners = new Set();
@@ -333,7 +334,10 @@ export function sortedRooms() {
 export function openRoom(id) {
   state.openRoom = id;
   state.typing = [];
-  if (state.rooms[id]) state.rooms[id].unread = 0;
+  const room = state.rooms[id];
+  const mine = room?.members.find((m) => m.id === state.me?.id);
+  state.readFrom = room?.unread > 0 && mine ? { room: id, id: mine.last_read_id } : null;
+  if (room) room.unread = 0;
   notify();
   markReadIfOpen();
   schedule();
