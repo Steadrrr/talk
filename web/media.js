@@ -142,27 +142,40 @@ async function reencode(v, onProgress) {
     if (v.paused && !v.ended) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
   };
   document.addEventListener('visibilitychange', onVis);
-  // 재생이 안 끝나고 멈춰 버리면(시간이 안 흐름) 포기하고 원본으로
-  let last = -1, still = 0;
-  const watch = setInterval(() => {
-    if (document.hidden) return;
-    still = v.currentTime === last ? still + 1 : 0;
-    last = v.currentTime;
-    if (still >= 8) v.dispatchEvent(new Event('error'));
-  }, 1000);
-  try { await once(v, 'ended'); } catch (e) {
-    rec.stop(); ac?.close(); v.pause();
+  // 끝 알아차리기: 'ended' 가 오거나, 끝 가까이에서 시간이 멈추면 끝난 것으로 (아이폰은 세로 영상 등에서 'ended' 를 안 주고
+  // 마지막 장면에 멈춰 있기도 해서 99% 에서 영영 안 넘어갔음). 중간에서 8초 넘게 멈추면 포기하고 원본으로
+  let last = -1, still = 0, watch = 0;
+  const finished = new Promise((ok, no) => {
+    v.addEventListener('ended', ok, { once: true });
+    v.addEventListener('error', () => no(new Error('영상을 열지 못했어요.')), { once: true });
+    watch = setInterval(() => {
+      if (document.hidden) return;
+      const t = v.currentTime, near = v.duration - t < 0.5 || t / v.duration > 0.97;
+      still = t === last ? still + 1 : 0;
+      last = t;
+      if (near && (still >= 2 || v.paused)) ok();
+      else if (still >= 8) no(new Error('timeout'));
+    }, 1000);
+  });
+  try { await finished; } catch (e) {
+    if (rec.state !== 'inactive') rec.stop();
+    ac?.close(); v.pause();
     throw e;
   } finally {
     clearInterval(watch);
     document.removeEventListener('visibilitychange', onVis);
     cancelAnimationFrame(raf);
   }
+  v.pause();
+  // 녹화 끝내기: 아이폰은 onstop 을 안 주는 일이 있어서 5초까지만 기다리고, 그때까지 모인 조각으로
+  let stopOk = true;
+  try { rec.requestData(); } catch { /* 없어도 됨 */ }
   rec.stop();
-  await stopped;
+  await Promise.race([stopped, new Promise((ok) => setTimeout(() => { stopOk = false; ok(); }, 5000))]);
   ac?.close();
+  if (!parts.length) return null;
   const blob = new Blob(parts, { type: type.split(';')[0] });
-  return { blob, mime: blob.type, w: c.width, h: c.height };
+  return { blob, mime: blob.type, w: c.width, h: c.height, partial: !stopOk };
 }
 
 export async function prepVideo(file, onProgress) {
@@ -175,8 +188,14 @@ export async function prepVideo(file, onProgress) {
     const base = { kind: 'video', dur: Math.round(v.duration), thumb };
     const plainOk = ['video/mp4', 'video/quicktime'].includes(file.type);
     if (plainOk && file.size <= KEEP_AS_IS) return { ...base, blob: file, mime: file.type, w: v.videoWidth, h: v.videoHeight };
-    const re = await reencode(v, onProgress).catch(() => null);
-    if (re && re.blob.size > 0 && re.blob.size <= SEND_MAX) return { ...base, ...re };
+    // 다시 만들기는 영상 길이만큼 걸린다. 그보다 한참 넘게 걸리면(어디선가 멈춤) 기다리지 않고 원본으로
+    const limit = ((Number.isFinite(v.duration) ? v.duration : VIDEO_MAX_SEC) * 2 + 30) * 1000;
+    const re = await Promise.race([reencode(v, onProgress), new Promise((ok) => setTimeout(() => ok(null), limit))]).catch(() => null);
+    // 녹화가 제대로 안 끝난 것(partial)은 원본을 보낼 수 있으면 원본을 쓴다
+    if (re && re.blob.size > 0 && re.blob.size <= SEND_MAX && !(re.partial && plainOk && file.size <= SEND_MAX)) {
+      const { partial, ...rest } = re;
+      return { ...base, ...rest };
+    }
     if (plainOk && file.size <= SEND_MAX) return { ...base, blob: file, mime: file.type, w: v.videoWidth, h: v.videoHeight };
     throw new Error('영상이 너무 커서 보낼 수 없어요. 더 짧게 잘라서 보내 주세요.');
   } finally { v.pause(); v.remove(); URL.revokeObjectURL(url); }
