@@ -520,3 +520,4 @@ img.avatar { object-fit: cover; background: var(--line); }
 .cap-foot { padding: 0 16px 12px; }
 .cap-foot .primary { margin-top: 0; }
 .messages.cap-clone { position: fixed; left: 0; top: 0; z-index: -1; flex: none; height: auto; overflow: visible; pointer-events: none; }
+.msg-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }

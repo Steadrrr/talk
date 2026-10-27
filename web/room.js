@@ -5,6 +5,7 @@ import { state, photoOf, roomTitle, loadOlder, send, sendMedia, sendAlbum, sendP
 import { mediaUrl, mediaInfo, mediaItems, saveMedia } from './media.js';
 import { useLongPress, useBackdrop, Collage, MediaViewer, Gallery, ForwardSheet, MenuPreview, viewItems } from './gallery.js';
 import { nickOf } from './names.js';
+import { linkify, openExternal } from './links.js';
 import { bubbleStyle } from './chattheme.js';
 import { RoomSettings } from './roomsettings.js';
 import { SendPreview } from './photoedit.js';
@@ -571,18 +572,18 @@ function TextBubble({ m, names, style, onMenu, onJump }) {
     <div class="bubble" style=${style} ...${press}>
       ${m.reply && html`<div class="quote" onClick=${(e) => { e.stopPropagation(); onJump(m.reply.id); }}>
         <b>${names.get(m.reply.user_id) || '나간 사람'}</b><span>${replyPreview(m.reply)}</span></div>`}
-      ${m.body}
+      ${linkify(m.body)}
     </div>`;
 }
 
-// 사키가 붙인 링크: 제목 + 사이트 이름 카드, 누르면 새 창 (서버가 https 주소만 남김)
+// 사키가 붙인 링크: 제목 + 사이트 이름 카드, 누르면 묻고 밖의 브라우저로 (서버가 https 주소만 남김)
 const LINK_ICON = { youtube: '▶️', naver: '🔎', page: '🔗' };
 function LinkCards({ links }) {
   const site = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } };
   return html`
     <div class="link-cards">
       ${links.filter((l) => /^https:\/\//.test(l.url)).map((l) => html`
-        <a class="link-card" href=${l.url} target="_blank" rel="noopener noreferrer">
+        <a class="link-card" href=${l.url} target="_blank" rel="noopener noreferrer" onClick=${(e) => { e.preventDefault(); if (confirm(`외부로 이동합니다.\n${l.url}`)) openExternal(l.url); }}>
           <span class="link-icon">${LINK_ICON[l.kind] || LINK_ICON.page}</span>
           <span class="link-text"><b class="ellipsis">${l.title}</b><span class="hint small ellipsis">${site(l.url)}</span></span>
         </a>`)}
