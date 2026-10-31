@@ -247,10 +247,9 @@ function SakiSection({ room, run }) {
         ${s.memory > 0 && html`
           <button class="card nav-row memory-open" onClick=${() => setMemOpen(true)}><span class="grow"><b>채팅방 기억</b><br /><span class="hint small">사키가 기억하는 것과 일기 보기·고치기</span></span><span class="hint">›</span></button>`}
         ${memOpen && html`<${MemoryPage} room=${room} onClose=${() => setMemOpen(false)} />`}
-        <p class="hint">사키에게 알려 줄 관계 <span class="hint">(예: 엄마, 일래의 동생. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>
-        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}
-        <p class="hint">사키가 부를 호칭 <span class="hint">(비워 두면 상황에 맞춰 불러요. 내 것은 내가, 다른 사람 것은 방장·관리자가 정해요)</span></p>
-        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${'c' + p.id} room=${room} p=${p} field="call" edit=${can || p.id === state.me.id} run=${run} />`)}`}
+        <p class="hint">사키에게 알려 줄 관계 · 사키가 부를 호칭 <span class="hint">(예: 엄마 · 곰돌이. 호칭을 비워 두면 상황에 맞춰 불러요. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>
+        <div class="relation-head"><span class="grow"></span><span>관계</span><span>호칭</span></div>
+        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}`}
     </div>`;
 }
 
@@ -310,15 +309,17 @@ function SakiMemory({ room, run }) {
     </div>`;
 }
 
-// 방 사람 한 줄: 관계(field="relation") 또는 사키가 부를 호칭(field="call")
-function RelationRow({ room, p, edit, run, field = 'relation' }) {
-  const call = field === 'call';
-  const [text, setText] = useState(p[field] || '');
-  const save = () => { if (text.trim() !== (p[field] || '')) run(() => (call ? setSakiCall : setSakiRelation)(room.id, p.id, text.trim())); };
+// 방 사람 한 줄: 이름 | 관계 | 사키가 부를 호칭 (설정 화면을 짧게)
+function RelationRow({ room, p, edit, run }) {
+  const box = (field, max, hint, setter) => {
+    const [text, setText] = useState(p[field] || '');
+    const save = () => { if (text.trim() !== (p[field] || '')) run(() => setter(room.id, p.id, text.trim())); };
+    return html`<input type="text" class=${'rel-' + field} maxlength=${max} placeholder=${edit ? hint : ''} value=${text} disabled=${!edit} aria-label=${`${nickOf(p)} ${field === 'call' ? '호칭' : '관계'}`}
+      onInput=${(e) => setText(e.target.value)} onBlur=${save} onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} />`;
+  };
   return html`
-    <label class="switch-row relation-row"><span class="grow ellipsis">${nickOf(p)}</span>
-      <input type="text" maxlength=${call ? 12 : 40} placeholder=${edit ? (call ? '비우면 알아서' : '관계 적기') : ''} value=${text} disabled=${!edit}
-        onInput=${(e) => setText(e.target.value)} onBlur=${save} onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} /></label>`;
+    <div class="switch-row relation-row"><span class="grow ellipsis">${nickOf(p)}</span>
+      ${box('relation', 40, '관계', setSakiRelation)}${box('call', 12, '알아서', setSakiCall)}</div>`;
 }
 
 // 나가기 전에 묻는 말: 1:1 은 두 사람 모두에게서 사라지고, 여럿 방은 나만 나감 (한 명만 남으면 방이 지워짐)

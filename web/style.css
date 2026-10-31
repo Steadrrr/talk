@@ -339,7 +339,12 @@ img.avatar { object-fit: cover; background: var(--line); }
 .saki-section .seg { margin: 4px 0 8px; max-width: none; }
 .saki-section .seg button:disabled { opacity: .7; }
 .saki-section select { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
-.saki-section .relation-row input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 55%; max-width: 220px; }
+.saki-section .relation-row { gap: 6px; }
+.saki-section .relation-row input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; width: 34%; max-width: 150px; min-width: 0; box-sizing: border-box; }
+.saki-section .relation-row .rel-call { width: 26%; max-width: 110px; }
+.saki-section .relation-head { display: flex; gap: 6px; font-size: .8em; color: var(--dim); margin-bottom: -6px; }
+.saki-section .relation-head span:not(.grow) { width: 34%; max-width: 150px; padding-left: 8px; box-sizing: border-box; }
+.saki-section .relation-head span:last-child { width: 26%; max-width: 110px; }
 .saki-section .relation-row input:disabled { opacity: .7; }
 
 /* 채팅방 꾸미기 (설정 탭) */
