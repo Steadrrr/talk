@@ -123,6 +123,15 @@ let syncing = null;
 let timer = 0;
 let stopped = true;
 let drawnAt = 0;
+// 한 번 실패로 바로 "연결 끊김"을 띄우지 않는다: 앱을 다시 켠 직후·배포 중 파일이 올라가는 몇 초·잠깐 약한 전파는 다음 폴링에서 풀리므로
+let failStreak = 0;
+const OFFLINE_AFTER = 3;
+// 응답 없는 요청을 붙잡고 있으면 폴링이 멈추므로 20초에서 끊는다
+function syncSignal() {
+  const c = new AbortController();
+  setTimeout(() => c.abort(), 20000);
+  return c.signal;
+}
 
 export async function syncNow() {
   if (syncing) return syncing;
@@ -134,7 +143,7 @@ export async function syncNow() {
       let more = true;
       while (more) {
         const asked = document.hidden ? 0 : state.openRoom || 0;
-        const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1&room=' + asked));
+        const r = await api('sync?since=' + state.cursor + (document.hidden ? '' : '&active=1&room=' + asked), undefined, { signal: syncSignal() });
         const typing = asked && asked === state.openRoom ? r.typing || [] : [];
         if (typing.join() !== state.typing.join()) changed = true;
         state.typing = typing;
@@ -151,13 +160,14 @@ export async function syncNow() {
         app = r.app;
       }
       state.online = true;
+      failStreak = 0;
       markReadIfOpen();
       if (changed) saveSoon();
       checkUpdate(app, state);
     } catch (e) {
       if (e instanceof AuthError) { clearAll(); return; }
-      if (state.online) changed = true;
-      state.online = false;
+      failStreak++;
+      if (state.online && failStreak >= OFFLINE_AFTER) { changed = true; state.online = false; }
     } finally {
       syncing = null;
       // 그래도 1분에 한 번은 다시 그린다 (목록의 "어제" 같은 날짜 글이 날이 바뀌면 고쳐지게)
