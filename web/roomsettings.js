@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
-import { state, photoOf, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation, setSakiCall, sakiMemory, setNotice } from './store.js';
+import { state, photoOf, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation, setSakiCall, sakiMemory, sakiLog, setNotice } from './store.js';
 import { ScheduleItem, ScheduleSheet, upcoming } from './schedule.js';
 import { PlaceSheet } from './place.js';
 
@@ -187,9 +187,13 @@ function sakiSummary(s) {
 function SakiPage({ room, onClose }) {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
+  const [log, setLog] = useState(null);
+  const reload = () => sakiLog(room.id).then(setLog).catch(() => {});
+  useEffect(() => { reload(); }, [room.id]);
   const run = async (fn, done = '') => {
     setErr(''); setMsg('');
     try { await fn(); if (done) setMsg(done); } catch (e) { setErr(e.message); }
+    reload();
   };
   return html`
     <div class="sheet-bg" onClick=${(e) => e.target === e.currentTarget && onClose()}>
@@ -198,58 +202,73 @@ function SakiPage({ room, onClose }) {
         <div class="scroll">
           ${err && html`<p class="err pad">${err}</p>`}
           ${msg && html`<p class="ok pad">${msg}</p>`}
-          <${SakiSection} room=${room} run=${run} />
+          <${SakiSection} room=${room} run=${run} onMemoryClose=${reload} />
+          <${SakiLog} log=${log} />
         </div>
       </div>
     </div>`;
 }
 
-// 사키(SAKi Lite 봇): 단체방에서 방장·관리자가 초대하고 성격·말투·대답 빈도를 정함. 다른 사람은 보기만
-function SakiSection({ room, run }) {
+// 사키 설정 화면 아래: 누가 언제 무엇을 바꿨는지 (새것부터, 방마다 최근 50개)
+function SakiLog({ log }) {
+  if (!log?.length) return null;
+  const when = (at) => {
+    const d = new Date(at.replace(' ', 'T') + 'Z');
+    const h = d.getHours();
+    return `${d.getMonth() + 1}/${d.getDate()} ${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  return html`
+    <div class="section saki-log">
+      <h3>바뀐 기록</h3>
+      ${log.map((l, i) => html`<p class="saki-log-row" key=${i}><span class="hint small">${when(l.at)}</span> <b>${l.user === state.me.id ? '나' : l.name}</b> ${l.text}</p>`)}
+    </div>`;
+}
+
+// 사키(SAKi Lite 봇): 단체방에서 방 사람 누구나 초대하고 성격·말투·대답 빈도를 정함 (바꾼 것은 아래 기록에 남음)
+function SakiSection({ room, run, onMemoryClose }) {
   // 사키가 생기기 전에 받아 둔 방 정보에는 saki 가 없음: 기본값(끔)으로
   const s = room.saki || { on: 0, personality: 'lively', polite: 0, freq: 'called', gap: 10, react: 1 };
-  const can = room.created_by === state.me.id || !!state.me.is_admin;
   const [memOpen, setMemOpen] = useState(false);
   const set = (changes) => run(() => setSaki(room.id, changes));
   // 기억을 끌 때: 기억도 지울지 묻는다 (아니요면 남겨 두고, 다시 켜면 이어서)
   const setMemory = (on) => set(on ? { memory: true } : { memory: false, forget: confirm('사키 기억을 껐어요. 기억한 것과 일기도 지울까요?\n[확인] 지우기 · [취소] 남겨 두기') });
   const seg = (items, value, key) => html`
-    <div class="seg">${items.map(([v, label]) => html`<button type="button" class=${value === v ? 'on' : ''} disabled=${!can} onClick=${() => value !== v && set({ [key]: v })}>${label}</button>`)}</div>`;
+    <div class="seg">${items.map(([v, label]) => html`<button type="button" class=${value === v ? 'on' : ''} onClick=${() => value !== v && set({ [key]: v })}>${label}</button>`)}</div>`;
   return html`
     <div class="section saki-section">
-      <h3>사키 <span class="hint">${can ? '(방장·관리자만 바꿔요)' : '(방장이나 관리자가 바꿔요)'}</span></h3>
+      <h3>사키 <span class="hint">(누구나 바꿀 수 있고, 바꾼 기록이 아래에 남아요)</span></h3>
       <label class="switch-row"><span class="grow">사키 초대<br /><span class="hint">글에 "사키"를 넣거나 사키 말에 답장하면 대답해요</span></span>
-        <input type="checkbox" class="switch" checked=${!!s.on} disabled=${!can} onChange=${(e) => set({ on: e.target.checked })} /></label>
+        <input type="checkbox" class="switch" checked=${!!s.on} onChange=${(e) => set({ on: e.target.checked })} /></label>
       ${s.on > 0 && html`
         <p class="hint">성격</p>
         ${seg(PERSONALITIES, s.personality, 'personality')}
         <label class="switch-row"><span class="grow">존댓말<br /><span class="hint">어른이 있는 방이면 켜 주세요</span></span>
-          <input type="checkbox" class="switch" checked=${!!s.polite} disabled=${!can} onChange=${(e) => set({ polite: e.target.checked })} /></label>
+          <input type="checkbox" class="switch" checked=${!!s.polite} onChange=${(e) => set({ polite: e.target.checked })} /></label>
         <p class="hint">대답 빈도</p>
         ${seg([['called', '부를 때만'], ['chime', '가끔 끼어들기']], s.freq, 'freq')}
         ${s.freq === 'chime' && html`<p class="hint">대화가 쌓이면 가끔 먼저 끼어들어요.</p>`}
         ${s.freq === 'chime' && html`
           <label class="switch-row"><span class="grow">끼어들기 최소 간격</span>
-            <select value=${s.gap} disabled=${!can} onChange=${(e) => set({ gap: Number(e.target.value) })}>
+            <select value=${s.gap} onChange=${(e) => set({ gap: Number(e.target.value) })}>
               ${[5, 10, 20, 30, 60, 120].map((m) => html`<option value=${m}>${m < 60 ? `${m}분` : `${m / 60}시간`}</option>`)}
             </select></label>`}
         <label class="switch-row"><span class="grow">읽씹 방지<br /><span class="hint">마지막 채팅 뒤 고른 시간 동안 아무도 대답이 없으면 사키가 대답해요 (마지막이 사키 말이면 안 해요)</span></span>
-          <input type="checkbox" class="switch" checked=${!!s.noignore} disabled=${!can} onChange=${(e) => set({ noignore: e.target.checked })} /></label>
+          <input type="checkbox" class="switch" checked=${!!s.noignore} onChange=${(e) => set({ noignore: e.target.checked })} /></label>
         ${s.noignore > 0 && html`
           <label class="switch-row"><span class="grow">읽씹 방지 시간</span>
-            <select value=${s.wait || 5} disabled=${!can} onChange=${(e) => set({ wait: Number(e.target.value) })}>
+            <select value=${s.wait || 5} onChange=${(e) => set({ wait: Number(e.target.value) })}>
               ${[5, 10, 20, 30, 60, 120].map((m) => html`<option value=${m}>${m < 60 ? `${m}분` : `${m / 60}시간`}</option>`)}
             </select></label>`}
         <label class="switch-row"><span class="grow">반응 달기<br /><span class="hint">사키를 부른 메시지에 표정 이모지</span></span>
-          <input type="checkbox" class="switch" checked=${!!s.react} disabled=${!can} onChange=${(e) => set({ react: e.target.checked })} /></label>
+          <input type="checkbox" class="switch" checked=${!!s.react} onChange=${(e) => set({ react: e.target.checked })} /></label>
         <label class="switch-row"><span class="grow">사키 기억<br /><span class="hint">켜면 최근 대화 100개로 바로 시작하고, 그 뒤로 대화를 조금씩 기억해 다음에 알아봐요. 기억한 것은 방 사람 누구나 고치거나 지울 수 있어요</span></span>
-          <input type="checkbox" class="switch" checked=${!!s.memory} disabled=${!can} onChange=${(e) => setMemory(e.target.checked)} /></label>
+          <input type="checkbox" class="switch" checked=${!!s.memory} onChange=${(e) => setMemory(e.target.checked)} /></label>
         ${s.memory > 0 && html`
           <button class="card nav-row memory-open" onClick=${() => setMemOpen(true)}><span class="grow"><b>채팅방 기억</b><br /><span class="hint small">사키가 기억하는 것과 일기 보기·고치기</span></span><span class="hint">›</span></button>`}
-        ${memOpen && html`<${MemoryPage} room=${room} onClose=${() => setMemOpen(false)} />`}
-        <p class="hint">사키에게 알려 줄 관계 · 사키가 부를 호칭 <span class="hint">(예: 엄마 · 곰돌이. 호칭을 비워 두면 상황에 맞춰 불러요. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>
+        ${memOpen && html`<${MemoryPage} room=${room} onClose=${() => { setMemOpen(false); onMemoryClose?.(); }} />`}
+        <p class="hint">사키에게 알려 줄 관계 · 사키가 부를 호칭 <span class="hint">(예: 엄마 · 곰돌이. 호칭을 비워 두면 상황에 맞춰 불러요. 다른 사람 것도 적을 수 있어요)</span></p>
         <div class="relation-head"><span class="grow"></span><span>관계</span><span>호칭</span></div>
-        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}`}
+        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p}  run=${run} />`)}`}
     </div>`;
 }
 
@@ -310,11 +329,11 @@ function SakiMemory({ room, run }) {
 }
 
 // 방 사람 한 줄: 이름 | 관계 | 사키가 부를 호칭 (설정 화면을 짧게)
-function RelationRow({ room, p, edit, run }) {
+function RelationRow({ room, p, run }) {
   const box = (field, max, hint, setter) => {
     const [text, setText] = useState(p[field] || '');
     const save = () => { if (text.trim() !== (p[field] || '')) run(() => setter(room.id, p.id, text.trim())); };
-    return html`<input type="text" class=${'rel-' + field} maxlength=${max} placeholder=${edit ? hint : ''} value=${text} disabled=${!edit} aria-label=${`${nickOf(p)} ${field === 'call' ? '호칭' : '관계'}`}
+    return html`<input type="text" class=${'rel-' + field} maxlength=${max} placeholder=${hint} value=${text} aria-label=${`${nickOf(p)} ${field === 'call' ? '호칭' : '관계'}`}
       onInput=${(e) => setText(e.target.value)} onBlur=${save} onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} />`;
   };
   return html`

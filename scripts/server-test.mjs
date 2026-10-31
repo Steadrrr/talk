@@ -947,8 +947,8 @@ try {
     assert.equal((await api('sync?since=0', undefined, tok.dad)).body.saki_ready, true, '동기화에도 열쇠가 들어갔는지');
   });
 
-  await t('사키: 방장·관리자만 초대, 초대하면 방 멤버에 봇과 안내 글, 봇은 로그인 못 함', async () => {
-    assert.equal((await api('rooms/saki', { room_id: sakiRoom, on: true }, tok.dad)).status, 403, '방장이 아님');
+  await t('사키: 방 사람 누구나 초대, 초대하면 방 멤버에 봇과 안내 글, 봇은 로그인 못 함', async () => {
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, on: true }, tok.f1)).status, 403, '방 사람이 아님');
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, on: true, personality: 'evil' }, tok.mom)).status, 400);
     const dm2 = (await api('rooms/dm', { user_id: await idOf(tok.mom, '아빠') }, tok.mom)).body.room.id;
     assert.equal((await api('rooms/saki', { room_id: dm2, on: true }, tok.mom)).status, 400, '1:1 방은 안 됨');
@@ -1082,12 +1082,12 @@ try {
     assert.equal((await roomOf(tok.mom)).saki.noignore, 0);
   });
 
-  await t('사키: 부를 호칭(비우면 상황 따라, 내 것은 나, 남의 것은 방장)', async () => {
+  await t('사키: 부를 호칭(비우면 상황 따라, 방 사람 누구나 남의 것도)', async () => {
     const dad = await idOf(tok.mom, '아빠');
     const mom = (await api('me', undefined, tok.mom)).body.me.id;
     const lastId = sql(`SELECT COALESCE(MAX(id), 0) FROM talk_messages WHERE room_id = ${sakiRoom}`);
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, call: '아빠"<곰>' }, tok.dad)).status, 200, '내 호칭은 내가');
-    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call_user: mom, call: '엄마' }, tok.dad)).status, 403, '남의 것은 방장·관리자만');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call_user: mom, call: '엄마' }, tok.f1)).status, 403, '방 사람이 아니면 못 함');
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, call_user: dad, call: '아빠곰아빠곰아빠곰아빠곰' }, tok.mom)).status, 200, '방장은 남의 것도');
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, call_user: botId, call: '봇' }, tok.mom)).status, 200, '봇은 조용히 무시');
     let room = await roomOf(tok.dad);
@@ -1109,12 +1109,12 @@ try {
     sql(`DELETE FROM talk_messages WHERE room_id = ${sakiRoom} AND id > ${lastId}`); // 다음 시험의 메시지 수가 그대로이게
   });
 
-  await t('사키: 관계(내 것은 나, 남의 것은 방장)·90% 안내는 방마다 하루 한 번·하루 요약', async () => {
+  await t('사키: 관계·90% 안내는 방마다 하루 한 번·하루 요약', async () => {
     const dad = await idOf(tok.mom, '아빠');
     const admin = await idOf(tok.mom, '일래');
     const mom = (await api('me', undefined, tok.mom)).body.me.id;
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation: '아빠, <회사원>' }, tok.dad)).status, 200, '내 관계는 내가');
-    assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: mom, relation: '엄마' }, tok.dad)).status, 403, '남의 것은 방장·관리자만');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: mom, relation: '엄마' }, tok.f1)).status, 403, '방 사람이 아니면 못 함');
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: admin, relation: '나' }, tok.mom)).status, 200);
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: botId, relation: '봇' }, tok.mom)).status, 200, '봇은 조용히 무시');
     const room = await roomOf(tok.dad);
@@ -1157,7 +1157,7 @@ try {
     await say({ body: '사키야 안녕' }, tok.dad);
     assert.equal(remembers().length, 0);
     assert.equal(talks().at(-1).body.room_memory, undefined);
-    assert.equal((await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.dad)).status, 403, '켜고 끄기는 방장·관리자');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.f1)).status, 403, '방 사람이 아니면 못 함');
     assert.equal((await api('rooms/saki', { room_id: sakiRoom, memory: true }, tok.mom)).body.saki.memory, 1);
     // 켜면 바로 최근 100개로 한 번에 시작
     await fetch(BASE + '/api.php/health');
@@ -1260,6 +1260,27 @@ try {
     sql(`INSERT INTO talk_saki_memory (room_id, memory, updated_at) VALUES (${sakiRoom}, '남은 기억', UTC_TIMESTAMP())`);
     sql(`INSERT INTO talk_saki_diary (room_id, day, body) VALUES (${sakiRoom}, '${yday}', '남은 일기')`);
     sql(`DELETE FROM talk_messages WHERE room_id = ${sakiRoom} AND body LIKE '잡담 %'`);
+  });
+
+  await t('사키: 방 사람 누구나 남의 관계·설정도 바꾸고, 바꾼 것은 기록에 (방 사람만 봄, 안 바뀌면 안 남음)', async () => {
+    const mom = (await api('me', undefined, tok.mom)).body.me.id;
+    const log = async (tk = tok.mom) => (await api('rooms/saki_log', { room_id: sakiRoom }, tk));
+    assert.equal((await log(tok.f1)).status, 403, '방 사람이 아니면 못 봄');
+    const before = (await log()).body.log.length;
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, relation_user: mom, relation: '엄마' }, tok.dad)).status, 200, '남의 관계도');
+    assert.equal((await roomOf(tok.mom)).members.find((m) => m.id === mom).relation, '엄마');
+    await api('rooms/saki', { room_id: sakiRoom, relation_user: mom, relation: '엄마' }, tok.dad);
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, personality: 'calm', gap: 30 }, tok.dad)).status, 200, '방장이 아니어도 설정을');
+    await api('rooms/saki', { room_id: sakiRoom, personality: 'calm' }, tok.dad);
+    await api('rooms/saki', { room_id: sakiRoom, relation_user: mom, relation: '' }, tok.mom);
+    const l = (await log(tok.dad)).body.log;
+    assert.equal(l.length, before + 3, '안 바뀐 것은 안 남음');
+    assert.deepEqual(l.slice(0, 3).map((x) => [x.name, x.text]), [['엄마곰', '자기 관계 지움'], ['아빠', '성격 → 차분, 끼어들기 최소 간격 → 30분'], ['아빠', '엄마곰님 관계 → 엄마']]);
+    assert.ok(l[0].at && l[0].user === mom);
+    await api('rooms/saki_memory', { room_id: sakiRoom, memory: '고친 기억' }, tok.dad);
+    assert.equal((await log()).body.log[0].text, '채팅방 기억 고침');
+    for (let i = 0; i < 55; i++) await api('rooms/saki', { room_id: sakiRoom, gap: i % 2 ? 20 : 10 }, tok.dad);
+    assert.equal((await log()).body.log.length, 50, '방마다 최근 50개만');
   });
 
   await t('사키: 하루 상한 거절 말은 방마다 하루 한 번만, 401·503 이면 조용히 쉬고 관리 화면에 보임', async () => {

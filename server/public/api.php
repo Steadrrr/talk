@@ -256,8 +256,14 @@ switch ($route) {
         $b = talk_body();
         talk_json(['ok' => true] + talk_saki_memory_edit($pdo, $me, (int)($b['room_id'] ?? 0), $b));
 
+    case 'rooms/saki_log':
+        // 사키 설정 바뀐 기록 (새것부터, 방마다 최근 50개)
+        $need('POST');
+        $b = talk_body();
+        talk_json(['ok' => true, 'log' => talk_saki_log_list($pdo, $me, (int)($b['room_id'] ?? 0))]);
+
     case 'rooms/saki':
-        // 사키 설정 (방장·관리자만): on·personality·polite·freq·gap·react 중 바꿀 것만
+        // 사키 설정 (방 사람 누구나, 바꾼 것은 기록에 남음): on·personality·polite·freq·gap·react 등 바꿀 것만
         $need('POST');
         $b = talk_body();
         talk_json(['ok' => true, 'saki' => talk_saki_set($pdo, $me, (int)($b['room_id'] ?? 0), $b)]);

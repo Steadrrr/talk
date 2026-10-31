@@ -264,21 +264,21 @@ export async function setRoomPhoto(roomId, data) {
   await syncNow();
 }
 
-// 사키(SAKi Lite 봇) 설정: 방장·관리자만. on·personality·polite·freq·gap·react 중 바꿀 것만
+// 사키(SAKi Lite 봇) 설정: 방 사람 누구나 (바꾼 것은 기록에 남음). on·personality·polite·freq·gap·react 중 바꿀 것만
 export async function setSaki(roomId, changes) {
   const room = state.rooms[roomId];
   if (room?.saki) { Object.assign(room.saki, changes); notify(); }
   try { await api('rooms/saki', { room_id: roomId, ...changes }); } finally { await syncNow(); }
 }
 
-// 사키가 부를 호칭 (비우면 사키가 상황에 맞춰 부름): 내 것은 나, 다른 사람 것은 방장·관리자
+// 사키가 부를 호칭 (비우면 사키가 상황에 맞춰 부름): 방 사람 누구나, 남의 것도
 export async function setSakiCall(roomId, userId, call) {
   const m = state.rooms[roomId]?.members.find((p) => p.id === userId);
   if (m) { if (call) m.call = call; else delete m.call; notify(); }
   try { await api('rooms/saki', { room_id: roomId, call_user: userId, call }); } finally { await syncNow(); }
 }
 
-// 사키에게 알려 줄 관계 (예: "엄마"): 내 것은 나, 다른 사람 것은 방장·관리자
+// 사키에게 알려 줄 관계 (예: "엄마"): 방 사람 누구나, 남의 것도
 export async function setSakiRelation(roomId, userId, relation) {
   const m = state.rooms[roomId]?.members.find((p) => p.id === userId);
   if (m) { m.relation = relation; notify(); }
@@ -288,6 +288,11 @@ export async function setSakiRelation(roomId, userId, relation) {
 // 사키가 기억하는 것·방 일기 (방 사람 누구나 고침): changes 가 없으면 보기만. → { memory, diary: [{ day, text }] }
 export async function sakiMemory(roomId, changes = {}) {
   return api('rooms/saki_memory', { room_id: roomId, ...changes });
+}
+
+// 사키 설정 바뀐 기록 (새것부터) → [{ at, user, name, text }]
+export async function sakiLog(roomId) {
+  return (await api('rooms/saki_log', { room_id: roomId })).log || [];
 }
 
 // 공지 올리기(메시지 번호)·내리기(0)

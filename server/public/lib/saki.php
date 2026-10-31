@@ -32,7 +32,7 @@ const TALK_SAKI_APP = 'SAKi Talk: 가족·친구 10명 안쪽이 쓰는 광고 �
     . '입력칸 + 에서 사진·영상, "내 위치"(동 이름·지도와 함께), "장소 검색"(가게·주소, 네이버). 장소 말풍선을 누르면 네이버 지도 앱·길찾기·주소 복사. '
     . '웹 푸시 알림: 방마다 알림 끄기, 설정 탭의 "정신병 방지(연속알림 차단)"를 켜면 한 방에 1분 안에 3개 이상 몰아서 올라올 때부터 조용히 받음. '
     . '방 설정에서 방 사진·이름 바꾸기·친구 초대·나가기, 프로필에서 사진·닉네임 바꾸기. 설정 탭 "채팅방 꾸미기"에서 내 말풍선 색(다른 사람 화면에도 그 색), 배경 색·배경화면 사진(기기마다). 설정 탭 "개인설정" 안에 초대 코드 넣기(다른 그룹 들어가기)·비밀번호 바꾸기·사키 프로필 사진(자기 화면에서만 사키가 그 사진으로 보임, 안 정하면 기본). 채팅 목록 맨 위에 공지사항(바뀐 점). 새 버전은 저절로 새로고침. '
-    . '사키: 채팅방 관리 "사키 설정"에서 방장·관리자가 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·끼어들기 간격·읽씹 방지(마지막 채팅 뒤 고른 시간이 지나면 사키가 대답)·반응 달기를 정함. '
+    . '사키: 채팅방 관리 "사키 설정"에서 누구나 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·끼어들기 간격·읽씹 방지(마지막 채팅 뒤 고른 시간이 지나면 사키가 대답)·반응 달기를 정함. '
     . '방마다 사람별 사키에게 알려 줄 관계·사키가 부를 호칭을 적음. "사키 기억"을 켜면(기본 끔) 대화를 조금씩 기억하고 날마다 방 일기를 씀, 기억과 일기는 "채팅방 기억"에서 누구나 고치거나 지움. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
     . '"사키야 오늘 무슨 얘기 했어?"처럼 요약·정리를 부탁하면 오늘 대화를 요약함. "사키야 매뉴얼 보여줘"면 사용법 페이지 링크. '
     . '사키는 하루 쓸 수 있는 양이 정해져 있어 다 쓰면 그날은 쉼. 관리자는 일래.';
@@ -95,33 +95,74 @@ function talk_saki_bot(PDO $pdo): int {
     return $id = (int)$pdo->lastInsertId();
 }
 
-// 방 설정 바꾸기 (방장·관리자만, 단체방만). 초대를 켜면 봇이 방에 들어가고, 끄면 나간다
+// 사키 설정 바뀐 기록: 방 사람 누구나 바꿀 수 있어서 누가 언제 무엇을 바꿨는지 남긴다 (방마다 최근 TALK_SAKI_LOG_KEEP 개)
+const TALK_SAKI_LOG_KEEP = 50;
+function talk_saki_log(PDO $pdo, int $roomId, int $uid, string $text): void {
+    $pdo->prepare('INSERT INTO talk_saki_log (room_id, user_id, body, created_at) VALUES (?, ?, ?, ?)')->execute([$roomId, $uid, mb_substr($text, 0, 200), talk_now()]);
+    $st = $pdo->prepare('SELECT id FROM talk_saki_log WHERE room_id = ? ORDER BY id DESC LIMIT 1 OFFSET ' . TALK_SAKI_LOG_KEEP);
+    $st->execute([$roomId]);
+    $cut = $st->fetchColumn();
+    if ($cut !== false) $pdo->prepare('DELETE FROM talk_saki_log WHERE room_id = ? AND id <= ?')->execute([$roomId, (int)$cut]);
+}
+
+// 설정 화면 아래에 보이는 기록 (새것부터): [{ at, user, name, text }]
+function talk_saki_log_list(PDO $pdo, array $me, int $roomId): array {
+    talk_room_row($pdo, $me['id'], $roomId);
+    $st = $pdo->prepare("SELECT l.created_at AS at, l.user_id AS user, COALESCE(NULLIF(u.nick, ''), u.name, '나간 사람') AS name, l.body AS text
+        FROM talk_saki_log l LEFT JOIN talk_users u ON u.id = l.user_id WHERE l.room_id = ? ORDER BY l.id DESC LIMIT " . TALK_SAKI_LOG_KEEP);
+    $st->execute([$roomId]);
+    return array_map(fn($r) => ['user' => (int)$r['user']] + $r, $st->fetchAll());
+}
+
+function talk_saki_member_name(PDO $pdo, int $uid): string {
+    $st = $pdo->prepare("SELECT COALESCE(NULLIF(nick, ''), name) FROM talk_users WHERE id = ?");
+    $st->execute([$uid]);
+    return (string)$st->fetchColumn();
+}
+
+// 관계·호칭 한 사람 것 바꾸기 (방 사람 누구나, 남의 것도). 바뀌었으면 기록
+function talk_saki_member_field(PDO $pdo, array $me, int $roomId, int $who, string $col, string $label, string $text): void {
+    $st = $pdo->prepare("UPDATE talk_room_members m JOIN talk_users u ON u.id = m.user_id SET m.$col = ? WHERE m.room_id = ? AND m.user_id = ? AND u.is_bot = 0");
+    $st->execute([$text === '' ? null : $text, $roomId, $who]);
+    if (!$st->rowCount()) return;
+    $whose = $who === $me['id'] ? '자기' : talk_saki_member_name($pdo, $who) . '님';
+    talk_saki_log($pdo, $roomId, $me['id'], $text === '' ? "$whose $label 지움" : "$whose $label → $text");
+    talk_event($pdo, $roomId, 'room');
+}
+
+// 바뀐 설정을 기록 글로 ("성격 → 차분", "존댓말 켬")
+function talk_saki_changes_text(array $old, array $new, bool $forget): array {
+    $onoff = ['on' => '사키 초대', 'polite' => '존댓말', 'react' => '반응 달기', 'memory' => '사키 기억', 'noignore' => '읽씹 방지'];
+    $min = fn($m) => $m < 60 ? "{$m}분" : ($m / 60) . '시간';
+    $out = [];
+    foreach ($new as $k => $v) {
+        if ($old[$k] === $v) continue;
+        if (isset($onoff[$k])) $out[] = $onoff[$k] . ($v ? ' 켬' : ' 끔') . ($k === 'memory' && !$v && $forget ? ' (기억·일기도 지움)' : '');
+        elseif ($k === 'personality') $out[] = '성격 → ' . TALK_SAKI_PERSONALITIES[$v];
+        elseif ($k === 'freq') $out[] = '대답 빈도 → ' . ($v === 'chime' ? '가끔 끼어들기' : '부를 때만');
+        elseif ($k === 'gap') $out[] = '끼어들기 최소 간격 → ' . $min($v);
+        elseif ($k === 'wait') $out[] = '읽씹 방지 시간 → ' . $min($v);
+    }
+    return $out;
+}
+
+// 방 설정 바꾸기 (방 사람 누구나, 단체방만. 바꾼 것은 기록에 남음). 초대를 켜면 봇이 방에 들어가고, 끄면 나간다
 function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
     $room = talk_room_row($pdo, $me['id'], $roomId);
     if ($room['kind'] !== 'group') talk_fail('사키는 단체방에만 부를 수 있어요.');
-    $manager = (int)$room['created_by'] === $me['id'] || $me['is_admin'];
     $old = talk_saki_settings($room['saki']);
-    // 사키에게 알려 줄 관계: 내 것은 내가, 다른 사람 것은 방장·관리자가
+    // 사키에게 알려 줄 관계 (방 사람 누구나, 남의 것도)
     if (array_key_exists('relation', $b)) {
-        $who = (int)($b['relation_user'] ?? $me['id']);
-        if ($who !== $me['id'] && !$manager) talk_fail('다른 사람의 관계는 방장이나 관리자만 적을 수 있어요.', 403);
         $text = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F\[\]<>]+/u', ' ', (string)$b['relation'])), 0, TALK_SAKI_RELATION_MAX);
-        $st = $pdo->prepare('UPDATE talk_room_members m JOIN talk_users u ON u.id = m.user_id SET m.saki_relation = ? WHERE m.room_id = ? AND m.user_id = ? AND u.is_bot = 0');
-        $st->execute([$text === '' ? null : $text, $roomId, $who]);
-        talk_event($pdo, $roomId, 'room');
+        talk_saki_member_field($pdo, $me, $roomId, (int)($b['relation_user'] ?? $me['id']), 'saki_relation', '관계', $text);
         if (!array_intersect_key($b, TALK_SAKI_DEFAULTS) && !array_key_exists('call', $b)) return $old;
     }
-    // 사키가 부를 호칭: 내 것은 내가, 다른 사람 것은 방장·관리자가. 비우면 지금처럼 상황에 맞춰 부름
+    // 사키가 부를 호칭 (방 사람 누구나, 남의 것도). 비우면 지금처럼 상황에 맞춰 부름
     if (array_key_exists('call', $b)) {
-        $who = (int)($b['call_user'] ?? $me['id']);
-        if ($who !== $me['id'] && !$manager) talk_fail('다른 사람의 호칭은 방장이나 관리자만 정할 수 있어요.', 403);
         $text = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F\[\]<>"]+/u', ' ', (string)$b['call'])), 0, TALK_SAKI_CALL_MAX);
-        $st = $pdo->prepare('UPDATE talk_room_members m JOIN talk_users u ON u.id = m.user_id SET m.saki_call = ? WHERE m.room_id = ? AND m.user_id = ? AND u.is_bot = 0');
-        $st->execute([$text === '' ? null : $text, $roomId, $who]);
-        talk_event($pdo, $roomId, 'room');
+        talk_saki_member_field($pdo, $me, $roomId, (int)($b['call_user'] ?? $me['id']), 'saki_call', '호칭', $text);
         if (!array_intersect_key($b, TALK_SAKI_DEFAULTS)) return $old;
     }
-    if (!$manager) talk_fail('사키 설정은 방장이나 관리자만 바꿀 수 있어요.', 403);
     $new = $old;
     if (array_key_exists('on', $b)) $new['on'] = $b['on'] ? 1 : 0;
     if (array_key_exists('personality', $b)) {
@@ -142,6 +183,10 @@ function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
     $bot = talk_saki_bot($pdo);
     $pdo->beginTransaction();
     $pdo->prepare('UPDATE talk_rooms SET saki = ? WHERE id = ?')->execute([json_encode($new), $roomId]);
+    $forgot = !$new['memory'] && !empty($b['forget']);
+    $changes = talk_saki_changes_text($old, $new, $forgot);
+    if (!$changes && $forgot) $changes = ['채팅방 기억·일기 모두 지움'];
+    if ($changes) talk_saki_log($pdo, $roomId, $me['id'], implode(', ', $changes));
     // 사키 기억을 켜면 최근 100개 대화로 한 번에 시작한다 (응답 뒤 바로 정리). 끌 때 "기억도 지울까요?"에 예면 forget
     $start = $new['memory'] && !$old['memory'];
     if ($start) {
@@ -694,7 +739,7 @@ function talk_saki_remember(PDO $pdo, array $cfg, int $roomId, int $bot, array $
     }
 }
 
-// 방 설정 "사키가 기억하는 것"·일기: 방 사람 누구나 보고 고치고 지움 (사키가 틀리게 기억하면 사람이 바로잡는 곳)
+// 방 설정 "사키가 기억하는 것"·일기: 방 사람 누구나 보고 고치고 지움 (사키가 틀리게 기억하면 사람이 바로잡는 곳, 고친 것은 기록에 남음)
 //  - memory: 기억 글 통째로 바꾸기 (빈 글이면 지우기)
 //  - diary_day + diary_text: 그날 일기 고치기 (빈 글이면 지우기)
 function talk_saki_memory_edit(PDO $pdo, array $me, int $roomId, array $b): array {
@@ -702,6 +747,8 @@ function talk_saki_memory_edit(PDO $pdo, array $me, int $roomId, array $b): arra
     if ($room['kind'] !== 'group') talk_fail('사키는 단체방에만 있어요.');
     if (array_key_exists('memory', $b)) {
         $text = mb_substr(trim(str_replace("\r", '', (string)$b['memory'])), 0, TALK_SAKI_MEMORY_MAX);
+        $was = talk_saki_memory_row($pdo, $roomId);
+        if ($text !== ($was ? (string)$was['memory'] : '')) talk_saki_log($pdo, $roomId, $me['id'], $text === '' ? '채팅방 기억 모두 지움' : '채팅방 기억 고침');
         $pdo->prepare("INSERT INTO talk_saki_memory (room_id, memory, day, updated_at) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE memory = VALUES(memory), updated_at = VALUES(updated_at)")
             ->execute([$roomId, $text, talk_saki_day(), talk_now()]);
     }
@@ -709,8 +756,11 @@ function talk_saki_memory_edit(PDO $pdo, array $me, int $roomId, array $b): arra
         $day = (string)$b['diary_day'];
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) talk_fail('날짜를 다시 골라 주세요.');
         $text = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($b['diary_text'] ?? ''))), 0, 300);
-        if ($text === '') $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ? AND day = ?')->execute([$roomId, $day]);
-        else $pdo->prepare('UPDATE talk_saki_diary SET body = ? WHERE room_id = ? AND day = ?')->execute([$text, $roomId, $day]);
+        $st = $text === ''
+            ? $pdo->prepare('DELETE FROM talk_saki_diary WHERE room_id = ? AND day = ?')
+            : $pdo->prepare('UPDATE talk_saki_diary SET body = ? WHERE room_id = ? AND day = ?');
+        $st->execute($text === '' ? [$roomId, $day] : [$text, $roomId, $day]);
+        if ($st->rowCount()) talk_saki_log($pdo, $roomId, $me['id'], talk_saki_day_name($day) . ($text === '' ? ' 일기 지움' : ' 일기 고침'));
     }
     $m = talk_saki_memory_row($pdo, $roomId);
     $st = $pdo->prepare('SELECT day, body AS text FROM talk_saki_diary WHERE room_id = ? ORDER BY day DESC');

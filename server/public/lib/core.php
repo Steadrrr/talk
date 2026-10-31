@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 26;
+const TALK_SERVER_VERSION = 27;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -178,6 +178,11 @@ function talk_migrate(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     // 25: 메시지 수정 (내가 보낸 글을 고친 시각, 고친 적 없으면 비어 있음)
     $q[] = "ALTER TABLE talk_messages ADD COLUMN IF NOT EXISTS edited_at DATETIME NULL";
+    // 27: 사키 설정 바뀐 기록 (방 사람 누구나 바꿀 수 있어서, 누가 언제 무엇을 바꿨는지 설정 화면 아래에 보임. 방마다 최근 50개)
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_saki_log (
+        id INT AUTO_INCREMENT PRIMARY KEY, room_id INT NOT NULL, user_id INT NOT NULL, body VARCHAR(200) NOT NULL,
+        created_at DATETIME NOT NULL, INDEX (room_id, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)
     if (function_exists('talk_admin_in_all_groups')) talk_admin_in_all_groups($pdo);
