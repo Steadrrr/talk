@@ -1082,6 +1082,33 @@ try {
     assert.equal((await roomOf(tok.mom)).saki.noignore, 0);
   });
 
+  await t('사키: 부를 호칭(비우면 상황 따라, 내 것은 나, 남의 것은 방장)', async () => {
+    const dad = await idOf(tok.mom, '아빠');
+    const mom = (await api('me', undefined, tok.mom)).body.me.id;
+    const lastId = sql(`SELECT COALESCE(MAX(id), 0) FROM talk_messages WHERE room_id = ${sakiRoom}`);
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call: '아빠"<곰>' }, tok.dad)).status, 200, '내 호칭은 내가');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call_user: mom, call: '엄마' }, tok.dad)).status, 403, '남의 것은 방장·관리자만');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call_user: dad, call: '아빠곰아빠곰아빠곰아빠곰' }, tok.mom)).status, 200, '방장은 남의 것도');
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call_user: botId, call: '봇' }, tok.mom)).status, 200, '봇은 조용히 무시');
+    let room = await roomOf(tok.dad);
+    assert.equal(room.members.find((m) => m.id === dad).call, '아빠곰아빠곰아빠곰아빠곰', '12자까지');
+    assert.equal(room.members.find((m) => m.id === mom).call, undefined);
+    assert.equal(room.members.find((m) => m.bot).call, undefined);
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call: '곰돌이' }, tok.dad)).status, 200);
+    await say({ body: '사키야 나 불러 봐' }, tok.dad);
+    const c = replies().at(-1).body;
+    const one = c.members.find((m) => m.name === '아빠');
+    assert.equal(one.call, '곰돌이');
+    assert.ok(one.relation.startsWith('호칭 "곰돌이"'), '호칭 칸을 모르는 Lite 도 알게 관계 앞에');
+    assert.ok(c.members.filter((m) => m.name !== '아빠').every((m) => !m.call));
+    assert.equal((await api('rooms/saki', { room_id: sakiRoom, call: '  ' }, tok.dad)).status, 200, '비우면 지움');
+    room = await roomOf(tok.dad);
+    assert.equal(room.members.find((m) => m.id === dad).call, undefined);
+    await say({ body: '사키야 다시' }, tok.dad);
+    assert.equal(replies().at(-1).body.members, undefined, '아무도 안 적었으면 members 없음');
+    sql(`DELETE FROM talk_messages WHERE room_id = ${sakiRoom} AND id > ${lastId}`); // 다음 시험의 메시지 수가 그대로이게
+  });
+
   await t('사키: 관계(내 것은 나, 남의 것은 방장)·90% 안내는 방마다 하루 한 번·하루 요약', async () => {
     const dad = await idOf(tok.mom, '아빠');
     const admin = await idOf(tok.mom, '일래');

@@ -147,6 +147,8 @@ function talk_migrate(PDO $pdo): void {
     $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS push_quiet TINYINT NOT NULL DEFAULT 0";
     // 18: 사키에게 알려 줄 관계 (방 사람마다 한 줄, 예: "엄마", "일래의 동생")
     $q[] = "ALTER TABLE talk_room_members ADD COLUMN IF NOT EXISTS saki_relation VARCHAR(40) NULL";
+    // 18-1: 사키가 부를 호칭 (방 사람마다, 비우면 사키가 상황에 맞춰 부름)
+    $q[] = "ALTER TABLE talk_room_members ADD COLUMN IF NOT EXISTS saki_call VARCHAR(20) NULL";
     // 19: 내 말풍선 색 (#rrggbb, 비우면 기본). 다른 사람 화면에도 내 말풍선이 이 색으로 보임
     $q[] = "ALTER TABLE talk_users ADD COLUMN IF NOT EXISTS bubble CHAR(7) NULL";
     // 20: 사진 묶음·전달 — 파일 하나를 여러 메시지가 같이 씀 (전달은 다시 올리지 않고 같은 파일). 마지막 메시지가 없어질 때 파일을 지운다

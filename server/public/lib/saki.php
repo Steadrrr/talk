@@ -18,6 +18,7 @@ const TALK_SAKI_SUMMARY_MAX = 300;      // 하루 요약 때 보내는 메시지
 const TALK_SAKI_SUMMARY_CHARS = 30000;  // 하루 요약 때 글 합계 (넘는 앞부분은 버림)
 const TALK_SAKI_SUMMARY_MIN = 30;       // 오늘 대화가 이보다 적으면 최근 24시간으로
 const TALK_SAKI_RELATION_MAX = 40;      // 사키에게 알려 줄 관계: 사람마다
+const TALK_SAKI_CALL_MAX = 12;          // 사키가 부를 호칭: 사람마다
 const TALK_SAKI_MEMBERS_CHARS = 500;    // 관계: 방 전체 합계
 
 // 사키가 앱 사용법을 물으면 참고하는 SAKi Talk 기능 설명 (1500자 안쪽, 일반 글). 기능이 바뀌면 같이 고친다.
@@ -27,12 +28,12 @@ const TALK_SAKI_APP = 'SAKi Talk: 가족·친구 10명 안쪽이 쓰는 광고 �
     . '친구 프로필의 1:1 대화, 채팅 탭의 + (새 채팅방)에서 한 명을 고르면 1:1, 여러 명이면 단체방. '
     . '글·사진(14일 보관)·영상(3일 보관, 60초까지) 보내기. 사진·영상은 휴대폰에서 줄여서 올림. 사진은 고른 뒤 보내기 전에 크게 보며 빼거나 "편집"(자르기·돌리기·펜으로 그리기·되돌리기)할 수 있음. '
     . '사진 여러 장은 한 묶음(30장까지) 콜라주로 가고, 누르면 좌우로 넘겨 보며 확대·축소 됨. 채팅방 관리(☰) "사진·영상"에서 이 방 사진을 격자로 모아 보고 눌러 크게·좌우로 넘김. '
-    . '메시지를 길게 누르면 반응·답장·복사·전달·공지 설정·수정(내 글)·삭제, 말풍선을 좌우로 밀어도 바로 답장. 전달은 같은 그룹의 채팅방이나 친구 이름으로만(여러 그룹에 있으면 사진·영상은 다른 그룹에도), 크게 본 사진을 길게 눌러 한 장만 전달·저장. 공지는 첫 줄만(누르면 펼침). ＋ "일정"은 공지 밑 D-Day(가까운 순). ＋ "캡쳐"는 고른 대화를 사진으로 저장(이름 ???·프로필 모자이크 가능). 방 안 검색, 입력 중 표시, 읽지 않은 사람 수. 글 속 주소는 눌러 브라우저로 엶. 방은 마지막 읽은 곳부터 보임. '
+    . '메시지를 길게 누르면 반응·답장·복사·전달·공지 설정·수정(내 글)·삭제, 말풍선을 좌우로 밀어도 바로 답장. 전달은 같은 그룹의 채팅방이나 친구 이름으로만(여러 그룹에 있으면 사진·영상은 다른 그룹에도), 크게 본 사진을 길게 눌러 한 장만 전달·저장. 공지는 첫 줄만(누르면 펼침). ＋ "일정"은 공지 밑 D-Day(가까운 순). ＋ "캡쳐"는 고른 대화를 사진으로 저장(이름 ???·프로필 모자이크 가능). 방 안 검색, 입력 중 표시, 안 읽은 수. 글 속 주소는 눌러 브라우저로 엶. 방은 마지막 읽은 곳부터 보임. '
     . '입력칸 + 에서 사진·영상, "내 위치"(동 이름·지도와 함께), "장소 검색"(가게·주소, 네이버). 장소 말풍선을 누르면 네이버 지도 앱·길찾기·주소 복사. '
     . '웹 푸시 알림: 방마다 알림 끄기, 설정 탭의 "정신병 방지(연속알림 차단)"를 켜면 한 방에 1분 안에 3개 이상 몰아서 올라올 때부터 조용히 받음. '
     . '방 설정에서 방 사진·이름 바꾸기·친구 초대·나가기, 프로필에서 사진·닉네임 바꾸기. 설정 탭 "채팅방 꾸미기"에서 내 말풍선 색(다른 사람 화면에도 그 색), 배경 색·배경화면 사진(기기마다). 설정 탭 "개인설정" 안에 초대 코드 넣기(다른 그룹 들어가기)·비밀번호 바꾸기·사키 프로필 사진(자기 화면에서만 사키가 그 사진으로 보임, 안 정하면 기본). 채팅 목록 맨 위에 공지사항(바뀐 점). 새 버전은 저절로 새로고침. '
     . '사키: 채팅방 관리 "사키 설정"에서 방장·관리자가 초대하고 성격(차분·활발·조용·츤데레)·존댓말·대답 빈도(부를 때만/가끔 끼어들기)·끼어들기 간격·읽씹 방지(마지막 채팅 뒤 고른 시간이 지나면 사키가 대답)·반응 달기를 정함. '
-    . '방 사람마다 "사키에게 알려 줄 관계"를 적을 수 있음. "사키 기억"을 켜면(기본 끔) 대화를 조금씩 기억하고 날마다 방 일기를 씀, 기억과 일기는 방 설정에서 방 사람 누구나 고치거나 지움. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
+    . '방마다 사람별 사키에게 알려 줄 관계·사키가 부를 호칭을 적음. "사키 기억"을 켜면(기본 끔) 대화를 조금씩 기억하고 날마다 방 일기를 씀, 기억과 일기는 방 설정에서 방 사람 누구나 고치거나 지움. 글에 "사키"를 넣거나 사키 말에 답장하면 대답함. '
     . '"사키야 오늘 무슨 얘기 했어?"처럼 요약·정리를 부탁하면 오늘 대화를 요약함. "사키야 매뉴얼 보여줘"면 사용법 페이지 링크. '
     . '사키는 하루 쓸 수 있는 양이 정해져 있어 다 쓰면 그날은 쉼. 관리자는 일래.';
 
@@ -106,6 +107,16 @@ function talk_saki_set(PDO $pdo, array $me, int $roomId, array $b): array {
         if ($who !== $me['id'] && !$manager) talk_fail('다른 사람의 관계는 방장이나 관리자만 적을 수 있어요.', 403);
         $text = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F\[\]<>]+/u', ' ', (string)$b['relation'])), 0, TALK_SAKI_RELATION_MAX);
         $st = $pdo->prepare('UPDATE talk_room_members m JOIN talk_users u ON u.id = m.user_id SET m.saki_relation = ? WHERE m.room_id = ? AND m.user_id = ? AND u.is_bot = 0');
+        $st->execute([$text === '' ? null : $text, $roomId, $who]);
+        talk_event($pdo, $roomId, 'room');
+        if (!array_intersect_key($b, TALK_SAKI_DEFAULTS) && !array_key_exists('call', $b)) return $old;
+    }
+    // 사키가 부를 호칭: 내 것은 내가, 다른 사람 것은 방장·관리자가. 비우면 지금처럼 상황에 맞춰 부름
+    if (array_key_exists('call', $b)) {
+        $who = (int)($b['call_user'] ?? $me['id']);
+        if ($who !== $me['id'] && !$manager) talk_fail('다른 사람의 호칭은 방장이나 관리자만 정할 수 있어요.', 403);
+        $text = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F\[\]<>"]+/u', ' ', (string)$b['call'])), 0, TALK_SAKI_CALL_MAX);
+        $st = $pdo->prepare('UPDATE talk_room_members m JOIN talk_users u ON u.id = m.user_id SET m.saki_call = ? WHERE m.room_id = ? AND m.user_id = ? AND u.is_bot = 0');
         $st->execute([$text === '' ? null : $text, $roomId, $who]);
         talk_event($pdo, $roomId, 'room');
         if (!array_intersect_key($b, TALK_SAKI_DEFAULTS)) return $old;
@@ -325,19 +336,25 @@ function talk_saki_context(PDO $pdo, int $roomId, int $bot, bool $summary = fals
     return [$out, $range];
 }
 
-// 방 사람(봇 제외)과 적어 둔 관계. 아무도 안 적었으면 null (칸을 보내지 않음). 12명까지, 관계 글은 합쳐 500자까지
+// 방 사람(봇 제외)과 적어 둔 관계·호칭. 아무도 안 적었으면 null (칸을 보내지 않음). 12명까지, 관계 글은 합쳐 500자까지
+//  - 호칭은 call 칸으로 보내고, 그 칸을 아직 모르는 Lite 도 알아듣게 relation 맨 앞에도 넣는다 (예: 호칭 "큰딸"(사키가 부를 이름) · 엄마)
 function talk_saki_members(PDO $pdo, int $roomId): ?array {
-    $st = $pdo->prepare('SELECT COALESCE(u.nick, u.name) AS who, m.saki_relation FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
+    $st = $pdo->prepare('SELECT COALESCE(u.nick, u.name) AS who, m.saki_relation, m.saki_call FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id = ? AND u.is_bot = 0 ORDER BY m.joined_at, m.user_id LIMIT 12');
     $st->execute([$roomId]);
     $rows = $st->fetchAll();
-    if (!array_filter($rows, fn($r) => (string)$r['saki_relation'] !== '')) return null;
+    if (!array_filter($rows, fn($r) => (string)$r['saki_relation'] !== '' || (string)$r['saki_call'] !== '')) return null;
     $out = [];
     $left = TALK_SAKI_MEMBERS_CHARS;
     foreach ($rows as $r) {
         $one = ['name' => mb_substr((string)$r['who'], 0, 20)];
         $rel = trim(preg_replace('/[\x00-\x1F\x7F\[\]<>]+/u', ' ', (string)$r['saki_relation']));
-        $rel = mb_substr($rel, 0, min(TALK_SAKI_RELATION_MAX, $left));
+        $call = mb_substr(trim(preg_replace('/[\x00-\x1F\x7F\[\]<>"]+/u', ' ', (string)$r['saki_call'])), 0, TALK_SAKI_CALL_MAX);
+        if ($call !== '') {
+            $one['call'] = $call;
+            $rel = '호칭 "' . $call . '"(사키가 부를 이름)' . ($rel !== '' ? ' · ' . $rel : '');
+        }
+        $rel = mb_substr($rel, 0, min(TALK_SAKI_RELATION_MAX + ($call !== '' ? 30 : 0), $left));
         if ($rel !== '') { $one['relation'] = $rel; $left -= mb_strlen($rel); }
         $out[] = $one;
     }

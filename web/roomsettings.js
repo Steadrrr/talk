@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { html, Avatar, openImage, PhotoViewer, PhotoCrop } from './html.js';
 import { nickOf } from './names.js';
-import { state, photoOf, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation, sakiMemory, setNotice } from './store.js';
+import { state, photoOf, roomTitle, roomPrefs, renameRoom, inviteToRoom, leaveRoom, showProfile, setRoomPhoto, createRoom, openRoom, setSaki, setSakiRelation, setSakiCall, sakiMemory, setNotice } from './store.js';
 import { ScheduleItem, ScheduleSheet, upcoming } from './schedule.js';
 import { PlaceSheet } from './place.js';
 
@@ -245,7 +245,9 @@ function SakiSection({ room, run }) {
           <input type="checkbox" class="switch" checked=${!!s.memory} disabled=${!can} onChange=${(e) => setMemory(e.target.checked)} /></label>
         ${s.memory > 0 && html`<${SakiMemory} room=${room} run=${run} />`}
         <p class="hint">사키에게 알려 줄 관계 <span class="hint">(예: 엄마, 일래의 동생. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>
-        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}`}
+        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}
+        <p class="hint">사키가 부를 호칭 <span class="hint">(비워 두면 상황에 맞춰 불러요. 내 것은 내가, 다른 사람 것은 방장·관리자가 정해요)</span></p>
+        ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${'c' + p.id} room=${room} p=${p} field="call" edit=${can || p.id === state.me.id} run=${run} />`)}`}
     </div>`;
 }
 
@@ -284,12 +286,14 @@ function SakiMemory({ room, run }) {
     </div>`;
 }
 
-function RelationRow({ room, p, edit, run }) {
-  const [text, setText] = useState(p.relation || '');
-  const save = () => { if (text.trim() !== (p.relation || '')) run(() => setSakiRelation(room.id, p.id, text.trim())); };
+// 방 사람 한 줄: 관계(field="relation") 또는 사키가 부를 호칭(field="call")
+function RelationRow({ room, p, edit, run, field = 'relation' }) {
+  const call = field === 'call';
+  const [text, setText] = useState(p[field] || '');
+  const save = () => { if (text.trim() !== (p[field] || '')) run(() => (call ? setSakiCall : setSakiRelation)(room.id, p.id, text.trim())); };
   return html`
     <label class="switch-row relation-row"><span class="grow ellipsis">${nickOf(p)}</span>
-      <input type="text" maxlength="40" placeholder=${edit ? '관계 적기' : ''} value=${text} disabled=${!edit}
+      <input type="text" maxlength=${call ? 12 : 40} placeholder=${edit ? (call ? '비우면 알아서' : '관계 적기') : ''} value=${text} disabled=${!edit}
         onInput=${(e) => setText(e.target.value)} onBlur=${save} onKeyDown=${(e) => e.key === 'Enter' && e.target.blur()} /></label>`;
 }
 

@@ -100,13 +100,14 @@ function talk_rooms_view(PDO $pdo, int $uid, array $roomIds): array {
         WHERE s.room_id IN ($in) AND s.day >= ? ORDER BY s.day, s.id");
     $st->execute([...$roomIds, talk_kst_day()]);
     foreach ($st->fetchAll() as $s) $rooms[(int)$s['room_id']]['schedules'][] = talk_schedule_view($s);
-    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, m.saki_relation, u.name, u.nick, u.photo_key, u.bubble, u.is_bot FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
+    $st = $pdo->prepare("SELECT m.room_id, m.user_id, m.last_read_id, m.muted, m.pinned, m.saki_relation, m.saki_call, u.name, u.nick, u.photo_key, u.bubble, u.is_bot FROM talk_room_members m JOIN talk_users u ON u.id = m.user_id
         WHERE m.room_id IN ($in) ORDER BY m.joined_at, m.user_id");
     $st->execute($roomIds);
     foreach ($st->fetchAll() as $m) {
         $rid = (int)$m['room_id'];
         $rooms[$rid]['members'][] = ['id' => (int)$m['user_id'], 'name' => $m['name'], 'nick' => $m['nick'], 'photo' => $m['photo_key'], 'bubble' => $m['bubble'], 'last_read_id' => (int)$m['last_read_id']]
-            + ((int)$m['is_bot'] ? ['bot' => 1] : []) + ((string)$m['saki_relation'] !== '' ? ['relation' => $m['saki_relation']] : []);
+            + ((int)$m['is_bot'] ? ['bot' => 1] : []) + ((string)$m['saki_relation'] !== '' ? ['relation' => $m['saki_relation']] : [])
+            + ((string)$m['saki_call'] !== '' ? ['call' => $m['saki_call']] : []);
         if ((int)$m['user_id'] === $uid) { $rooms[$rid]['muted'] = (int)$m['muted']; $rooms[$rid]['pinned'] = (int)$m['pinned']; }
     }
     $st = $pdo->prepare("SELECT m.* FROM talk_messages m JOIN (SELECT room_id, MAX(id) mid FROM talk_messages WHERE room_id IN ($in) GROUP BY room_id) x ON m.id = x.mid");
