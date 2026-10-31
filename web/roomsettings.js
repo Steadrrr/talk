@@ -209,6 +209,7 @@ function SakiSection({ room, run }) {
   // 사키가 생기기 전에 받아 둔 방 정보에는 saki 가 없음: 기본값(끔)으로
   const s = room.saki || { on: 0, personality: 'lively', polite: 0, freq: 'called', gap: 10, react: 1 };
   const can = room.created_by === state.me.id || !!state.me.is_admin;
+  const [memOpen, setMemOpen] = useState(false);
   const set = (changes) => run(() => setSaki(room.id, changes));
   // 기억을 끌 때: 기억도 지울지 묻는다 (아니요면 남겨 두고, 다시 켜면 이어서)
   const setMemory = (on) => set(on ? { memory: true } : { memory: false, forget: confirm('사키 기억을 껐어요. 기억한 것과 일기도 지울까요?\n[확인] 지우기 · [취소] 남겨 두기') });
@@ -243,11 +244,34 @@ function SakiSection({ room, run }) {
           <input type="checkbox" class="switch" checked=${!!s.react} disabled=${!can} onChange=${(e) => set({ react: e.target.checked })} /></label>
         <label class="switch-row"><span class="grow">사키 기억<br /><span class="hint">켜면 최근 대화 100개로 바로 시작하고, 그 뒤로 대화를 조금씩 기억해 다음에 알아봐요. 기억한 것은 방 사람 누구나 고치거나 지울 수 있어요</span></span>
           <input type="checkbox" class="switch" checked=${!!s.memory} disabled=${!can} onChange=${(e) => setMemory(e.target.checked)} /></label>
-        ${s.memory > 0 && html`<${SakiMemory} room=${room} run=${run} />`}
+        ${s.memory > 0 && html`
+          <button class="card nav-row memory-open" onClick=${() => setMemOpen(true)}><span class="grow"><b>채팅방 기억</b><br /><span class="hint small">사키가 기억하는 것과 일기 보기·고치기</span></span><span class="hint">›</span></button>`}
+        ${memOpen && html`<${MemoryPage} room=${room} onClose=${() => setMemOpen(false)} />`}
         <p class="hint">사키에게 알려 줄 관계 <span class="hint">(예: 엄마, 일래의 동생. 내 것은 내가, 다른 사람 것은 방장·관리자가 적어요)</span></p>
         ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${p.id} room=${room} p=${p} edit=${can || p.id === state.me.id} run=${run} />`)}
         <p class="hint">사키가 부를 호칭 <span class="hint">(비워 두면 상황에 맞춰 불러요. 내 것은 내가, 다른 사람 것은 방장·관리자가 정해요)</span></p>
         ${room.members.filter((p) => !p.bot).map((p) => html`<${RelationRow} key=${'c' + p.id} room=${room} p=${p} field="call" edit=${can || p.id === state.me.id} run=${run} />`)}`}
+    </div>`;
+}
+
+// 채팅방 기억 화면: 사키 설정에서 눌러 들어가는 따로 된 화면 (기억이 길어 설정 화면에서 뺌)
+function MemoryPage({ room, onClose }) {
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
+  const run = async (fn, done = '') => {
+    setErr(''); setMsg('');
+    try { await fn(); if (done) setMsg(done); } catch (e) { setErr(e.message); }
+  };
+  return html`
+    <div class="sheet-bg top" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="sheet memory-page">
+        <header class="bar"><button class="icon" onClick=${onClose} aria-label="뒤로">‹</button><h2 class="ellipsis">채팅방 기억</h2></header>
+        <div class="scroll">
+          ${err && html`<p class="err pad">${err}</p>`}
+          ${msg && html`<p class="ok pad">${msg}</p>`}
+          <div class="section"><${SakiMemory} room=${room} run=${run} /></div>
+        </div>
+      </div>
     </div>`;
 }
 
@@ -265,7 +289,7 @@ function SakiMemory({ room, run }) {
   return html`
     <div class="saki-memory">
       <p class="hint">사키가 기억하는 것 <span class="hint">(대화가 40개쯤 쌓이거나 날이 바뀌면 사키가 고쳐 써요)</span></p>
-      <textarea rows="6" maxlength="2000" autocomplete="off" placeholder="아직 기억한 게 없어요" value=${text} onInput=${(e) => setText(e.target.value)} />
+      <textarea rows="12" maxlength="2000" autocomplete="off" placeholder="아직 기억한 게 없어요" value=${text} onInput=${(e) => setText(e.target.value)} />
       ${text !== data.memory && html`<div class="inline"><button class="text" onClick=${() => setText(data.memory)}>되돌리기</button><span class="grow"></span>
         <button class="primary" onClick=${() => save({ memory: text }, '사키 기억을 고쳤어요.')}>저장</button></div>`}
       ${data.memory && text === data.memory && html`<div class="inline"><span class="grow"></span>
