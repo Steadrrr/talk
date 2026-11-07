@@ -23,6 +23,11 @@ header('X-Robots-Tag: noindex');
 header('Cache-Control: no-store');
 header("Content-Security-Policy: default-src 'self'; style-src 'unsafe-inline'; form-action 'self'");
 session_name('talk_setup');
+// 세션 폴더를 못 쓰는 서버(open_basedir 로 막힘 등)면 PHP 임시 폴더로
+$sp = (string)session_save_path();
+if ($sp === '' || !@is_writable($sp)) {
+    foreach ([(string)ini_get('upload_tmp_dir'), sys_get_temp_dir()] as $t) if ($t !== '' && @is_writable($t)) { session_save_path($t); break; }
+}
 session_start(['cookie_httponly' => true, 'cookie_samesite' => 'Strict', 'cookie_secure' => !empty($_SERVER['HTTPS'])]);
 
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
@@ -86,7 +91,9 @@ if ($cfg === null) {
             talk_migrate($pdo);
             $dir = choose_private_dir();
             talk_write_config($dir, $new);
-            file_put_contents(__DIR__ . '/config-path.php', "<?php\n// 설정 파일이 있는 폴더 위치 (비밀 정보 없음)\nreturn " . var_export($dir, true) . ";\n", LOCK_EX);
+            // 덮어쓰기(rename 아님): 웹 폴더는 못 써도 서버가 미리 둔 config-path.php 파일만 쓸 수 있으면 된다
+            if (@file_put_contents(__DIR__ . '/config-path.php', "<?php\n// 설정 파일이 있는 폴더 위치 (비밀 정보 없음)\nreturn " . var_export($dir, true) . ";\n", LOCK_EX) === false)
+                throw new RuntimeException('config-path.php 를 쓰지 못했어요. 웹 폴더의 config-path.php 를 PHP 가 쓸 수 있게 해 주세요. (설정 파일은 ' . $dir . ' 에 저장됐어요)');
             talk_forget_cached(__DIR__ . '/config-path.php');
             session_regenerate_id(true);
             $_SESSION['admin'] = true;
@@ -249,6 +256,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !$msg) {
             talk_write_config($cfg['private_dir'], $cfg);
             talk_saki_rooms_changed($pdo);
             $msg = 'SAKi Lite 열쇠를 지웠어요. 사키를 초대한 방에서도 사키가 조용히 쉬어요.';
+        } elseif ($act === 'saki_url') {
+            // SAKi Lite 주소: 비우면 기본값(TALK_SAKI_URL). 서버를 옮길 때 바꿈
+            $raw = trim((string)($_POST['url'] ?? ''));
+            if ($raw === '') unset($cfg['saki_lite_url']);
+            else {
+                $u = talk_saki_clean_url($raw);
+                if ($u === '') throw new RuntimeException('주소는 https:// 로 시작하는 api.php/ 주소로 넣어 주세요. 예: https://projectsaki.com/saki/api.php/');
+                $cfg['saki_lite_url'] = $u;
+            }
+            talk_write_config($cfg['private_dir'], $cfg);
+            $msg = 'SAKi Lite 주소를 ' . talk_saki_base($cfg) . ' 로 저장했어요.' . (!empty($cfg['saki_lite_key']) ? ' 확인 결과: ' . talk_saki_status_text(talk_saki_check($pdo, $cfg)) : '');
         } elseif ($act === 'saki_status') {
             $msg = 'SAKi Lite 상태: ' . talk_saki_status_text(talk_saki_check($pdo, $cfg));
         } elseif ($act === 'naver_key') {
@@ -472,6 +490,9 @@ if ($page === 'members') {
 <form method="post" autocomplete="off"><?= $hidden('saki_key') ?>
 <label><?= $sakiKey === '' ? '열쇠' : '새 열쇠 (SAKI 에서 열쇠를 새로 만들었을 때)' ?> <input name="key" type="password" required autocomplete="off" spellcheck="false"></label>
 <button type="submit">저장하고 확인</button></form>
+<form method="post" autocomplete="off"><?= $hidden('saki_url') ?>
+<label>SAKi Lite 주소 <span class="hint">(비우면 기본 <?= h(TALK_SAKI_URL) ?>)</span> <input name="url" type="url" value="<?= h((string)($cfg['saki_lite_url'] ?? '')) ?>" placeholder="<?= h(TALK_SAKI_URL) ?>" spellcheck="false"></label>
+<button type="submit" class="sub">주소 저장</button></form>
 <?php if ($sakiKey !== ''): $su = talk_saki_usage($pdo, $cfg); $sl = $su['lite']; $okUsage = (int)($sl['code'] ?? 0) === 200 && isset($sl['spent'], $sl['cap']); ?>
 <fieldset><legend>사키 사용량</legend>
 <?php if ($okUsage): $pct = (float)$sl['cap'] > 0 ? min(100, round((float)$sl['spent'] / (float)$sl['cap'] * 100)) : 0; ?>
@@ -493,7 +514,7 @@ if ($page === 'members') {
 $searchId = (string)($cfg['naver_search_id'] ?? ''); $searchOn = talk_naver_search_ready($cfg); $searchNote = json_decode((string)talk_meta_get($pdo, 'naver_search_status'), true); ?>
 <details class="menu" id="m-naver"><summary>네이버 지도 <span class="hint"><?= $naverOn ? '지도 ····' . h(substr($naverId, -4)) : '지도 열쇠 없음' ?> · <?= $searchOn ? '검색 ····' . h(substr($searchId, -4)) : '검색 열쇠 없음' ?></span></summary>
 <fieldset><legend>네이버 지도 열쇠</legend>
-<p class="hint">위치 보내기에서 "OO동" 이름과 지도를 받아 올 때 써요. 네이버 클라우드 콘솔 → Services → Application Services → Maps → Application 의 "인증 정보"에 있는 Client ID 와 Client Secret 을 붙여 넣어 주세요. Application 에는 Reverse Geocoding·Static Map·Dynamic Map 을 체크하고, Web 서비스 URL 에 <code>https://mysaki.mycafe24.com</code> 을 넣어 주세요. 저장하면 다시 보여 주지 않아요.</p>
+<p class="hint">위치 보내기에서 "OO동" 이름과 지도를 받아 올 때 써요. 네이버 클라우드 콘솔 → Services → Application Services → Maps → Application 의 "인증 정보"에 있는 Client ID 와 Client Secret 을 붙여 넣어 주세요. Application 에는 Reverse Geocoding·Static Map·Dynamic Map 을 체크하고, Web 서비스 URL 에 이 서버 주소 <code>https://<?= h(preg_replace('/[^A-Za-z0-9.:-]/', '', (string)($_SERVER['HTTP_HOST'] ?? ''))) ?></code> 를 넣어 주세요. 저장하면 다시 보여 주지 않아요.</p>
 <p>지금 <?= $naverOn ? 'Client ID <code>····' . h(substr($naverId, -4)) . '</code>' : '<b>열쇠 없음</b>' ?></p>
 <form method="post" autocomplete="off"><?= $hidden('naver_key') ?>
 <label>Client ID <input name="id" required autocomplete="off" spellcheck="false" autocapitalize="off"></label>

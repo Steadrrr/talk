@@ -937,6 +937,13 @@ try {
     assert.ok(!html.includes(SAKI_KEY), '관리 화면에 열쇠 전체가 안 보임');
     assert.equal(lite.calls.at(-1).route, 'lite/status');
     assert.equal(lite.calls.at(-1).key, SAKI_KEY);
+    // Lite 주소 칸 (서버 옮길 때): https 만, 끝 / 붙임, 비우면 기본값. 시험에서는 가짜 Lite 주소가 우선
+    html = await adminPost({ act: 'saki_url', url: 'http://projectsaki.com/saki/api.php/' });
+    assert.match(html, /https:\/\/ 로 시작하는/);
+    html = await adminPost({ act: 'saki_url', url: 'https://projectsaki.com/saki/api.php' });
+    assert.ok(html.includes('value="https://projectsaki.com/saki/api.php/"'));
+    html = await adminPost({ act: 'saki_url', url: '' });
+    assert.ok(html.includes('name="url" type="url" value=""'));
     html = await adminPost({ act: 'saki_status' });
     assert.match(html, /오늘 \$0\.012 \/ \$0\.20/);
     assert.match(html, /사키 사용량/);
