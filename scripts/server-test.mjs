@@ -247,6 +247,12 @@ try {
     assert.ok(html.includes(`data-copy="${inviteFamily}"`) && html.includes('#invite=' + inviteFamily + '">링크 복사'), '코드·링크 복사 단추');
     assert.equal((await req('/setup.js')).status, 200);
     assert.ok(html.includes(`#invite=${inviteFriends}`));
+    // 예전 주소(카페24)나 다른 이름으로 열어도 친구에게 보내는 링크는 새 주소로
+    const pub = (host, cfg = 'null') => execFileSync('php', ['-r', `define('TALK', 1); require ${JSON.stringify(path.join(www, 'talk', 'lib', 'core.php'))}; $_SERVER['HTTP_HOST'] = ${JSON.stringify(host)}; $_SERVER['SCRIPT_NAME'] = '/talk/setup.php'; echo talk_public_url(${cfg});`]).toString();
+    assert.equal(pub('mysaki.mycafe24.com'), 'https://talk.projectsaki.com/');
+    assert.equal(pub('talk.projectsaki.com'), 'https://talk.projectsaki.com/');
+    assert.equal(pub('127.0.0.1:8080'), 'http://127.0.0.1:8080/talk/');
+    assert.equal(pub('x', "['public_url' => 'https://chat.example.com']"), 'https://chat.example.com/');
   });
 
   await t('가입: 틀린 초대 코드는 거절, 맞으면 토큰', async () => {
@@ -1014,7 +1020,7 @@ try {
     assert.match(m.body, /사용법/);
     assert.match(m.body, /이번만 알려 드리는/, '츤데레 + 존댓말');
     assert.equal(m.links.length, 1);
-    assert.match(m.links[0].url, /^https:\/\/127\.0\.0\.1:\d+\/talk\/manual\/$/);
+    assert.match(m.links[0].url, /^http:\/\/127\.0\.0\.1:\d+\/talk\/manual\/$/);
     if (fs.existsSync(path.join(www, 'talk', 'manual', 'index.html'))) assert.equal((await fetch(BASE + '/manual/')).status, 200);
   });
 

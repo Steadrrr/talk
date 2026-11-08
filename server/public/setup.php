@@ -335,7 +335,7 @@ if (empty($_SESSION['admin'])) {
     page_foot();
     exit;
 }
-$base = ($https ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? '') . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/') . '/';
+$base = talk_public_url($cfg); // 초대 링크·안내 링크는 언제나 새 주소(talk.projectsaki.com)로
 $deploy = json_decode((string)@file_get_contents(__DIR__ . '/deploy.json'), true);
 $groups = $pdo->query('SELECT id, name, closed FROM talk_groups ORDER BY closed, id')->fetchAll();
 $members = [];

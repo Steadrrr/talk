@@ -246,11 +246,9 @@ function talk_saki_wants_summary(string $body): bool {
     return (bool)preg_match('/요약|정리|무슨\s*(얘기|이야기)/u', $body);
 }
 
-// 사용법 페이지 주소 (이 서버의 /talk/manual/)
+// 사용법 페이지 주소 (앱 주소/manual/)
 function talk_saki_manual_url(): string {
-    $host = preg_replace('/[^A-Za-z0-9.:-]/', '', (string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
-    $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/talk/api.php'))), '/');
-    return "https://$host$dir/manual/";
+    return talk_public_url(talk_config()) . 'manual/';
 }
 
 // 링크와 같이 올릴 한 줄: 방 설정의 성격·존댓말에 맞춰

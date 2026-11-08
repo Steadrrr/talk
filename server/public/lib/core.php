@@ -27,6 +27,22 @@ function talk_config(): ?array {
     ];
 }
 
+// 친구에게 보내는 주소(초대 링크·안내서·사용법)의 기본값. 설정 파일의 public_url 이 있으면 그것을 쓴다
+const TALK_PUBLIC_URL = 'https://talk.projectsaki.com/';
+
+// 앱 주소 (끝에 / 붙음). 예전 주소(카페24)로 관리 화면을 열어도 링크는 새 주소로 나간다.
+// 이 컴퓨터에서 시험할 때(localhost)만 지금 연 주소를 쓴다
+function talk_public_url(?array $cfg = null): string {
+    $u = trim((string)($cfg['public_url'] ?? ''));
+    if (preg_match('#^https://[A-Za-z0-9.:-]+(/[A-Za-z0-9._~/-]*)?$#', $u)) return rtrim($u, '/') . '/';
+    $host = preg_replace('/[^A-Za-z0-9.:\[\]-]/', '', (string)($_SERVER['HTTP_HOST'] ?? ''));
+    if (preg_match('/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/', $host)) {
+        $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
+        return "http://$host$dir/";
+    }
+    return TALK_PUBLIC_URL;
+}
+
 function talk_write_config(string $dir, array $cfg): void {
     unset($cfg['private_dir']);
     $php = "<?php\n// SAKi Talk 서버 설정 — DB 비밀번호가 들어 있어요. 다른 사람에게 보여 주지 마세요.\nreturn " . var_export($cfg, true) . ";\n";

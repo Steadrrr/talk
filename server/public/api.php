@@ -1,6 +1,6 @@
 <?php
 // SAKi Talk 서버 API
-// 주소: /talk/api.php/<경로>  (PATH_INFO 가 안 되는 서버면 /talk/api.php?r=<경로>)
+// 주소: https://talk.projectsaki.com/api.php/<경로>  (PATH_INFO 가 안 되는 서버면 /talk/api.php?r=<경로>)
 // 공유 호스팅에서 막히기 쉬운 PUT/DELETE 와 Authorization 헤더는 쓰지 않는다: 쓰기는 모두 POST, 인증은 X-Talk-Token.
 declare(strict_types=1);
 define('TALK', true);

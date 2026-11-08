@@ -1,7 +1,7 @@
 # SAKi Talk — Claude Code 작업 안내 (새 세션은 이것부터)
 
 가족·친구(전체 10명 이내)끼리만 쓰는 광고 없는 가벼운 메신저. 웹앱(PWA) + 카페24 PHP 서버.
-Project S.A.K.I(저장소 Steadrrr/SAKI)의 카페24 호스팅을 같이 쓴다: SAKI 는 `/www/saki/`, 메신저는 `/www/talk/` (https://mysaki.mycafe24.com/talk/).
+주소는 **https://talk.projectsaki.com/** (AWS Lightsail, 웹 폴더 `/srv/talk/www`). 예전에는 Project S.A.K.I(저장소 Steadrrr/SAKI)의 카페24 호스팅을 같이 썼다(SAKI `/www/saki/`, 메신저 `/www/talk/`, https://mysaki.mycafe24.com/talk/). 친구에게 보내는 링크(초대·안내서·사용법)는 `talk_public_url()` 로 만든다 — HTTP_HOST 로 만들지 않기.
 사용자 호칭: 일래 (관리자). **계획은 `docs/PLAN.md`** — 지금 하는 단계만 읽고, 단계를 마치면 진행 표시를 고친다.
 
 ## 작업 규칙
