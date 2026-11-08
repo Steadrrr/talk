@@ -79,8 +79,11 @@ jobs:
           SSH_USER: ${{ secrets.TALK_SSH_USER }}
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/talk_deploy && chmod 600 ~/.ssh/talk_deploy
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # 콘솔에서 복사한 값에 섞인 \r·줄 앞뒤 빈칸·빈 줄을 걷어 낸다 (남아 있으면 ssh 가 "error in libcrypto" 로 열쇠를 못 읽음)
+          clean() { tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d'; }
+          printf '%s\n' "$SSH_KEY" | clean > ~/.ssh/talk_deploy && chmod 600 ~/.ssh/talk_deploy
+          printf '%s\n' "$KNOWN_HOSTS" | clean > ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/talk_deploy > /dev/null || { echo "::error::TALK_SSH_KEY 를 열쇠로 읽지 못했어요. BEGIN 줄부터 END 줄까지 그대로 넣었는지 확인해 주세요."; exit 1; }
           rsync -rzc --delete --chmod=D755,F644 \
             --exclude config-path.php --exclude private/ --exclude .ftp-deploy-sync-state.json \
             -e "ssh -i ~/.ssh/talk_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes" \
