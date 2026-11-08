@@ -18,6 +18,7 @@ import { applyChatTheme } from './chattheme.js';
 import { fitViewport } from './viewport.js';
 import './saki-splash.js';
 import './badge.js';
+import { Moved, isOldHost } from './moved.js';
 
 applyFontSize();
 applyChatTheme();
@@ -118,7 +119,7 @@ function App() {
   return html`<${Home} tab=${tab} setTab=${setTab} onOpen=${open} />${profile}`;
 }
 
-render(html`<${App} />`, document.getElementById('app'));
+render(isOldHost() ? html`<${Moved} />` : html`<${App} />`, document.getElementById('app'));
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

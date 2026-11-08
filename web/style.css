@@ -530,3 +530,8 @@ img.avatar { object-fit: cover; background: var(--line); }
 .msg-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .saki-log .saki-log-row { margin: 4px 0; line-height: 1.45; word-break: break-word; }
 .saki-log .saki-log-row .hint { margin-right: 4px; }
+/* 옛 주소 안내 (moved.js) */
+.moved > p { max-width: 360px; margin: 6px 0; }
+.moved .moved-url { font-size: 20px; color: var(--acc); user-select: all; }
+.moved a.button { display: block; box-sizing: border-box; max-width: 360px; text-decoration: none; }
+.moved .moved-steps { max-width: 360px; text-align: left; padding-left: 22px; margin: 14px 0 6px; line-height: 1.6; }
