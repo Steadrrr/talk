@@ -6,7 +6,7 @@ Project S.A.K.I(저장소 Steadrrr/SAKI)의 카페24 호스팅을 같이 쓴다:
 
 ## 작업 규칙
 - 보고는 한국어로 짧게. 커밋 메시지도 한국어로 무엇이 왜 바뀌었는지. 모델 이름은 커밋에 넣지 않기.
-- main 에 바로 커밋·푸시 (SAKI 와 같은 방식). main 에 올라가면 GitHub Actions 가 시험 후 카페24 로 자동 배포.
+- main 에 바로 커밋·푸시 (SAKI 와 같은 방식). main 에 올라가면 GitHub Actions 가 시험 후 자동 배포: `TALK_SSH_*` 시크릿이 있으면 Lightsail(talk.projectsaki.com, rsync), `TALK_FTP_*` 가 있으면 카페24(FTP). Lightsail 은 PHP 가 웹 폴더에 못 쓰므로 PHP 가 쓰는 파일은 모두 설정 폴더(talk-private) 안에.
 - 덜 된 기능이 사용자 화면에 보이면 안 됨: 단계 안에서 끝까지 만든 뒤 올리거나, 화면에서 숨긴 채로 올린다.
 - SAKI 와 섞지 않기: DB 표는 모두 `talk_` 로 시작, 설정 파일은 `/talk-private/`, 함수 이름은 `talk_`. SAKI 의 파일·표는 건드리지 않는다.
 - 서버 조건: PHP 8.1+ 와 MariaDB 만. 상시 실행 프로세스·WebSocket·cron 없음 → 폴링 + Web Push. PUT/DELETE·Authorization 헤더 대신 POST + `X-Talk-Token`.

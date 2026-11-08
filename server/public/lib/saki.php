@@ -8,6 +8,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
+// SAKi Lite 주소 기본값. 설정 파일의 saki_lite_url 이 있으면 그것을 쓴다 (서버를 옮길 때 관리 화면에서 바꿈)
 const TALK_SAKI_URL = 'https://mysaki.mycafe24.com/saki/api.php/';
 const TALK_SAKI_PERSONALITIES = ['calm' => '차분', 'lively' => '활발', 'quiet' => '조용', 'tsundere' => '츤데레'];
 // 방 설정 기본값: 끔, 활발, 반말, 부를 때만, 끼어들기 최소 간격 10분, 반응 달기 켬, 사키 기억 끔
@@ -45,7 +46,18 @@ function talk_saki_place_text(string $body): string {
 
 // 자동 검증용: php -S 를 띄울 때만 주는 환경 변수 (가짜 Lite 서버 주소, http 허용)
 function talk_saki_test_url(): string { return (string)getenv('TALK_SAKI_TEST_URL'); }
-function talk_saki_base(): string { return talk_saki_test_url() ?: TALK_SAKI_URL; }
+function talk_saki_base(array $cfg): string {
+    if (talk_saki_test_url() !== '') return talk_saki_test_url();
+    $u = (string)($cfg['saki_lite_url'] ?? '');
+    return $u !== '' ? $u : TALK_SAKI_URL;
+}
+
+// 관리 화면에서 넣은 Lite 주소 다듬기: https://…/api.php/ 꼴 (끝 / 붙임). 틀리면 ''
+function talk_saki_clean_url(string $u): string {
+    $u = trim($u);
+    if (!preg_match('#^https://[A-Za-z0-9.-]+(:\d+)?(/[A-Za-z0-9._~/-]*)?$#', $u)) return '';
+    return rtrim($u, '/') . '/';
+}
 
 // 열쇠가 들어 있어 사키를 쓸 수 있는지 (방 설정 화면에 사키 칸을 보일지)
 function talk_saki_ready(): bool {
@@ -236,7 +248,7 @@ function talk_saki_wants_summary(string $body): bool {
 
 // 사용법 페이지 주소 (이 서버의 /talk/manual/)
 function talk_saki_manual_url(): string {
-    $host = preg_replace('/[^A-Za-z0-9.:-]/', '', (string)($_SERVER['HTTP_HOST'] ?? 'mysaki.mycafe24.com'));
+    $host = preg_replace('/[^A-Za-z0-9.:-]/', '', (string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
     $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/talk/api.php'))), '/');
     return "https://$host$dir/manual/";
 }
@@ -411,7 +423,7 @@ function talk_saki_call(array $cfg, string $what, array $body, int $timeout = 60
     $key = (string)($cfg['saki_lite_key'] ?? '');
     if ($key === '') return [0, null, '열쇠가 없어요.'];
     $json = $body ? json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '{}';
-    $base = talk_saki_base();
+    $base = talk_saki_base($cfg);
     $send = function (string $url) use ($key, $json, $timeout): array {
         $ch = curl_init($url);
         curl_setopt_array($ch, [

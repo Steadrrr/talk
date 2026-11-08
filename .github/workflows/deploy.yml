@@ -1,7 +1,10 @@
-# SAKi Talk 자동 배포: main 에 올라오면 웹앱을 빌드하고 서버 시험을 돌린 뒤 server/public 을 카페24 /www/talk/ 로 올린다.
-# 바뀐 파일만 올리고, 서버에서 직접 만든 파일(config-path.php, 설정 파일)은 건드리지 않는다.
-# 저장소 Settings → Secrets and variables → Actions 에 TALK_FTP_HOST / TALK_FTP_USER / TALK_FTP_PASSWORD 를 넣으면 켜진다.
-name: SAKi Talk 배포 (카페24)
+# SAKi Talk 자동 배포: main 에 올라오면 웹앱을 빌드하고 서버 시험을 돌린 뒤 server/public 을 서버로 올린다.
+# 서버에서 직접 만든 파일(config-path.php, 설정 폴더)은 건드리지 않는다.
+#  - Lightsail(talk.projectsaki.com): 시크릿 TALK_SSH_HOST / TALK_SSH_USER / TALK_SSH_KEY / TALK_SSH_KNOWN_HOSTS 가 있으면 rsync over SSH.
+#    열쇠가 서버에서 rrsync 로 웹 폴더(/srv/talk/www)에 묶여 있어서 대상은 경로 없이 "user@host:" 이다
+#  - 카페24(mysaki.mycafe24.com/talk): 시크릿 TALK_FTP_HOST / TALK_FTP_USER / TALK_FTP_PASSWORD 가 있으면 FTP.
+#  둘 다 있으면 둘 다 올린다 (옮기는 동안). 다 옮긴 뒤 FTP 시크릿을 지우면 카페24 배포는 멈춘다.
+name: SAKi Talk 배포
 
 on:
   push:
@@ -18,6 +21,10 @@ jobs:
     timeout-minutes: 20
     env:
       HAS_FTP: ${{ secrets.TALK_FTP_PASSWORD != '' }}
+      HAS_SSH: ${{ secrets.TALK_SSH_KEY != '' }}
+      CAFE24_URL: https://mysaki.mycafe24.com/talk
+      # 새 서버 주소: 저장소 변수 TALK_SERVER_URL (없으면 talk.projectsaki.com)
+      SERVER_URL: ${{ vars.TALK_SERVER_URL || 'https://talk.projectsaki.com' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +53,8 @@ jobs:
       # notes: 지금 서버에 올라가 있는 판(health 의 sha) 뒤로 쌓인 커밋 제목들 → 서버가 공지사항에 "바뀐 점"으로 올린다
       - name: 배포 정보
         run: |
-          PREV=$(curl -fsS -m 20 "${SERVER_URL:-https://mysaki.mycafe24.com/talk}/api.php/health" | jq -r '.sha // empty' || true)
+          if [ "$HAS_SSH" = true ]; then URL="$SERVER_URL"; else URL="$CAFE24_URL"; fi
+          PREV=$(curl -fsS -m 20 "$URL/api.php/health" | jq -r '.sha // empty' || true)
           if [ -n "$PREV" ] && git cat-file -e "$PREV^{commit}" 2>/dev/null; then
             git log --no-merges --reverse --format=%s "$PREV..HEAD" > notes.txt
           else
@@ -55,12 +63,34 @@ jobs:
           echo "지난 배포: ${PREV:-모름}"; cat notes.txt
           node -e "const fs = require('fs'); const notes = fs.readFileSync('notes.txt', 'utf8').split('\n').filter(Boolean).slice(-50);
             fs.writeFileSync('server/public/deploy.json', JSON.stringify({ sha: process.argv[1], title: process.argv[2], at: new Date().toISOString(), notes }))" "$(git rev-parse HEAD)" "$(git log -1 --format=%s)"
-        env:
-          SERVER_URL: ${{ vars.TALK_SERVER_URL }}
 
-      - name: FTP 정보가 없으면 건너뜀
-        if: env.HAS_FTP != 'true'
-        run: echo "::notice::TALK_FTP_HOST / TALK_FTP_USER / TALK_FTP_PASSWORD 시크릿을 넣으면 카페24로 자동 배포돼요."
+      - name: 배포 정보가 없으면 건너뜀
+        if: env.HAS_FTP != 'true' && env.HAS_SSH != 'true'
+        run: echo "::notice::TALK_SSH_* (Lightsail) 또는 TALK_FTP_* (카페24) 시크릿을 넣으면 자동 배포돼요."
+
+      # Lightsail: 바뀐 파일만(-c), 서버에 없는 옛 파일은 지움(--delete). 서버가 만든 config-path.php·private/ 는 제외
+      # rrsync 가 셸·다른 폴더·바로가기를 막으므로 -a·-l 없이 -r 로
+      - name: Lightsail 로 올리기 (rsync)
+        if: env.HAS_SSH == 'true'
+        env:
+          SSH_KEY: ${{ secrets.TALK_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.TALK_SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.TALK_SSH_HOST }}
+          SSH_USER: ${{ secrets.TALK_SSH_USER }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/talk_deploy && chmod 600 ~/.ssh/talk_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          rsync -rzc --delete --chmod=D755,F644 \
+            --exclude config-path.php --exclude private/ --exclude .ftp-deploy-sync-state.json \
+            -e "ssh -i ~/.ssh/talk_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes" \
+            server/public/ "$SSH_USER@$SSH_HOST:"
+          rm -f ~/.ssh/talk_deploy
+
+      - name: Lightsail 서버 확인
+        if: env.HAS_SSH == 'true'
+        continue-on-error: true
+        run: curl -fsS -m 30 "$SERVER_URL/api.php/health"
 
       - name: 카페24로 올리기
         if: env.HAS_FTP == 'true'
@@ -72,9 +102,7 @@ jobs:
           local-dir: ./server/public/
           server-dir: /www/talk/
 
-      - name: 올라간 서버 확인
+      - name: 카페24 서버 확인
         if: env.HAS_FTP == 'true'
         continue-on-error: true
-        run: curl -fsS -m 30 "${SERVER_URL:-https://mysaki.mycafe24.com/talk}/api.php/health"
-        env:
-          SERVER_URL: ${{ vars.TALK_SERVER_URL }}
+        run: curl -fsS -m 30 "$CAFE24_URL/api.php/health"
