@@ -12,6 +12,7 @@ require __DIR__ . '/lib/media.php';
 require __DIR__ . '/lib/notices.php';
 require __DIR__ . '/lib/saki.php';
 require __DIR__ . '/lib/naver.php';
+require __DIR__ . '/lib/linkpreview.php';
 
 header('X-Robots-Tag: noindex');
 

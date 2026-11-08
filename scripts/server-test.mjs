@@ -112,7 +112,22 @@ const naverServer = http.createServer((rq, rs) => {
 await new Promise((r) => naverServer.listen(0, '127.0.0.1', r));
 const NAVER_URL = `http://127.0.0.1:${naverServer.address().port}/`;
 
-const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX, TALK_SAKI_TEST_URL: LITE_URL, TALK_NAVER_TEST_URL: NAVER_URL } });
+// 가짜 웹 페이지들: 링크 미리보기가 읽어 갈 og 태그 (TALK_LINK_TEST_PREFIX 로 이 주소만 집 안이어도 허용)
+const pageHits = [];
+const pageServer = http.createServer((rq, rs) => {
+  pageHits.push(rq.url);
+  if (rq.url === '/og') { rs.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); rs.end(`<!doctype html><html><head><title>안 씀</title>
+    <meta property="og:title" content="벚꽃 &amp; 소풍 안내"><meta property="og:description" content="  주말에   같이 가요 ">
+    <meta content="/img/cover.jpg" property="og:image"><meta property="og:site_name" content="소풍닷컴"></head><body>…</body></html>`); return; }
+  if (rq.url === '/euckr') { rs.writeHead(200, { 'Content-Type': 'text/html; charset=euc-kr' }); rs.end(Buffer.from('3c7469746c653ec7d1b1dbc6e4c0ccc1f63c2f7469746c653e', 'hex')); return; }
+  if (rq.url === '/go') { rs.writeHead(302, { Location: '/og' }); rs.end(); return; }
+  if (rq.url === '/none') { rs.writeHead(200, { 'Content-Type': 'text/html' }); rs.end('<p>제목 없음</p>'); return; }
+  rs.writeHead(404); rs.end();
+});
+await new Promise((r) => pageServer.listen(0, '127.0.0.1', r));
+const PAGE = `http://127.0.0.1:${pageServer.address().port}`;
+
+const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX, TALK_SAKI_TEST_URL: LITE_URL, TALK_NAVER_TEST_URL: NAVER_URL, TALK_LINK_TEST_PREFIX: PAGE + '/' } });
 let phpLog = '';
 php.stderr.on('data', (d) => { phpLog += d; });
 
@@ -792,6 +807,46 @@ try {
     const eroom = esync.rooms.find((x) => x.id === room);
     assert.equal(eroom.notice?.body, '내일 4시로 바꿀게', '공지도 바뀐 글');
     await api('rooms/notice', { room_id: room, message_id: 0 }, tok.mom);
+
+    // 링크 미리보기: 보낸 응답 뒤 서버가 og 태그를 읽어 preview 를 붙이고 'msg' 변경 기록 → 다른 사람 동기화에 카드
+    const waitPreview = async (id, tk, since) => {
+      for (let i = 0; i < 40; i++) {
+        const m = (await api('sync?since=' + since, undefined, tk)).body.messages.find((x) => x.id === id && 'preview' in x);
+        if (m) return m;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return null;
+    };
+    const lcur = (await api('sync?since=0', undefined, tok.dad)).body.cursor;
+    const lm = (await api('messages/send', { room_id: room, body: `여기 봐 ${PAGE}/go!`, client_id: 'lp-1' }, tok.mom)).body.message;
+    assert.equal(lm.preview, undefined, '보낸 응답은 기다리지 않음');
+    const lp = (await waitPreview(lm.id, tok.dad, lcur))?.preview;
+    assert.ok(lp, '미리보기가 붙음');
+    assert.equal(lp.title, '벚꽃 & 소풍 안내');
+    assert.equal(lp.desc, '주말에 같이 가요');
+    assert.equal(lp.site, '소풍닷컴');
+    assert.equal(lp.image, PAGE.replace('http://', 'https://') + '/img/cover.jpg', '상대 주소 → 절대 https');
+    assert.equal(lp.url, `${PAGE}/go`, '끝 문장부호 뺌');
+    // 같은 주소는 다시 받지 않음 (보관)
+    const hits = pageHits.length;
+    const lm2 = (await api('messages/send', { room_id: room, body: `${PAGE}/go`, client_id: 'lp-2' }, tok.dad)).body.message;
+    assert.equal((await waitPreview(lm2.id, tok.mom, lcur))?.preview?.title, '벚꽃 & 소풍 안내');
+    assert.equal(pageHits.length, hits, '보관해 둔 것을 씀');
+    // EUC-KR 페이지 제목
+    const lm3 = (await api('messages/send', { room_id: room, body: `${PAGE}/euckr`, client_id: 'lp-3' }, tok.mom)).body.message;
+    assert.equal((await waitPreview(lm3.id, tok.dad, lcur))?.preview?.title, '한글페이지');
+    // 고쳐서 주소를 지우면 미리보기도 뗌
+    await api('messages/edit', { id: lm3.id, body: '주소 없음' }, tok.mom);
+    const lm3s = (await api('sync?since=' + lcur, undefined, tok.dad)).body.messages.find((x) => x.id === lm3.id);
+    assert.equal(lm3s.preview, undefined, '미리보기 뗌');
+    // 읽을 것이 없는 페이지, 집 안 주소(시험 허용 밖)는 카드 없음
+    const port = PORT;
+    const lm4 = (await api('messages/send', { room_id: room, body: `${PAGE}/none http://127.0.0.1:${port}/talk/`, client_id: 'lp-4' }, tok.mom)).body.message;
+    const lm5 = (await api('messages/send', { room_id: room, body: `http://127.0.0.1:${port}/talk/`, client_id: 'lp-5' }, tok.mom)).body.message;
+    await new Promise((r) => setTimeout(r, 800));
+    const ls = (await api('sync?since=' + lcur, undefined, tok.dad)).body.messages;
+    assert.equal(ls.find((x) => x.id === lm4.id)?.preview, undefined, '제목·사진 없는 페이지');
+    assert.equal(ls.find((x) => x.id === lm5.id)?.preview, undefined, '집 안 주소는 안 감');
 
     // 영상: Range
     const mp4 = crypto.randomBytes(5000);
@@ -1552,5 +1607,6 @@ try {
   pushServer.close();
   liteServer.close();
   naverServer.close();
+  pageServer.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 }

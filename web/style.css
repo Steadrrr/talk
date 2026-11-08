@@ -335,6 +335,15 @@ img.avatar { object-fit: cover; background: var(--line); }
 .link-cards { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; width: 240px; max-width: 100%; }
 .link-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); color: var(--fg); text-decoration: none; min-width: 0; }
 .link-icon { flex: none; }
+/* 링크 미리보기 카드 (말풍선 아래) */
+.link-preview { display: flex; flex-direction: column; margin-top: 4px; width: 240px; max-width: 100%; border-radius: 12px; overflow: hidden;
+  background: var(--card); border: 1px solid var(--line); color: var(--fg); cursor: pointer; -webkit-touch-callout: none; user-select: none; }
+.msg.mine .link-preview { align-self: flex-end; }
+.lp-img { display: block; width: 100%; aspect-ratio: 1.91 / 1; object-fit: cover; background: var(--line); }
+.lp-text { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; min-width: 0; }
+.lp-title, .lp-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; word-break: break-word; }
+.lp-title { font-size: 14px; line-height: 1.35; }
+.lp-desc { line-height: 1.35; }
 .link-text { display: flex; flex-direction: column; min-width: 0; }
 .saki-section .seg { margin: 4px 0 8px; max-width: none; }
 .saki-section .seg button:disabled { opacity: .7; }

@@ -364,7 +364,7 @@ function talk_message_delete(PDO $pdo, array $cfg, int $uid, int $msgId): void {
     $keys = $st->fetchAll(PDO::FETCH_COLUMN);
     $pdo->prepare('DELETE FROM talk_media_uses WHERE message_id = ?')->execute([$msgId]);
     talk_media_release($pdo, $cfg, $keys);
-    $pdo->prepare("UPDATE talk_messages SET kind = 'deleted', body = '' WHERE id = ?")->execute([$msgId]);
+    $pdo->prepare("UPDATE talk_messages SET kind = 'deleted', body = '', preview = NULL WHERE id = ?")->execute([$msgId]);
     if ($m['kind'] === 'place') talk_maps_release($pdo, talk_map_keys([$m['body']]));
     $u = $pdo->prepare('UPDATE talk_rooms SET notice_id = NULL, notice_by = NULL WHERE notice_id = ?');
     $u->execute([$msgId]);

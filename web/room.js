@@ -362,6 +362,7 @@ export function Room({ id, onBack }) {
             </div>
           </div>
           ${m.kind === 'text' && m.links?.length > 0 && html`<${LinkCards} links=${m.links} />`}
+          ${m.kind === 'text' && !m.links?.length && m.preview && html`<${LinkPreview} p=${m.preview} mine=${mine} onMenu=${() => openMenu(m)} />`}
           ${m.kind !== 'deleted' && m.reactions?.length > 0 && html`<${Reactions} m=${m} names=${names} />`}
           ${m.failed && html`<div class="fail"><button class="del" onClick=${() => confirm('보내지 못한 것을 지울까요?') && discard(id, m)}>지우기</button><button class="retry" onClick=${() => m.kind === 'text' ? send(id, null, m) : m.kind === 'place' ? sendPlace(id, null, m) : m.album ? sendAlbum(id, null, m) : sendMedia(id, null, m)}>재전송</button></div>`}
         </div>
@@ -587,6 +588,24 @@ function LinkCards({ links }) {
           <span class="link-icon">${LINK_ICON[l.kind] || LINK_ICON.page}</span>
           <span class="link-text"><b class="ellipsis">${l.title}</b><span class="hint small ellipsis">${site(l.url)}</span></span>
         </a>`)}
+    </div>`;
+}
+
+// 링크 미리보기: 서버가 보낸 뒤 읽어 온 제목·설명·대표 사진. 사진은 그 사이트에서 바로 (referrer 없이), 안 뜨면 사진만 뺌
+function LinkPreview({ p, mine, onMenu }) {
+  const [noImg, setNoImg] = useState(false);
+  const press = useLongPress(onMenu, () => { if (confirm(`외부로 이동합니다.\n${p.url}`)) openExternal(p.url); });
+  if (!/^https?:\/\//.test(p.url || '')) return null;
+  const img = !noImg && /^https:\/\//.test(p.image || '') ? p.image : '';
+  if (!img && !p.title) return null;
+  return html`
+    <div class=${'link-preview' + (mine ? ' mine' : '')} role="link" tabindex="0" ...${press}>
+      ${img && html`<img class="lp-img" src=${img} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" draggable="false" onError=${() => setNoImg(true)} />`}
+      <span class="lp-text">
+        ${p.title && html`<b class="lp-title">${p.title}</b>`}
+        ${p.desc && html`<span class="lp-desc hint small">${p.desc}</span>`}
+        ${p.site && html`<span class="lp-site hint small ellipsis">${p.site}</span>`}
+      </span>
     </div>`;
 }
 

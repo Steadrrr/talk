@@ -31,6 +31,7 @@ function talk_msg_view(array $m): array {
     return ['id' => (int)$m['id'], 'room_id' => (int)$m['room_id'], 'user_id' => (int)$m['user_id'], 'kind' => $m['kind'],
         'body' => $m['body'], 'client_id' => $m['client_id'], 'at' => talk_iso($m['created_at']),
         'reply_to' => (int)($m['reply_to'] ?? 0) ?: null] + (empty($m['links']) ? [] : ['links' => json_decode($m['links'], true)])
+        + (empty($m['preview']) || $m['kind'] !== 'text' ? [] : ['preview' => json_decode($m['preview'], true)])
         + (empty($m['edited_at']) ? [] : ['edited' => talk_iso($m['edited_at'])]);
 }
 
@@ -259,6 +260,7 @@ function talk_send(PDO $pdo, int $uid, int $roomId, string $body, string $client
     talk_event($pdo, $roomId, 'msg', $id);
     $pdo->commit();
     if (function_exists('talk_push_message')) talk_after_response(fn() => talk_push_message($pdo, $roomId, $uid, $body));
+    if (function_exists('talk_link_preview_later')) talk_link_preview_later($pdo, $roomId, $id, $body);
     // 사키를 불렀으면 (또는 끼어들 때가 됐으면) 알림 다음에 SAKi Lite 를 부른다
     if ($saki && function_exists('talk_saki_after_send')) talk_saki_after_send($pdo, $roomId, $uid, $id, $body, $replyTo);
     if (random_int(1, 200) === 1) talk_cleanup_events($pdo);
@@ -286,6 +288,7 @@ function talk_message_edit(PDO $pdo, int $uid, int $msgId, string $body): array 
         $st = $pdo->prepare('SELECT id FROM talk_messages WHERE room_id = ? AND reply_to = ? ORDER BY id DESC LIMIT 50');
         $st->execute([$roomId, $msgId]);
         foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $rid) talk_event($pdo, $roomId, 'msg', (int)$rid);
+        if (function_exists('talk_link_preview_later')) talk_link_preview_later($pdo, $roomId, $msgId, $body);
     }
     $st = $pdo->prepare('SELECT * FROM talk_messages WHERE id = ?');
     $st->execute([$msgId]);
