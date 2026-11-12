@@ -415,7 +415,7 @@ export function Room({ id, onBack }) {
           ${boxes.map((r, i) => html`
             <div key=${i} ref=${r} class=${'msg-input' + (i === cur ? (text ? '' : ' blank') : ' spare')} contentEditable=${CE} role="textbox" aria-multiline="true" aria-label="메시지" data-placeholder="메시지"
               aria-hidden=${i === cur ? null : 'true'} tabIndex=${i === cur ? 0 : -1}
-              autocapitalize="off" spellcheck="false" onInput=${onEdit} onScroll=${keepTop} onKeyDown=${onKey} onPaste=${onPaste}></div>`)}
+              autocapitalize="off" spellcheck="true" autocorrect="on" onInput=${onEdit} onScroll=${keepTop} onKeyDown=${onKey} onPaste=${onPaste}></div>`)}
         </div>
         <button type="button" class="send" onPointerDown=${(e) => e.preventDefault()} onClick=${submit} disabled=${!text.trim()} aria-label=${editing ? '수정' : '보내기'}>${editing ? '✓' : '↑'}</button>
       </div>
