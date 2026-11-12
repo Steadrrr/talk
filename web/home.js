@@ -10,6 +10,7 @@ import { InstallCard } from './install.js';
 import { TAB_ICONS } from './icons.js';
 import { preview } from './media.js';
 import { FONT_SIZES, getFontSize, setFontSize } from './fontsize.js';
+import { spellOn, setSpellOn } from './spell.js';
 import { NoticeStrip } from './notices.js';
 import { ChatThemePage } from './chattheme.js';
 
@@ -261,6 +262,7 @@ function Settings() {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [fs, setFs] = useState(getFontSize());
+  const [sp, setSp] = useState(spellOn());
   const [decor, setDecor] = useState(false);   // 채팅방 꾸미기 화면
   const [personal, setPersonal] = useState(false);   // 개인설정 화면
 
@@ -292,6 +294,11 @@ function Settings() {
           <b>글씨 크기</b>
           <div class="seg fs-seg">${FONT_SIZES.map((f) => html`<button class=${fs === f.key ? 'on' : ''} onClick=${() => { setFontSize(f.key); setFs(f.key); }}>${f.label}</button>`)}</div>
           <p class="hint fs-preview">대화와 목록의 글씨가 이 크기로 보여요. 이 기기에만 적용돼요.</p>
+        </div>
+        <div class="card">
+          <b>한글 맞춤법 검사</b>
+          <div class="seg">${[[true, '켜기'], [false, '끄기']].map(([v, l]) => html`<button class=${sp === v ? 'on' : ''} onClick=${() => { setSpellOn(v); setSp(v); }}>${l}</button>`)}</div>
+          <p class="hint">글을 쓰다 잠깐 멈추면 틀린 말을 입력칸 위에 보여 줘요. 눌러서 바로 고칠 수 있어요. 이 기기에만 적용돼요.</p>
         </div>
         <button class="card nav-row" onClick=${() => setDecor(true)}>
           <span class="grow"><b>채팅방 꾸미기</b><div class="hint">말풍선 색, 배경 색, 배경화면</div></span><span class="hint">›</span>

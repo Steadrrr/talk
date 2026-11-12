@@ -4,7 +4,7 @@
 declare(strict_types=1);
 if (!defined('TALK')) { http_response_code(403); exit; }
 
-const TALK_SERVER_VERSION = 28;
+const TALK_SERVER_VERSION = 29;
 
 // 설정 파일(DB 비밀번호)이 있는 폴더. 공개 폴더에는 그 "위치"만 적어 둔다 (config-path.php)
 function talk_private_dir(): ?string {
@@ -203,6 +203,10 @@ function talk_migrate(PDO $pdo): void {
     $q[] = "ALTER TABLE talk_messages ADD COLUMN IF NOT EXISTS preview TEXT NULL";
     $q[] = "CREATE TABLE IF NOT EXISTS talk_link_previews (
         uhash CHAR(40) PRIMARY KEY, url TEXT NOT NULL, data TEXT NULL, fetched_at DATETIME NOT NULL, INDEX (fetched_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    // 29: 한글 맞춤법 검사 결과 (같은 글은 7일 동안 다시 묻지 않음)
+    $q[] = "CREATE TABLE IF NOT EXISTS talk_spell_cache (
+        h CHAR(40) PRIMARY KEY, segs MEDIUMTEXT NOT NULL, at DATETIME NOT NULL, INDEX (at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
     foreach ($q as $sql) $pdo->exec($sql);
     // 4: 관리자는 모든 그룹에 (예전에 관리자 없이 생긴 그룹이 있을 수 있어서 한 번 맞춤)

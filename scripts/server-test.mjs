@@ -127,7 +127,39 @@ const pageServer = http.createServer((rq, rs) => {
 await new Promise((r) => pageServer.listen(0, '127.0.0.1', r));
 const PAGE = `http://127.0.0.1:${pageServer.address().port}`;
 
-const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX, TALK_SAKI_TEST_URL: LITE_URL, TALK_NAVER_TEST_URL: NAVER_URL, TALK_LINK_TEST_PREFIX: PAGE + '/' } });
+// 가짜 맞춤법 검사기: 다음(POST sentence=)과 네이버(passportKey → JSONP). "네이버" 가 든 글은 다음이 고장 난 척
+const spellHits = [];
+const spellServer = http.createServer((rq, rs) => {
+  let raw = '';
+  rq.on('data', (c) => { raw += c; });
+  rq.on('end', () => {
+    const u = new URL(rq.url, 'http://x');
+    spellHits.push(u.pathname);
+    if (u.pathname === '/daum') {
+      const text = new URLSearchParams(raw).get('sentence') || '';
+      if (text.includes('네이버')) { rs.writeHead(200, { 'Content-Type': 'text/html' }); rs.end('<p>점검 중</p>'); return; }
+      const errs = [['닫고록', '닳도록'], ['동해물과백두산이', '동해 물과 백두산이'], ['&quot;안됀다&quot;', '&quot;안 된다&quot;']].map(([a, b]) => [a, b, text.indexOf(a.replace(/&quot;/g, '"'))]).filter(([, , i]) => i >= 0).sort((x, y) => x[2] - y[2]);
+      rs.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      rs.end(`<h2 class="screen_out">맞춤법 검사기 본문</h2>` + errs.map(([a, b]) => `<a href="#none" class="txt_spell" data-error-type="spell" data-error-input="${a}" data-error-output="${b}" data-error-context="">x</a><div>도움말</div>`).join(''));
+      return;
+    }
+    if (u.pathname === '/naver-key') { rs.writeHead(200); rs.end('...SpellerProxy?passportKey=abc123&where...'); return; }
+    if (u.pathname === '/naver') {
+      const q = u.searchParams.get('q') || '';
+      const ok = u.searchParams.get('passportKey') === 'abc123';
+      const msg = !ok ? { error: '유효한 키가 아닙니다' } : { result: q.includes('않되요')
+        ? { errata_count: 1, origin_html: "네이버 <span class='result_underline'>않되요</span>", html: "네이버 <em class='red_text'>안 돼요</em>" }
+        : { errata_count: 0, origin_html: q, html: q } };
+      rs.writeHead(200); rs.end('jQuery(' + JSON.stringify({ message: msg }) + ');');
+      return;
+    }
+    rs.writeHead(404); rs.end();
+  });
+});
+await new Promise((r) => spellServer.listen(0, '127.0.0.1', r));
+const SPELL_URL = `http://127.0.0.1:${spellServer.address().port}/`;
+
+const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', www], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, TALK_PUSH_TEST_PREFIX: PUSH_PREFIX, TALK_SAKI_TEST_URL: LITE_URL, TALK_NAVER_TEST_URL: NAVER_URL, TALK_LINK_TEST_PREFIX: PAGE + '/', TALK_SPELL_TEST_URL: SPELL_URL } });
 let phpLog = '';
 php.stderr.on('data', (d) => { phpLog += d; });
 
@@ -1580,6 +1612,26 @@ try {
     jar = saved;
   });
 
+  await t('한글 맞춤법: 다음 검사기 → 조각, 같은 글은 다시 안 물음, 다음이 안 되면 네이버', async () => {
+    const text = '동해물과백두산이 마르고 닫고록 "안됀다"';
+    let r = await api('spell', { text }, tok.mom);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const segs = r.body.segs;
+    assert.equal(segs.map((x) => x.t ?? x.from).join(''), text, '이어 붙이면 원래 글');
+    assert.equal(segs.map((x) => x.t ?? x.to).join(''), '동해 물과 백두산이 마르고 닳도록 "안 된다"', '고친 글');
+    const hits = spellHits.length;
+    r = await api('spell', { text }, tok.mom);
+    assert.deepEqual(r.body.segs, segs);
+    assert.equal(spellHits.length, hits, '같은 글은 7일 동안 기억');
+    r = await api('spell', { text: '네이버로 가면 않되요' }, tok.mom);
+    assert.equal(r.body.segs.map((x) => x.t ?? x.to).join(''), '네이버로 가면 안 돼요', '다음이 고장이면 네이버');
+    assert.ok(spellHits.includes('/naver-key'), '네이버 키를 받아 옴');
+    r = await api('spell', { text: 'hello' }, tok.mom);
+    assert.deepEqual(r.body.segs, [{ t: 'hello' }], '한글 없는 글은 안 물음');
+    r = await api('spell', { text: '안녕' });
+    assert.equal(r.status, 401, '로그인해야');
+  });
+
   await t('로그아웃하면 그 기기 토큰은 못 씀', async () => {
     let r = await api('auth/logout', {}, tok.dad);
     assert.equal(r.status, 200);
@@ -1608,5 +1660,6 @@ try {
   liteServer.close();
   naverServer.close();
   pageServer.close();
+  spellServer.close();
   fs.rmSync(tmp, { recursive: true, force: true });
 }

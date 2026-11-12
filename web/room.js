@@ -12,6 +12,7 @@ import { SendPreview } from './photoedit.js';
 import { PlaceBubble, PlaceSheet, AttachSheet, HereSheet, PlaceSearch, placeInfo } from './place.js';
 import { ScheduleBar, ScheduleSheet } from './schedule.js';
 import { CaptureBar, CapturePreview, capIds, capPick, placeBox } from './capture.js';
+import { SpellBar, spellOn, worthCheck, checkSpell, skipSpell, joinSegs, hasFix, SPELL_WAIT } from './spell.js';
 
 export function Room({ id, onBack }) {
   const room = state.rooms[id];
@@ -196,6 +197,27 @@ export function Room({ id, onBack }) {
   }
 
   // 입력칸에 글자가 남아 있으면 계속 입력 중 (3초마다 다시 알림, 앱을 숨기면 서버가 끔)
+  // 한글 맞춤법: 쓰다가 잠깐 멈추면 서버에 묻고, 고칠 곳이 있으면 입력칸 위에 줄 (✕ 로 넘긴 것은 다시 안 띄움)
+  const [spell, setSpell] = useState(null);   // { text, segs }
+  useEffect(() => {
+    if (spell && spell.text !== text) setSpell(null);
+    if (!spellOn() || !worthCheck(text) || spell?.text === text) return;
+    const t = setTimeout(() => {
+      checkSpell(text).then((segs) => {
+        const now = input.current?.innerText.replace(/\n$/, '');
+        if (now === text && hasFix(segs)) setSpell({ text, segs });
+      }).catch(() => {});
+    }, SPELL_WAIT);
+    return () => clearTimeout(t);
+  }, [text]);
+  function applySpell(segs) {
+    const el = input.current;
+    const t = joinSegs(segs, (s) => s.from);
+    if (el) { el.textContent = t; fitBox(el); caretEnd(el); }
+    setText(t);
+    setSpell(hasFix(segs) ? { text: t, segs } : null);
+  }
+
   const hasText = !editing && text.trim() !== '';
   useEffect(() => {
     if (!hasText) return;
@@ -409,6 +431,7 @@ export function Room({ id, onBack }) {
           <div class="grow ellipsis"><b>${names.get(replyTo.user_id) || '나간 사람'}</b>에게 답장<br /><span class="hint">${replyPreview(replyTo)}</span></div>
           <button class="icon" onClick=${() => setReplyTo(null)} aria-label="답장 그만두기">✕</button>
         </div>`}
+      ${!cap && spell && html`<${SpellBar} segs=${spell.segs} onApply=${applySpell} onClose=${() => { skipSpell(spell.segs); setSpell(null); }} />`}
       <div class="composer" onPointerDown=${onGap} onClick=${onGap} hidden=${!!cap}>
         <button type="button" class="attach" onClick=${() => setAttach('menu')} aria-label="사진·위치 보내기">＋</button>
         <div class="msg-box">

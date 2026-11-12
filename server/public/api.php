@@ -13,6 +13,7 @@ require __DIR__ . '/lib/notices.php';
 require __DIR__ . '/lib/saki.php';
 require __DIR__ . '/lib/naver.php';
 require __DIR__ . '/lib/linkpreview.php';
+require __DIR__ . '/lib/spell.php';
 
 header('X-Robots-Tag: noindex');
 
@@ -194,6 +195,11 @@ switch ($route) {
         $need('POST');
         $b = talk_body();
         talk_json(['ok' => true, 'place' => talk_place_lookup($cfg, (float)($b['lat'] ?? 0), (float)($b['lng'] ?? 0))]);
+
+    case 'spell':
+        // 한글 맞춤법: 입력칸에서 잠깐 멈추면 부름 → 고칠 곳이 있으면 입력칸 위에 "이렇게 고칠까요?"
+        $need('POST');
+        talk_json(['ok' => true, 'segs' => talk_spell_check($pdo, (string)(talk_body()['text'] ?? ''))]);
 
     case 'place/search':
         talk_json(['ok' => true, 'places' => talk_place_search($cfg, (string)$q('q', ''))]);
